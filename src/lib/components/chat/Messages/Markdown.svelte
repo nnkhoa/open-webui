@@ -24,6 +24,7 @@
 	export let paragraphTag = 'p';
 	export let editCodeBlock = true;
 	export let topPadding = false;
+	export let hideCodeBlock = false; // New prop to hide code blocks for artifacts
 
 	export let sourceIds = [];
 
@@ -104,6 +105,7 @@
 		{editCodeBlock}
 		{sourceIds}
 		{topPadding}
+		{hideCodeBlock}
 		{onTaskClick}
 		{onSourceClick}
 		{onSave}

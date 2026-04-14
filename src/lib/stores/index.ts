@@ -171,6 +171,7 @@ type Settings = {
 	pinnedModels?: never[];
 	toolServers?: never[];
 	detectArtifacts?: boolean;
+	artifactDisplayMode?: 'sidebar' | 'inline' | 'both';
 	showUpdateToast?: boolean;
 	showChangelog?: boolean;
 	showEmojiInCall?: boolean;

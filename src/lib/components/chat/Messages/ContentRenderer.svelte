@@ -3,8 +3,10 @@
 	const i18n = getContext('i18n');
 
 	import Markdown from './Markdown.svelte';
+	import InlineArtifact from './InlineArtifact.svelte';
 	import {
 		artifactCode,
+		artifactContents,
 		chatId,
 		mobile,
 		settings,
@@ -41,6 +43,10 @@
 
 	let contentContainerElement;
 	let floatingButtonsElement;
+
+	let inlineArtifactContent = null;
+	let inlineArtifactType = 'iframe';
+	let showInlineArtifact = false;
 
 	let sourceIds = [];
 	$: getSourceIds(sources);
@@ -140,6 +146,36 @@
 		}
 	};
 
+	const openSidebarArtifact = () => {
+		showArtifacts.set(true);
+		showControls.set(true);
+	};
+
+	const artifactDisplayMode = () => {
+		return $settings?.artifactDisplayMode ?? 'inline';
+	};
+
+	const shouldShowInline = () => {
+		const mode = artifactDisplayMode();
+			return mode === 'inline' || mode === 'both';
+	};
+
+	const shouldShowSidebar = () => {
+		const mode = artifactDisplayMode();
+		return mode === 'sidebar' || mode === 'both';
+	};
+
+	const shouldHideCodeBlock = (lang) => {
+		// Hide code blocks for HTML/SVG when using inline mode
+		const isArtifact = ['html', 'svg'].includes(lang) || (lang === 'xml' && content.includes('svg'));
+		return shouldShowInline() && isArtifact;
+	};
+
+	// Watch for changes in done status
+	$: if (done && inlineArtifactContent && shouldShowInline()) {
+		showInlineArtifact = true;
+	}
+
 	onMount(() => {
 		if (floatingButtons) {
 			contentContainerElement?.addEventListener('mouseup', updateButtonPosition);
@@ -180,19 +216,45 @@
 				!$mobile &&
 				$chatId
 			) {
-				await tick();
-				showArtifacts.set(true);
-				showControls.set(true);
+				// Store artifact content for inline display (only when done)
+				if (shouldShowInline()) {
+					inlineArtifactContent = code;
+					inlineArtifactType = lang === 'svg' || (lang === 'xml' && code.includes('svg')) ? 'svg' : 'iframe';
+				}
+
+				// Show sidebar if needed
+				if (shouldShowSidebar()) {
+					await tick();
+					showArtifacts.set(true);
+					showControls.set(true);
+				}
 			}
 		}}
 		onPreview={async (value) => {
-			console.log('Preview', value);
 			await artifactCode.set(value);
+
+			if (shouldShowInline()) {
+				inlineArtifactContent = value;
+				inlineArtifactType = 'iframe';
+			}
+
 			await showControls.set(true);
-			await showArtifacts.set(true);
+
+			if (shouldShowSidebar()) {
+				await showArtifacts.set(true);
+			}
 			await showEmbeds.set(false);
 		}}
+		hideCodeBlock={false}
 	/>
+
+	{#if showInlineArtifact && inlineArtifactContent && done}
+		<InlineArtifact
+			content={inlineArtifactContent}
+			type={inlineArtifactType}
+			on:openSidebar={openSidebarArtifact}
+		/>
+	{/if}
 </div>
 
 {#if floatingButtons}
