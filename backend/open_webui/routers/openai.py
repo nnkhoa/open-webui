@@ -1023,6 +1023,11 @@ async def generate_chat_completion(
     payload = {**form_data}
     metadata = payload.pop('metadata', None)
 
+    # Add stream_options for usage tracking (required for analytics)
+    # This ensures LiteLLM and other providers return usage data in streaming responses
+    if payload.get('stream') is True:
+        payload.setdefault('stream_options', {})['include_usage'] = True
+
     model_id = form_data.get('model')
     model_info = Models.get_model_by_id(model_id)
 
