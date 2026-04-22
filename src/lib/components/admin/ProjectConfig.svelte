@@ -118,47 +118,50 @@
 		<Spinner className="size-6" />
 	</div>
 {:else}
-	<div class="flex flex-col h-full justify-between space-y-4 text-sm max-w-4xl">
-		<div class="overflow-y-auto scrollbar-hidden h-full pr-1.5 space-y-6">
+	<div class="flex flex-col h-full max-w-5xl mx-auto px-6 py-6">
+		<div class="overflow-y-auto scrollbar-hidden h-full space-y-5">
 			<!-- Section: Logo -->
-			<div>
-				<div class="mt-0.5 mb-2.5 text-base font-medium">Logo</div>
-				<hr class="border-gray-100/30 dark:border-gray-850/30 my-2" />
+			<div
+				class="rounded-2xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 p-5"
+			>
+				<h3 class="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-3">Logo</h3>
+				<p class="text-xs text-gray-500 dark:text-gray-400 mb-4">
+					Upload a project logo. Displayed in favicon and chat interface.
+				</p>
 
-				<div class="flex items-center gap-4 mt-3">
+				<div class="flex items-center gap-4">
 					<div class="shrink-0">
 						{#if logoUrl}
 							<img
 								src={`${WEBUI_BASE_URL}${logoUrl}`}
 								alt="Project logo"
-								class="h-14 w-14 rounded-xl object-cover border border-slate-200 shadow-sm"
+								class="h-16 w-16 rounded-xl object-cover border border-gray-200 dark:border-gray-700 shadow-sm"
 							/>
 						{:else}
 							<div
-								class="h-14 w-14 rounded-xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center border border-slate-200"
+								class="h-16 w-16 rounded-xl bg-gray-50 dark:bg-gray-800 flex items-center justify-center border border-dashed border-gray-300 dark:border-gray-600"
 							>
 								<svg
-									class="h-6 w-6 text-gray-400"
+									class="h-7 w-7 text-gray-400"
 									viewBox="0 0 24 24"
 									fill="none"
 									stroke="currentColor"
-									stroke-width="2"
+									stroke-width="1.5"
 								>
-									<rect x="3" y="3" width="18" height="18" rx="2" />
-									<circle cx="8.5" cy="8.5" r="1.5" />
-									<path d="M21 15l-5-5L5 21" />
+									<path d="M12 16V4m0 0l-3 3m3-3l3 3" />
+									<path d="M2 17l.621 2.485A2 2 0 004.561 21h14.878a2 2 0 001.94-1.515L22 17" />
 								</svg>
 							</div>
 						{/if}
 					</div>
 
-					<div class="flex flex-col gap-2">
+					<div class="flex flex-col gap-1.5">
 						<div class="flex gap-2">
 							<button
 								class="px-3 py-1.5 text-xs font-medium rounded-lg bg-black text-white hover:bg-gray-800 dark:bg-white dark:text-black dark:hover:bg-gray-200 transition"
 								on:click={() => logoFileInput.click()}
 							>
-								Upload Logo
+								Upload
 							</button>
 							{#if logoUrl}
 								<button
@@ -169,9 +172,7 @@
 								</button>
 							{/if}
 						</div>
-						<p class="text-xs text-gray-500 dark:text-gray-400"
-							>PNG, JPG, SVG, WebP.</p
-						>
+						<p class="text-xs text-gray-400 dark:text-gray-500">PNG, JPG, SVG, WebP</p>
 					</div>
 
 					<input
@@ -185,73 +186,77 @@
 			</div>
 
 			<!-- Section: Brand Color -->
-			<div>
-				<div class="mt-0.5 mb-2.5 text-base font-medium">Brand Color</div>
-				<hr class="border-gray-100/30 dark:border-gray-850/30 my-2" />
+			<div
+				class="rounded-2xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 p-5"
+			>
+				<h3 class="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-3">Brand Color</h3>
+				<p class="text-xs text-gray-500 dark:text-gray-400 mb-4">
+					Applied to headings and accent text across the UI.
+				</p>
 
-				<div class="flex items-center gap-3 mt-3">
-					<input
-						type="color"
-						bind:value={brandColor}
-						class="h-10 w-14 rounded-lg border border-slate-200 dark:border-slate-700 cursor-pointer"
-					/>
+				<div class="flex items-center gap-3">
+					<div class="relative">
+						<input
+							type="color"
+							bind:value={brandColor}
+							class="h-9 w-12 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer bg-transparent"
+						/>
+					</div>
 					<input
 						type="text"
 						bind:value={brandColor}
 						placeholder="#19226D"
-						class="w-32 px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-transparent dark:bg-gray-900"
+						class="w-28 px-2.5 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800"
 					/>
 					{#if brandColor}
-						<span class="text-sm font-medium" style="color: {brandColor}"
-							>Preview text</span
+						<span
+							class="text-xs font-medium px-2.5 py-1 rounded-md"
+							style="color: {brandColor}; background: {brandColor}15;"
 						>
-					{/if}
-					{#if brandColor}
+							Preview
+						</span>
 						<button
-							class="px-2 py-1 text-xs rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+							class="px-2 py-1 text-xs rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
 							on:click={() => (brandColor = '')}
 						>
 							Reset
 						</button>
 					{/if}
 				</div>
-				<p class="text-xs text-gray-500 dark:text-gray-400 mt-1.5"
-					>Applied to headings and accent text across the UI.</p
-				>
 			</div>
 
 			<!-- Section: Model Display Names -->
-			<div>
-				<div class="mt-0.5 mb-2.5 text-base font-medium">Model Display Names</div>
-				<hr class="border-gray-100/30 dark:border-gray-850/30 my-2" />
-				<p class="text-xs text-gray-500 dark:text-gray-400 mb-3"
-					>Rename models for display purposes. The underlying model ID is not changed.</p
-				>
+			<div
+				class="rounded-2xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 p-5"
+			>
+				<h3 class="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-3">
+					Model Display Names
+				</h3>
+				<p class="text-xs text-gray-500 dark:text-gray-400 mb-4">
+					Rename models for display. The underlying model ID is not changed.
+				</p>
 
 				{#if availableModels.length === 0}
-					<div class="text-gray-400 text-sm py-4 text-center">No models available.</div>
+					<div class="text-gray-400 text-xs py-4 text-center">No models available.</div>
 				{:else}
-					<div class="space-y-2">
+					<div class="space-y-1.5">
 						{#each availableModels as model}
 							<div
-								class="flex items-center gap-3 px-3 py-2 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800"
+								class="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-800"
 							>
 								<div class="flex-1 min-w-0">
-									<div class="text-xs text-gray-500 dark:text-gray-400 font-mono truncate"
-										>{model.id}</div
-									>
-									<div class="text-sm text-gray-700 dark:text-gray-300 truncate"
-										>{model.name}</div
-									>
+									<div class="text-[11px] text-gray-400 dark:text-gray-500 font-mono truncate">
+										{model.id}
+									</div>
+									<div class="text-xs text-gray-600 dark:text-gray-300 truncate">{model.name}</div>
 								</div>
-								<div class="w-48 shrink-0">
+								<div class="w-36 shrink-0">
 									<input
 										type="text"
 										value={model.displayName}
 										placeholder="Display name..."
-										on:change={(e) =>
-											handleDisplayNameChange(model.id, e.target.value)}
-										class="w-full px-2.5 py-1.5 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-950"
+										on:change={(e) => handleDisplayNameChange(model.id, e.target.value)}
+										class="w-full px-2 py-1 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 focus:outline-none focus:ring-1 focus:ring-black dark:focus:ring-white"
 									/>
 								</div>
 							</div>
@@ -262,9 +267,9 @@
 		</div>
 
 		<!-- Save Button -->
-		<div class="pt-3 border-t border-gray-100 dark:border-gray-800">
+		<div class="pt-4 mt-2 border-t border-gray-100 dark:border-gray-800">
 			<button
-				class="px-5 py-2.5 text-sm font-medium rounded-xl bg-black text-white hover:bg-gray-800 dark:bg-white dark:text-black dark:hover:bg-gray-200 transition disabled:opacity-50"
+				class="px-4 py-2 text-xs font-medium rounded-xl bg-black text-white hover:bg-gray-800 dark:bg-white dark:text-black dark:hover:bg-gray-200 transition disabled:opacity-50"
 				on:click={save}
 				disabled={saving}
 			>
