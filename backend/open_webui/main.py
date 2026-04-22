@@ -373,6 +373,10 @@ from open_webui.config import (
     ADMIN_EMAIL,
     SHOW_ADMIN_DETAILS,
     JWT_EXPIRES_IN,
+    # AI4BI Project Config
+    AIBI_PROJECT_LOGO,
+    AIBI_MODEL_DISPLAY_NAMES,
+    AIBI_BRAND_COLOR,
     ENABLE_SIGNUP,
     ENABLE_LOGIN_FORM,
     ENABLE_API_KEYS,
@@ -861,6 +865,11 @@ app.state.config.RESPONSE_WATERMARK = RESPONSE_WATERMARK
 app.state.config.USER_PERMISSIONS = USER_PERMISSIONS
 app.state.config.WEBHOOK_URL = WEBHOOK_URL
 app.state.config.BANNERS = WEBUI_BANNERS
+
+# AI4BI Project Config
+app.state.config.AIBI_PROJECT_LOGO = AIBI_PROJECT_LOGO
+app.state.config.AIBI_MODEL_DISPLAY_NAMES = AIBI_MODEL_DISPLAY_NAMES
+app.state.config.AIBI_BRAND_COLOR = AIBI_BRAND_COLOR
 
 
 app.state.config.ENABLE_FOLDERS = ENABLE_FOLDERS
@@ -1487,6 +1496,12 @@ app.mount('/ws', socket_app)
 app.include_router(ollama.router, prefix='/ollama', tags=['ollama'])
 app.include_router(openai.router, prefix='/openai', tags=['openai'])
 
+from open_webui.routers.project_config import (
+    router as project_config_router,
+)
+
+app.include_router(project_config_router, prefix='/api/v1/configs', tags=['project'])
+
 
 app.include_router(pipelines.router, prefix='/api/v1/pipelines', tags=['pipelines'])
 app.include_router(tasks.router, prefix='/api/v1/tasks', tags=['tasks'])
@@ -1589,6 +1604,13 @@ async def get_models(request: Request, refresh: bool = False, user=Depends(get_v
         )
 
     models = get_filtered_models(models, user)
+
+    # AI4BI: Apply model display name overrides
+    display_names = request.app.state.config.AIBI_MODEL_DISPLAY_NAMES
+    if display_names:
+        for model in models:
+            if model.get('id') in display_names:
+                model['name'] = display_names[model['id']]
 
     log.debug(
         f'/api/models returned filtered models accessible to the user: {json.dumps([model.get("id") for model in models])}'
@@ -2091,6 +2113,10 @@ async def get_app_config(request: Request):
                 else {}
             ),
         },
+        'aibi': {
+            'logo_url': app.state.config.AIBI_PROJECT_LOGO,
+            'brand_color': app.state.config.AIBI_BRAND_COLOR,
+        },
         **(
             {
                 'default_models': app.state.config.DEFAULT_MODELS,
@@ -2554,6 +2580,16 @@ async def healthcheck_with_db():
 
 
 app.mount('/static', StaticFiles(directory=STATIC_DIR), name='static')
+
+
+@app.get('/api/v1/files/project_logo/{filename}')
+async def serve_project_logo(filename: str):
+    from fastapi.responses import FileResponse
+
+    file_path = UPLOAD_DIR / 'project_logo' / filename
+    if file_path.exists():
+        return FileResponse(file_path)
+    raise HTTPException(status_code=404, detail='Project logo not found')
 
 
 @app.get('/cache/{path:path}')

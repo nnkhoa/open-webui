@@ -1671,6 +1671,27 @@ except Exception as e:
 WEBUI_BANNERS = PersistentConfig('WEBUI_BANNERS', 'ui.banners', banners)
 
 
+####################################
+# AI4BI Project Config
+####################################
+
+AIBI_PROJECT_LOGO = PersistentConfig(
+    'AIBI_PROJECT_LOGO', 'aibi.project.logo_url', os.environ.get('AIBI_PROJECT_LOGO', '')
+)
+
+AIBI_MODEL_DISPLAY_NAMES = PersistentConfig(
+    'AIBI_MODEL_DISPLAY_NAMES',
+    'aibi.project.model_display_names',
+    json.loads(os.environ.get('AIBI_MODEL_DISPLAY_NAMES', '{}')),
+)
+
+AIBI_BRAND_COLOR = PersistentConfig(
+    'AIBI_BRAND_COLOR',
+    'aibi.project.brand_color',
+    os.environ.get('AIBI_BRAND_COLOR', ''),
+)
+
+
 SHOW_ADMIN_DETAILS = PersistentConfig(
     'SHOW_ADMIN_DETAILS',
     'auth.admin.show',
