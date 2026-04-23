@@ -98,6 +98,7 @@ from open_webui.routers import (
     scim,
     terminals,
 )
+from open_webui.routers.ai4bi import sidebar_router as ai4bi_sidebar
 
 from open_webui.routers.retrieval import (
     get_embedding_function,
@@ -1522,6 +1523,7 @@ if ENABLE_ADMIN_ANALYTICS:
     app.include_router(analytics.router, prefix='/api/v1/analytics', tags=['analytics'])
 app.include_router(utils.router, prefix='/api/v1/utils', tags=['utils'])
 app.include_router(terminals.router, prefix='/api/v1/terminals', tags=['terminals'])
+app.include_router(ai4bi_sidebar.router, prefix='/api/v1/ai4bi', tags=['ai4bi'])
 
 # SCIM 2.0 API for identity management
 if ENABLE_SCIM:

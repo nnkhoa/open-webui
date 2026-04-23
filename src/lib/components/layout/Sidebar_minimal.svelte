@@ -1,10 +1,12 @@
 <script lang="ts">
-	import { showSidebar, mobile, sidebarWidth, isApp } from '$lib/stores';
+	import { showSidebar, mobile } from '$lib/stores';
 	import { onMount } from 'svelte';
 	import Sidebar from '../icons/Sidebar.svelte';
 	import AI4BIFeedRail from './Sidebar/AI4BIFeedRail.svelte';
 
 	const isWindows = /Windows/i.test(navigator.userAgent);
+
+	let navElement;
 
 	const MIN_WIDTH = 220;
 	const MAX_WIDTH = 480;
@@ -40,7 +42,6 @@
 		sidebarWidth.subscribe((w) => {
 			document.documentElement.style.setProperty('--sidebar-width', `${w}px`);
 		});
-		showSidebar.set(!$mobile ? localStorage.sidebar === 'true' : false);
 	});
 </script>
 
@@ -67,6 +68,7 @@
 
 {#if $showSidebar}
 	<div
+		bind:this={navElement}
 		id="sidebar"
 		class="h-screen max-h-[100dvh] min-h-screen select-none {$showSidebar
 			? `${$mobile ? 'bg-gray-50 dark:bg-gray-950' : 'bg-gray-50/70 dark:bg-gray-950/70'} z-50`
@@ -80,8 +82,9 @@
 				? ''
 				: 'invisible'}"
 		>
-			<div class="relative flex flex-col flex-1 overflow-y-auto scrollbar-hidden pt-3 pb-3">
-				<!-- CHỈ CÓ TÍN HIỆU VÀ NHỊP ĐẬP -->
+			<div
+				class="relative flex flex-col flex-1 overflow-y-auto scrollbar-hidden pt-3 pb-3"
+			>
 				<AI4BIFeedRail />
 			</div>
 		</div>

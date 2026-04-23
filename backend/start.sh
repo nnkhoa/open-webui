@@ -3,8 +3,38 @@
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 cd "$SCRIPT_DIR" || exit
 
+# Load environment variables from file (keeps secrets local & out of the repo history).
+# Usage:
+#   ENV_FILE=/path/to/file ./start.sh
+# Or place a `.env` file next to this script.
+if [ -n "${ENV_FILE}" ]; then
+    if [ -f "${ENV_FILE}" ]; then
+        echo "Loading environment from ${ENV_FILE}"
+        set -a
+        # shellcheck source=/dev/null
+        source "${ENV_FILE}"
+        set +a
+    else
+        echo "ENV_FILE was set but not found: ${ENV_FILE}" >&2
+        exit 1
+    fi
+elif [ -f ".env" ]; then
+    echo "Loading environment from .env"
+    set -a
+    # shellcheck source=/dev/null
+    source ".env"
+    set +a
+fi
+
+# Activate virtual environment if it exists
+if [ -f "venv/bin/activate" ]; then
+    echo "Activating virtual environment..."
+    source venv/bin/activate
+fi
+
 # Add conditional Playwright browser installation
-if [[ "${WEB_LOADER_ENGINE,,}" == "playwright" ]]; then
+WEB_LOADER_ENGINE_LOWER=$(echo "$WEB_LOADER_ENGINE" | tr '[:upper:]' '[:lower:]')
+if [[ "$WEB_LOADER_ENGINE_LOWER" == "playwright" ]]; then
     if [[ -z "${PLAYWRIGHT_WS_URL}" ]]; then
         echo "Installing Playwright browsers..."
         playwright install chromium
@@ -35,12 +65,14 @@ if test "$WEBUI_SECRET_KEY $WEBUI_JWT_SECRET_KEY" = " "; then
   WEBUI_SECRET_KEY=$(cat "$KEY_FILE")
 fi
 
-if [[ "${USE_OLLAMA_DOCKER,,}" == "true" ]]; then
+USE_OLLAMA_DOCKER_LOWER=$(echo "$USE_OLLAMA_DOCKER" | tr '[:upper:]' '[:lower:]')
+if [[ "$USE_OLLAMA_DOCKER_LOWER" == "true" ]]; then
     echo "USE_OLLAMA is set to true, starting ollama serve."
     ollama serve &
 fi
 
-if [[ "${USE_CUDA_DOCKER,,}" == "true" ]]; then
+USE_CUDA_DOCKER_LOWER=$(echo "$USE_CUDA_DOCKER" | tr '[:upper:]' '[:lower:]')
+if [[ "$USE_CUDA_DOCKER_LOWER" == "true" ]]; then
   echo "CUDA is enabled, appending LD_LIBRARY_PATH to include torch/cudnn & cublas libraries."
   export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/lib/python3.11/site-packages/torch/lib:/usr/local/lib/python3.11/site-packages/nvidia/cudnn/lib"
 fi

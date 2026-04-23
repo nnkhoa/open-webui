@@ -9,6 +9,7 @@
 
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
+	import { pendingMessageFromSidebar } from '$lib/stores';
 
 	import { get, type Unsubscriber, type Writable } from 'svelte/store';
 	import type { i18n as i18nType } from 'i18next';
@@ -171,6 +172,54 @@
 	let chatFiles = [];
 	let files = [];
 	let params = {};
+	let pendingMessageHandled = false;
+
+	// Handle message from sidebar (signals/heartbeat) - continues current chat
+	$: if ($pendingMessageFromSidebar && !pendingMessageHandled) {
+		const question = $pendingMessageFromSidebar;
+		if (question && question.trim()) {
+			pendingMessageHandled = true;
+
+			// Clear store immediately to prevent re-submission
+			pendingMessageFromSidebar.set(null);
+
+			// Auto-submit after a short delay to ensure UI is ready
+			setTimeout(async () => {
+				// Get current message list to find parent
+				const messagesList = history ? createMessagesList(history, history.currentId) : [];
+				const lastMessage = messagesList.length > 0 ? messagesList[messagesList.length - 1] : null;
+
+				// Create user message
+				let userMessageId = uuidv4();
+				let userMessage = {
+					id: userMessageId,
+					parentId: lastMessage ? lastMessage.id : null,
+					childrenIds: [],
+					role: 'user',
+					content: question,
+					timestamp: Math.floor(Date.now() / 1000),
+					models: selectedModels
+				};
+
+				// Add message to history
+				history.messages[userMessageId] = userMessage;
+				history.currentId = userMessageId;
+
+				// Append to parent if exists
+				if (lastMessage) {
+					history.messages[lastMessage.id].childrenIds.push(userMessageId);
+				}
+
+				await tick();
+
+				// Send message to CURRENT chat (not new chat)
+				await sendMessage(history, userMessageId, { newChat: false });
+
+				// Reset flag after sending
+				pendingMessageHandled = false;
+			}, 200);
+		}
+	}
 
 	$: if (chatIdProp) {
 		navigateHandler();

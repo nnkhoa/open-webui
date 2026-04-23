@@ -88,6 +88,9 @@ export const chatRequestQueues: Writable<
 
 export const sidebarWidth = writable(260);
 
+// Store for messages from sidebar (signals/heartbeat)
+export const pendingMessageFromSidebar = writable<string | null>(null);
+
 export const showSidebar = writable(false);
 export const showSearch = writable(false);
 export const showSettings = writable(false);
