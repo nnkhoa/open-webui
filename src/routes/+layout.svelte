@@ -941,7 +941,10 @@
 				await projectConfig.set({
 					logo_url: backendConfig.aibi.logo_url || null,
 					model_display_names: {},
-					brand_color: backendConfig.aibi.brand_color || null
+					brand_color: backendConfig.aibi.brand_color || null,
+					org_name: backendConfig.aibi.org_name || 'Nova Consumer Group',
+					org_subtitle:
+						backendConfig.aibi.org_subtitle || 'Chương trình tư vấn chiến lược AI'
 				});
 			}
 

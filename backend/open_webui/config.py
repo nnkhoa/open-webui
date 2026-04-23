@@ -1691,6 +1691,18 @@ AIBI_BRAND_COLOR = PersistentConfig(
     os.environ.get('AIBI_BRAND_COLOR', ''),
 )
 
+AIBI_ORG_NAME = PersistentConfig(
+    'AIBI_ORG_NAME',
+    'aibi.project.org_name',
+    os.environ.get('AIBI_ORG_NAME', 'Nova Consumer Group'),
+)
+
+AIBI_ORG_SUBTITLE = PersistentConfig(
+    'AIBI_ORG_SUBTITLE',
+    'aibi.project.org_subtitle',
+    os.environ.get('AIBI_ORG_SUBTITLE', 'Chương trình tư vấn chiến lược AI'),
+)
+
 
 SHOW_ADMIN_DETAILS = PersistentConfig(
     'SHOW_ADMIN_DETAILS',

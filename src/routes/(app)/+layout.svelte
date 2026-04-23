@@ -42,6 +42,7 @@
 	} from '$lib/stores';
 
 	import Sidebar from '$lib/components/layout/Sidebar.svelte';
+	import NovaHeader from '$lib/components/layout/NovaHeader.svelte';
 	import SettingsModal from '$lib/components/chat/SettingsModal.svelte';
 	import ChangelogModal from '$lib/components/ChangelogModal.svelte';
 	import AccountPending from '$lib/components/layout/Overlay/AccountPending.svelte';
@@ -392,11 +393,21 @@
 {/if}
 
 {#if $user}
-	<div class="app relative">
+	<div class="app relative" style="--topbar-height: 56px; --banner-height: 56px;">
+		<NovaHeader
+			on:notifications={() => {
+				/* TODO: wire up notifications panel */
+			}}
+			on:user={() => {
+				showSettings.set(true);
+			}}
+		/>
 		<div
-			class=" text-gray-700 dark:text-gray-100 bg-white dark:bg-gray-900 h-screen max-h-[100dvh] overflow-auto flex flex-row justify-end"
+			class=" text-gray-700 dark:text-gray-100 bg-white dark:bg-gray-900 h-screen max-h-[100dvh] overflow-hidden flex flex-col"
+			style="padding-top: var(--topbar-height);"
 		>
-			{#if !['user', 'admin'].includes($user?.role)}
+			<div class="flex-1 min-h-0 overflow-auto flex flex-row justify-end">
+				{#if !['user', 'admin'].includes($user?.role)}
 				<AccountPending />
 			{:else}
 				{#if localDBChats.length > 0}
@@ -468,11 +479,25 @@
 					</div>
 				{/if}
 			{/if}
+			</div>
 		</div>
 	</div>
 {/if}
 
+
 <style>
+	:global(#sidebar) {
+		top: var(--banner-height, 0px) !important;
+		height: calc(100vh - var(--banner-height, 0px)) !important;
+		max-height: calc(100dvh - var(--banner-height, 0px)) !important;
+		min-height: calc(100vh - var(--banner-height, 0px)) !important;
+	}
+
+	:global(#sidebar > div) {
+		height: calc(100vh - var(--banner-height, 0px)) !important;
+		max-height: calc(100dvh - var(--banner-height, 0px)) !important;
+	}
+
 	.loading {
 		display: inline-block;
 		clip-path: inset(0 1ch 0 0);

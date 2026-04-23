@@ -4,6 +4,8 @@ export interface ProjectConfig {
 	logo_url: string | null;
 	model_display_names: Record<string, string>;
 	brand_color: string | null;
+	org_name: string;
+	org_subtitle: string;
 }
 
 export const getProjectConfig = async (token: string): Promise<ProjectConfig> => {

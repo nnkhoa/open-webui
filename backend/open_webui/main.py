@@ -377,6 +377,8 @@ from open_webui.config import (
     AIBI_PROJECT_LOGO,
     AIBI_MODEL_DISPLAY_NAMES,
     AIBI_BRAND_COLOR,
+    AIBI_ORG_NAME,
+    AIBI_ORG_SUBTITLE,
     ENABLE_SIGNUP,
     ENABLE_LOGIN_FORM,
     ENABLE_API_KEYS,
@@ -870,6 +872,8 @@ app.state.config.BANNERS = WEBUI_BANNERS
 app.state.config.AIBI_PROJECT_LOGO = AIBI_PROJECT_LOGO
 app.state.config.AIBI_MODEL_DISPLAY_NAMES = AIBI_MODEL_DISPLAY_NAMES
 app.state.config.AIBI_BRAND_COLOR = AIBI_BRAND_COLOR
+app.state.config.AIBI_ORG_NAME = AIBI_ORG_NAME
+app.state.config.AIBI_ORG_SUBTITLE = AIBI_ORG_SUBTITLE
 
 
 app.state.config.ENABLE_FOLDERS = ENABLE_FOLDERS
@@ -2116,6 +2120,8 @@ async def get_app_config(request: Request):
         'aibi': {
             'logo_url': app.state.config.AIBI_PROJECT_LOGO,
             'brand_color': app.state.config.AIBI_BRAND_COLOR,
+            'org_name': app.state.config.AIBI_ORG_NAME,
+            'org_subtitle': app.state.config.AIBI_ORG_SUBTITLE,
         },
         **(
             {

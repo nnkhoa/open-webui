@@ -23,6 +23,8 @@ class ProjectConfigForm(BaseModel):
     logo_url: Optional[str] = None
     model_display_names: Optional[dict[str, str]] = {}
     brand_color: Optional[str] = None
+    org_name: Optional[str] = None
+    org_subtitle: Optional[str] = None
 
 
 ############################
@@ -36,6 +38,8 @@ async def get_project_config(request: Request, user=Depends(get_admin_user)):
         'logo_url': request.app.state.config.AIBI_PROJECT_LOGO,
         'model_display_names': request.app.state.config.AIBI_MODEL_DISPLAY_NAMES,
         'brand_color': request.app.state.config.AIBI_BRAND_COLOR,
+        'org_name': request.app.state.config.AIBI_ORG_NAME,
+        'org_subtitle': request.app.state.config.AIBI_ORG_SUBTITLE,
     }
 
 
@@ -61,10 +65,18 @@ async def set_project_config(
     if 'logo_url' in data:
         request.app.state.config.AIBI_PROJECT_LOGO = data['logo_url']
 
+    if 'org_name' in data and data['org_name'] is not None:
+        request.app.state.config.AIBI_ORG_NAME = data['org_name']
+
+    if 'org_subtitle' in data and data['org_subtitle'] is not None:
+        request.app.state.config.AIBI_ORG_SUBTITLE = data['org_subtitle']
+
     return {
         'logo_url': request.app.state.config.AIBI_PROJECT_LOGO,
         'model_display_names': request.app.state.config.AIBI_MODEL_DISPLAY_NAMES,
         'brand_color': request.app.state.config.AIBI_BRAND_COLOR,
+        'org_name': request.app.state.config.AIBI_ORG_NAME,
+        'org_subtitle': request.app.state.config.AIBI_ORG_SUBTITLE,
     }
 
 

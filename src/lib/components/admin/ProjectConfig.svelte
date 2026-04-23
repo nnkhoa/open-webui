@@ -21,6 +21,8 @@
 	let logoUrl: string | null = null;
 	let displayNames: Record<string, string> = {};
 	let brandColor = '';
+	let orgName = '';
+	let orgSubtitle = '';
 	let logoFileInput: HTMLInputElement;
 
 	// Get models list for display name editing
@@ -36,11 +38,15 @@
 			logoUrl = config.logo_url;
 			displayNames = config.model_display_names || {};
 			brandColor = config.brand_color || '';
+			orgName = config.org_name || 'Nova Consumer Group';
+			orgSubtitle = config.org_subtitle || 'Chương trình tư vấn chiến lược AI';
 
 			await projectConfig.set({
 				logo_url: config.logo_url,
 				model_display_names: config.model_display_names || {},
-				brand_color: config.brand_color || ''
+				brand_color: config.brand_color || '',
+				org_name: orgName,
+				org_subtitle: orgSubtitle
 			});
 		} catch (err) {
 			console.error('Failed to load project config:', err);
@@ -92,13 +98,17 @@
 			const config = await setProjectConfig(localStorage.token, {
 				logo_url: logoUrl,
 				model_display_names: displayNames,
-				brand_color: brandColor || null
+				brand_color: brandColor || null,
+				org_name: orgName,
+				org_subtitle: orgSubtitle
 			});
 
 			await projectConfig.set({
 				logo_url: config.logo_url,
 				model_display_names: config.model_display_names || {},
-				brand_color: config.brand_color || ''
+				brand_color: config.brand_color || '',
+				org_name: config.org_name || 'Nova Consumer Group',
+				org_subtitle: config.org_subtitle || 'Chương trình tư vấn chiến lược AI'
 			});
 
 			toast.success('Project config saved');
@@ -185,13 +195,58 @@
 				</div>
 			</div>
 
+			<!-- Section: Organization Name & Subtitle -->
+			<div
+				class="rounded-2xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 p-5"
+			>
+				<h3 class="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-3">
+					Organization Info
+				</h3>
+				<p class="text-xs text-gray-500 dark:text-gray-400 mb-4">
+					Displayed in the header next to the project logo.
+				</p>
+
+				<div class="space-y-3">
+					<div>
+						<label
+							for="org-name-input"
+							class="block text-xs text-gray-600 dark:text-gray-400 mb-1"
+						>
+							Organization Name
+						</label>
+						<input
+							id="org-name-input"
+							type="text"
+							bind:value={orgName}
+							placeholder="Nova Consumer Group"
+							class="w-full px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-black dark:focus:ring-white"
+						/>
+					</div>
+					<div>
+						<label
+							for="org-subtitle-input"
+							class="block text-xs text-gray-600 dark:text-gray-400 mb-1"
+						>
+							Subtitle
+						</label>
+						<input
+							id="org-subtitle-input"
+							type="text"
+							bind:value={orgSubtitle}
+							placeholder="Chương trình tư vấn chiến lược AI"
+							class="w-full px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-black dark:focus:ring-white"
+						/>
+					</div>
+				</div>
+			</div>
+
 			<!-- Section: Brand Color -->
 			<div
 				class="rounded-2xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 p-5"
 			>
 				<h3 class="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-3">Brand Color</h3>
 				<p class="text-xs text-gray-500 dark:text-gray-400 mb-4">
-					Applied to headings and accent text across the UI.
+					Color of the organization name ("{orgName || 'Nova Consumer Group'}") in the header.
 				</p>
 
 				<div class="flex items-center gap-3">
@@ -205,7 +260,7 @@
 					<input
 						type="text"
 						bind:value={brandColor}
-						placeholder="#19226D"
+						placeholder="#86c52e"
 						class="w-28 px-2.5 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800"
 					/>
 					{#if brandColor}
