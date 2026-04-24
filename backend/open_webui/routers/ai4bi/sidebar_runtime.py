@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import asyncio
+import hashlib
 import json
+import logging
 import re
 import time
 from datetime import date, datetime, timedelta, timezone
@@ -10,6 +13,7 @@ from fastapi import Request
 from sqlalchemy import inspect, text
 
 from open_webui.internal.db import Base, engine, metadata_obj
+from open_webui.models.ai4bi_sidebar import sidebar_cache
 from open_webui.models.users import UserModel
 from open_webui.utils.access_control import has_connection_access
 from open_webui.utils.chat import generate_chat_completion
@@ -21,8 +25,17 @@ from open_webui.utils.mcp.client import MCPClient
 from open_webui.env import ENABLE_FORWARD_USER_INFO_HEADERS
 
 
+log = logging.getLogger(__name__)
+
+# In-memory cache (legacy, kept short to avoid serving truly stale data within a single request).
 _CACHE_TTL_SECONDS = 30
 _SNAPSHOT_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+
+# Persistent DB cache: snapshots older than this trigger a background refresh.
+PERSISTENT_CACHE_TTL_SECONDS = 6 * 60 * 60  # 6 hours
+
+# Per-(user_id + connection_id) lock — set membership is atomic in single-threaded asyncio.
+_GENERATING_KEYS: set[str] = set()
 
 _EXCLUDED_TABLES = {
     "alembic_version",
@@ -86,7 +99,10 @@ def _set_cached_snapshot(user: UserModel, instruction: str, payload: dict[str, A
 def _quote_ident(dialect: str, name: str) -> str:
     if dialect == "mysql":
         return f"`{(name or '').replace('`', '``')}`"
-    # default to ANSI / Postgres quoting
+    if dialect == "mssql":
+        # SQL Server bracketed identifier; close-bracket inside name must be doubled.
+        return f"[{(name or '').replace(']', ']]')}]"
+    # postgres / sqlite default to ANSI quoting
     return f"\"{(name or '').replace('\"', '\"\"')}\""
 
 
@@ -94,6 +110,26 @@ def _qualified_table_name_mcp(dialect: str, schema: str | None, table_name: str)
     if schema:
         return f"{_quote_ident(dialect, schema)}.{_quote_ident(dialect, table_name)}"
     return _quote_ident(dialect, table_name)
+
+
+def _text_cast(dialect: str, expr: str) -> str:
+    """Dialect-correct CAST(expr AS <text-type>)."""
+    if dialect == "mssql":
+        return f"CAST({expr} AS NVARCHAR(MAX))"
+    if dialect == "mysql":
+        return f"CAST({expr} AS CHAR)"
+    # postgres / sqlite
+    return f"CAST({expr} AS TEXT)"
+
+
+def _select_top(dialect: str, n: int) -> str:
+    """Returns 'TOP n ' for SQL Server (placed right after SELECT), '' otherwise."""
+    return f"TOP {int(n)} " if dialect == "mssql" else ""
+
+
+def _suffix_limit(dialect: str, n: int) -> str:
+    """Returns ' LIMIT n' for postgres/mysql/sqlite; '' for SQL Server (uses TOP at SELECT)."""
+    return "" if dialect == "mssql" else f" LIMIT {int(n)}"
 
 
 def _mcp_content_to_text(content: Any) -> str:
@@ -494,11 +530,13 @@ async def _mcp_execute_sql(
 
 
 async def _detect_mcp_dialect(client: MCPClient, tool_name: str) -> str:
-    # Best-effort: try a few lightweight probes.
+    # Best-effort: each probe uses a function unique to that dialect, so a successful
+    # response is a strong signal.
     probes = [
         ("postgres", "SELECT current_database() AS db;"),
         ("mysql", "SELECT DATABASE() AS db;"),
         ("sqlite", "SELECT sqlite_version() AS ver;"),
+        ("mssql", "SELECT DB_NAME() AS db;"),
     ]
     for dialect, sql in probes:
         try:
@@ -517,6 +555,8 @@ async def _mcp_current_database(dialect: str, client: MCPClient, tool_name: str)
     sql = None
     if dialect == "mysql":
         sql = "SELECT DATABASE() AS db;"
+    elif dialect == "mssql":
+        sql = "SELECT DB_NAME() AS db;"
     elif dialect == "sqlite":
         return ""
     else:
@@ -537,6 +577,8 @@ def _sql_date_literal(dialect: str, value: date) -> str:
     iso = value.isoformat()
     if dialect == "postgres":
         return f"DATE {_sql_string_literal(iso)}"
+    if dialect == "mssql":
+        return f"CAST({_sql_string_literal(iso)} AS DATE)"
     return _sql_string_literal(iso)
 
 
@@ -677,7 +719,7 @@ async def _mcp_list_candidate_tables(
         WHERE table_type = 'BASE TABLE'
           AND table_schema = DATABASE()
         ORDER BY row_count DESC, table_name ASC
-        LIMIT {int(limit)}
+        {_suffix_limit(dialect, limit)}
         """
     elif dialect == "sqlite":
         sql = """
@@ -685,6 +727,20 @@ async def _mcp_list_candidate_tables(
         FROM sqlite_master
         WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
         ORDER BY name ASC
+        """
+    elif dialect == "mssql":
+        # SQL Server: scope to current DB and exclude system schemas. Uses TOP, not LIMIT.
+        top = _select_top(dialect, limit)
+        sql = f"""
+        SELECT {top}
+          TABLE_SCHEMA AS table_schema,
+          TABLE_NAME AS table_name,
+          0 AS row_count
+        FROM INFORMATION_SCHEMA.TABLES
+        WHERE TABLE_TYPE = 'BASE TABLE'
+          AND TABLE_CATALOG = DB_NAME()
+          AND TABLE_SCHEMA NOT IN ('sys', 'INFORMATION_SCHEMA')
+        ORDER BY TABLE_SCHEMA ASC, TABLE_NAME ASC
         """
     else:  # postgres default
         # Prefer information_schema for broader compatibility with DBHub RBAC layers
@@ -698,7 +754,7 @@ async def _mcp_list_candidate_tables(
         WHERE table_type = 'BASE TABLE'
           AND table_schema NOT IN ('pg_catalog', 'information_schema')
         ORDER BY table_schema ASC, table_name ASC
-        LIMIT {int(limit)}
+        {_suffix_limit(dialect, limit)}
         """
     return await _mcp_execute_sql(client, tool_name, sql)
 
@@ -728,6 +784,28 @@ async def _mcp_get_columns(
     elif dialect == "sqlite":
         # pragma_table_info returns: cid, name, type, notnull, dflt_value, pk
         sql = f"PRAGMA table_info({_sql_string_literal(table_name)});"
+    elif dialect == "mssql":
+        # SQL Server: INFORMATION_SCHEMA.COLUMNS shape lines up with the postgres branch
+        # (table_schema/column_name/data_type), so the downstream parser stays the same.
+        schema_filter = ""
+        if schema:
+            schema_filter = f" AND TABLE_SCHEMA = {_sql_string_literal(schema)}"
+        sql = f"""
+        SELECT
+          TABLE_SCHEMA AS table_schema,
+          COLUMN_NAME AS column_name,
+          DATA_TYPE AS data_type,
+          DATA_TYPE AS udt_name,
+          IS_NULLABLE AS is_nullable,
+          COLUMN_DEFAULT AS column_default,
+          ORDINAL_POSITION AS ordinal_position
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_CATALOG = DB_NAME()
+          AND TABLE_SCHEMA NOT IN ('sys', 'INFORMATION_SCHEMA')
+          AND TABLE_NAME = {_sql_string_literal(table_name)}
+          {schema_filter}
+        ORDER BY TABLE_SCHEMA ASC, ORDINAL_POSITION ASC
+        """
     else:
         # Postgres (default): do not assume schema="public". If schema is not known,
         # search all non-system schemas for the table name.
@@ -1077,9 +1155,12 @@ async def _mcp_count_distinct_sample(
         where_sql = (
             f" WHERE {qdate} >= {_sql_date_literal(dialect, start)} AND {qdate} < {_sql_date_literal(dialect, end_excl)}"
         )
+    # Inner sample is dialect-aware: SQL Server uses TOP, others use LIMIT.
+    inner_top = _select_top(dialect, 50000)
+    inner_limit = _suffix_limit(dialect, 50000)
     sql = (
         f"SELECT COUNT(DISTINCT x) AS n FROM ("
-        f"SELECT {qcol} AS x FROM {qtable}{where_sql} LIMIT 50000"
+        f"SELECT {inner_top}{qcol} AS x FROM {qtable}{where_sql}{inner_limit}"
         f") t"
     )
     try:
@@ -1275,32 +1356,36 @@ async def _mcp_compute_metrics(
                 # Wrap in subquery so ORDER BY can reference SELECT aliases inside an
                 # expression (Postgres/SQLite don't resolve `ABS(curr - prev)` against
                 # output aliases otherwise).
+                # _select_top / _suffix_limit handle the LIMIT vs SQL Server TOP split.
+                outer_top = _select_top(dialect, 20)
+                outer_limit = _suffix_limit(dialect, 20)
+                qdim_text = _text_cast(dialect, qdim)
                 if date_column:
                     qdate = _quote_ident(dialect, date_column)
                     sql = f"""
-                    SELECT dimension_value, curr, prev FROM (
+                    SELECT {outer_top}dimension_value, curr, prev FROM (
                       SELECT
-                        COALESCE(CAST({qdim} AS TEXT), '(null)') AS dimension_value,
+                        COALESCE({qdim_text}, '(null)') AS dimension_value,
                         SUM(CASE WHEN {qdate} >= {_sql_date_literal(dialect, current_start)} AND {qdate} < {_sql_date_literal(dialect, current_end)} THEN {qmetric} ELSE 0 END) AS curr,
                         SUM(CASE WHEN {qdate} >= {_sql_date_literal(dialect, previous_start)} AND {qdate} < {_sql_date_literal(dialect, previous_end)} THEN {qmetric} ELSE 0 END) AS prev
                       FROM {qtable}
-                      GROUP BY COALESCE(CAST({qdim} AS TEXT), '(null)')
+                      GROUP BY COALESCE({qdim_text}, '(null)')
                     ) t
                     ORDER BY ABS(COALESCE(curr,0) - COALESCE(prev,0)) DESC
-                    LIMIT 20
+                    {outer_limit}
                     """
                 else:
                     sql = f"""
-                    SELECT dimension_value, curr, prev FROM (
+                    SELECT {outer_top}dimension_value, curr, prev FROM (
                       SELECT
-                        COALESCE(CAST({qdim} AS TEXT), '(null)') AS dimension_value,
+                        COALESCE({qdim_text}, '(null)') AS dimension_value,
                         SUM({qmetric}) AS curr,
                         NULL AS prev
                       FROM {qtable}
-                      GROUP BY COALESCE(CAST({qdim} AS TEXT), '(null)')
+                      GROUP BY COALESCE({qdim_text}, '(null)')
                     ) t
                     ORDER BY ABS(COALESCE(curr,0)) DESC
-                    LIMIT 20
+                    {outer_limit}
                     """
                 rows = await _mcp_execute_sql(client, tool_name, sql)
                 for row in rows or []:
@@ -1338,25 +1423,27 @@ def _qualified_table_name(table_name: str) -> str:
 
 def _normalize_type(raw_type: Any) -> str:
     text_type = str(raw_type or "").lower()
+    # Order matters: "datetime"/"datetime2"/"datetimeoffset"/"smalldatetime" must classify as date,
+    # "timestamp" before "time", money/numeric before generic int.
     if "timestamp" in text_type:
         return "timestamp"
-    if text_type.startswith("date"):
+    if text_type.startswith("date") or "datetime" in text_type or text_type == "smalldatetime":
         return "date"
     if "time" in text_type:
         return "datetime"
-    if any(token in text_type for token in ("bigint", "integer", "smallint")):
+    if any(token in text_type for token in ("bigint", "integer", "smallint", "tinyint", "int")):
         return "int"
-    if any(token in text_type for token in ("numeric", "decimal")):
+    if any(token in text_type for token in ("money", "numeric", "decimal")):
         return "decimal"
     if any(token in text_type for token in ("double", "real")):
         return "double"
     if "float" in text_type:
         return "float"
-    if any(token in text_type for token in ("varchar", "character varying")):
+    if any(token in text_type for token in ("nvarchar", "varchar", "character varying")):
         return "varchar"
-    if any(token in text_type for token in ("char", "character")):
+    if any(token in text_type for token in ("nchar", "char", "character")):
         return "char"
-    if any(token in text_type for token in ("text", "json", "jsonb", "uuid")):
+    if any(token in text_type for token in ("ntext", "text", "json", "jsonb", "uuid", "uniqueidentifier")):
         return "text"
     return text_type or "text"
 
@@ -2182,3 +2269,68 @@ async def build_sidebar_snapshot(request: Request, user: UserModel, instruction:
     }
     _set_cached_snapshot(user, instruction, payload)
     return payload
+
+
+def connection_cache_key(connection: dict) -> str:
+    """
+    Stable identifier for an MCP connection used as the partition key for the persistent
+    sidebar cache. Prefer the admin-provided info.id (e.g. "dbhub-demo"); fall back to a
+    short hash of the URL so renames in the UI don't blow away the cache.
+    """
+    if not isinstance(connection, dict):
+        return ""
+    info = connection.get("info") or {}
+    info_id = str(info.get("id") or "").strip()
+    if info_id:
+        return info_id
+    url = str(connection.get("url") or "").strip()
+    if not url:
+        return ""
+    return "url:" + hashlib.sha1(url.encode("utf-8")).hexdigest()[:12]
+
+
+async def regenerate_and_persist(
+    request: Request,
+    user: UserModel,
+    connection_id: str,
+    instruction: str = "",
+) -> dict[str, Any] | None:
+    """
+    Compute a fresh snapshot via build_sidebar_snapshot and persist it to the DB cache.
+    Idempotent: if another regeneration for the same (user, connection) is in flight,
+    returns immediately.
+    """
+    key = f"{user.id}:{connection_id}:{(instruction or '').strip().lower()}"
+    if key in _GENERATING_KEYS:
+        return None
+    _GENERATING_KEYS.add(key)
+    try:
+        snapshot = await build_sidebar_snapshot(request, user, instruction=instruction)
+        if snapshot.get("configured"):
+            sidebar_cache.replace_signals(user.id, connection_id, snapshot.get("signals") or [])
+            sidebar_cache.replace_heartbeat(user.id, connection_id, snapshot.get("heartbeat") or [])
+        return snapshot
+    except Exception as error:
+        log.exception("ai4bi sidebar regenerate failed: %s", error)
+        return None
+    finally:
+        _GENERATING_KEYS.discard(key)
+
+
+def schedule_regenerate(
+    request: Request,
+    user: UserModel,
+    connection_id: str,
+    instruction: str = "",
+) -> bool:
+    """Fire-and-forget. Returns True if a new task was scheduled, False if one is already running."""
+    key = f"{user.id}:{connection_id}:{(instruction or '').strip().lower()}"
+    if key in _GENERATING_KEYS:
+        return False
+    asyncio.create_task(regenerate_and_persist(request, user, connection_id, instruction))
+    return True
+
+
+def is_generating(user_id: str, connection_id: str, instruction: str = "") -> bool:
+    key = f"{user_id}:{connection_id}:{(instruction or '').strip().lower()}"
+    return key in _GENERATING_KEYS

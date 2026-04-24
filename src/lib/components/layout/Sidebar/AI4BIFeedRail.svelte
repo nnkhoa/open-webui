@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { pendingMessageFromSidebar } from '$lib/stores';
 	import { getSidebarHeartbeat, getSidebarSignals } from '$lib/apis/ai4bi';
 
@@ -41,6 +41,15 @@
 	let heartbeatHasMore = false;
 	let signalsError = '';
 	let heartbeatError = '';
+	let signalsGenerating = false;
+	let heartbeatGenerating = false;
+
+	// Polling: when backend signals "isGenerating", poll every 3s until data appears
+	// or until the user navigates away. Cap total polling at ~3 minutes as a safety net.
+	const POLL_INTERVAL_MS = 3000;
+	const POLL_MAX_ATTEMPTS = 60;
+	let pollTimer: ReturnType<typeof setTimeout> | null = null;
+	let pollAttempts = 0;
 
 	const signalMeta = {
 		critical: { dot: '#E24B4A', tag: 'Cần xử lý', tagBg: 'rgba(226, 75, 74, 0.14)' },
@@ -81,6 +90,7 @@
 				signalItems = [];
 				signalsHasMore = false;
 				signalsOffset = 0;
+				signalsGenerating = false;
 				return;
 			}
 
@@ -88,11 +98,13 @@
 			signalItems = reset ? incoming : [...signalItems, ...incoming];
 			signalsOffset = typeof data?.nextOffset === 'number' ? data.nextOffset : signalItems.length;
 			signalsHasMore = Boolean(data?.hasMore);
+			signalsGenerating = Boolean(data?.isGenerating);
 			signalsStatus = 'ready';
 		} catch (error: unknown) {
 			const resolvedError = error as { detail?: string; message?: string };
 			signalsStatus = 'error';
 			signalsError = resolvedError?.detail || resolvedError?.message || 'Không tải được tín hiệu.';
+			signalsGenerating = false;
 		} finally {
 			signalsLoading = false;
 		}
@@ -121,6 +133,7 @@
 				heartbeatItems = [];
 				heartbeatHasMore = false;
 				heartbeatOffset = 0;
+				heartbeatGenerating = false;
 				return;
 			}
 
@@ -129,15 +142,54 @@
 			heartbeatOffset =
 				typeof data?.nextOffset === 'number' ? data.nextOffset : heartbeatItems.length;
 			heartbeatHasMore = Boolean(data?.hasMore);
+			heartbeatGenerating = Boolean(data?.isGenerating);
 			heartbeatStatus = 'ready';
 		} catch (error: unknown) {
 			const resolvedError = error as { detail?: string; message?: string };
 			heartbeatStatus = 'error';
 			heartbeatError =
 				resolvedError?.detail || resolvedError?.message || 'Không tải được nhịp đập.';
+			heartbeatGenerating = false;
 		} finally {
 			heartbeatLoading = false;
 		}
+	}
+
+	function stopPolling() {
+		if (pollTimer !== null) {
+			clearTimeout(pollTimer);
+			pollTimer = null;
+		}
+		pollAttempts = 0;
+	}
+
+	function ensurePolling() {
+		// Re-poll only while at least one section is generating with no data yet,
+		// and we haven't blown the safety cap.
+		const stillGenerating =
+			(signalItems.length === 0 && signalsGenerating) ||
+			(heartbeatItems.length === 0 && heartbeatGenerating);
+
+		if (!stillGenerating || pollAttempts >= POLL_MAX_ATTEMPTS) {
+			stopPolling();
+			return;
+		}
+
+		if (pollTimer !== null) return; // already scheduled
+		pollTimer = setTimeout(async () => {
+			pollTimer = null;
+			pollAttempts += 1;
+			await Promise.all([
+				signalItems.length === 0 ? loadSignals(true) : Promise.resolve(),
+				heartbeatItems.length === 0 ? loadHeartbeat(true) : Promise.resolve()
+			]);
+			ensurePolling();
+		}, POLL_INTERVAL_MS);
+	}
+
+	$: if (signalsStatus === 'ready' || heartbeatStatus === 'ready') {
+		// React to status changes — schedule a follow-up poll if backend is still generating.
+		ensurePolling();
 	}
 
 	$: visibleSignals = signalsExpanded
@@ -151,6 +203,10 @@
 
 	onMount(async () => {
 		await Promise.all([loadSignals(true), loadHeartbeat(true)]);
+	});
+
+	onDestroy(() => {
+		stopPolling();
 	});
 
 	function handleSignalClick(item: SignalItem) {
@@ -182,6 +238,8 @@
 			<div class="signals-list">
 				{#if signalsStatus === 'loading' && signalItems.length === 0}
 					<div class="hint">Đang tải...</div>
+				{:else if signalItems.length === 0 && signalsGenerating}
+					<div class="hint">Đang chuẩn bị thông tin</div>
 				{:else if signalItems.length === 0}
 					<div class="hint">{signalsError || 'Chưa có thông tin.'}</div>
 				{/if}
@@ -250,6 +308,8 @@
 
 				{#if heartbeatStatus === 'loading' && heartbeatItems.length === 0}
 					<div class="hint compact">Đang tải...</div>
+				{:else if heartbeatItems.length === 0 && heartbeatGenerating}
+					<div class="hint compact">Đang chuẩn bị thông tin</div>
 				{:else if heartbeatItems.length === 0}
 					<div class="hint compact">{heartbeatError || 'Chưa có thông tin.'}</div>
 				{/if}
