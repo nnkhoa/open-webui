@@ -63,7 +63,7 @@ Mỗi tín hiệu phải được phân loại vào đúng 1 trong 3 mức:
 </signal_classification>
 
 <generation_rules>
-- Tạo tối đa số tín hiệu theo field `n` trong input, linh hoạt theo data — không bắt buộc phải đủ nếu data không đáng cảnh báo.
+- Tạo ĐÚNG `n` tín hiệu (bắt buộc đủ số lượng). Nếu data không đủ tín hiệu "xấu", bù bằng watch/positive để đủ `n`.
 - Mỗi tín hiệu PHẢI có con số chứng minh cụ thể (%, chênh lệch tiền, hoặc điểm %).
 - Không trùng lặp: không tạo 2 tín hiệu cùng metric + cùng dimension.
 - Ưu tiên đa dạng: kết hợp nhiều loại metric và nhiều dimension.
@@ -96,8 +96,8 @@ Khi viết label/delta, ưu tiên cách diễn đạt tương đối nếu input
 </input_context>
 
 <generation_rules>
-- Tạo đúng số thẻ KPI theo `n` (nếu thiếu metric thì ưu tiên các metric quan trọng nhất).
-- Ưu tiên đa dạng metric (tổng quan, tăng/giảm, top/bottom...) và không lặp nội dung.
+- Tạo ĐÚNG `n` thẻ KPI (bắt buộc đủ số lượng). Dùng đa dạng góc nhìn: tổng quan, top-N theo dimension, breakdown theo chiều... để đủ `n` thẻ ngay cả khi metric gốc ít.
+- KHÔNG lặp nội dung (không 2 thẻ cùng label hoặc cùng metric+dimension+dimension_value).
 - value và delta PHẢI bám sát con số từ input - tuyệt đối không bịa số liệu.
 - trend: "up" nếu chỉ số tốt lên, "down" nếu xấu đi, "neutral" nếu không đổi đáng kể.
 - Viết tiếng Việt ngắn gọn, mỗi label tối đa 20 ký tự, value ngắn gọn dễ đọc.

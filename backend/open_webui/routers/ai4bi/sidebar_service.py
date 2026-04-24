@@ -87,13 +87,7 @@ def _as_date(value: Any) -> date | None:
         return None
 
 
-def _is_money_metric(metric_name: str) -> bool:
-    ln = (metric_name or "").lower()
-    money_tokens = ["revenue", "amount", "total", "value", "price", "cost", "cogs", "profit", "margin"]
-    return any(tok in ln for tok in money_tokens)
-
-
-def _format_compact_number(value: float, instruction: str = "", money: bool = False) -> str:
+def _format_compact_number(value: float, instruction: str = "") -> str:
     try:
         v = float(value)
     except Exception:
@@ -110,10 +104,9 @@ def _format_compact_number(value: float, instruction: str = "", money: bool = Fa
     elif abs_v >= 1e3:
         scaled = v / 1e3
         suffix = "K"
-    # Only append currency if instruction explicitly says so AND the metric is money-like
-    instr = (instruction or "").lower()
-    currency = "₫" if money and ("vnd" in instr or "₫" in instr) else ""
-    return f"{scaled:.1f}{suffix}{currency}" if suffix else f"{scaled:,.0f}{currency}"
+    # Intentionally do not guess unit/currency from column names.
+    # If unit is needed, it should come from explicit instruction or database metadata.
+    return f"{scaled:.1f}{suffix}" if suffix else f"{scaled:,.0f}"
 
 
 def _pick_anchor_table(tables: list[dict]) -> dict | None:
@@ -139,47 +132,130 @@ def _pick_anchor_table(tables: list[dict]) -> dict | None:
     return candidates[0][1]
 
 
-def _pick_date_column(columns: list[dict]) -> str | None:
+def _pick_date_column(table: str, columns: list[dict]) -> str | None:
     if not columns:
         return None
-    preferred = ["sale_date", "transaction_date", "created_at", "date", "updated_at"]
-    by_name = {str(c.get("name") or ""): c for c in columns}
-    for n in preferred:
-        c = by_name.get(n)
-        if c and c.get("data_type") in {"date", "datetime", "timestamp"}:
-            return n
+    candidates: list[str] = []
     for c in columns:
-        name = str(c.get("name") or "")
-        dt = str(c.get("data_type") or "")
+        name = str(c.get("name") or "").strip()
+        if not name:
+            continue
+        dt = str(c.get("data_type") or "").lower().strip()
         if dt in {"date", "datetime", "timestamp"}:
-            return name
-        if "date" in name.lower():
-            return name
-    return None
+            candidates.append(name)
+    if not candidates:
+        return None
+
+    # Pick the date-like column that is most populated; tie-break by latest MAX(date).
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        scored: list[tuple[int, date, str]] = []
+        for col in candidates:
+            try:
+                cursor.execute(
+                    f"SELECT COUNT({_qident(col)}) AS nn, MAX({_qident(col)}) AS mx FROM {_qident(table)}"
+                )
+                row = cursor.fetchone() or {}
+                nn = int(row.get("nn") or 0)
+                mx = _as_date(row.get("mx")) or date.min
+                scored.append((nn, mx, col))
+            except Exception:
+                # If profiling fails for a column, just skip it.
+                continue
+        if not scored:
+            return candidates[0]
+        scored.sort(key=lambda x: (x[0], x[1]), reverse=True)
+        return scored[0][2]
+    finally:
+        cursor.close()
+        conn.close()
 
 
-def _pick_metric_columns(columns: list[dict], max_n: int = 2) -> list[str]:
+def _profile_numeric_sums(
+    table: str,
+    cols: list[str],
+    date_col: str | None,
+    start: date | None,
+    end_excl: date | None,
+) -> list[tuple[str, float, int]]:
+    """
+    Profile numeric columns by sum(abs(col)) in a time window (if provided).
+
+    Returns: [(col, sum_abs, non_null_count), ...]
+    """
+    if not table or not cols:
+        return []
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        select_parts: list[str] = []
+        params: list[Any] = []
+        for i, c in enumerate(cols):
+            # SUM ignores NULL; if everything is NULL it returns NULL.
+            select_parts.append(f"SUM(ABS({_qident(c)})) AS s{i}")
+            select_parts.append(f"SUM(CASE WHEN {_qident(c)} IS NOT NULL THEN 1 ELSE 0 END) AS nn{i}")
+        where_sql = ""
+        if date_col and start and end_excl:
+            where_sql = f" WHERE {_qident(date_col)} >= %s AND {_qident(date_col)} < %s"
+            params.extend([start, end_excl])
+        sql = f"SELECT {', '.join(select_parts)} FROM {_qident(table)}{where_sql}"
+        cursor.execute(sql, tuple(params))
+        row = cursor.fetchone() or {}
+        out: list[tuple[str, float, int]] = []
+        for i, c in enumerate(cols):
+            s = row.get(f"s{i}")
+            nn = row.get(f"nn{i}")
+            try:
+                sum_abs = float(s or 0)
+            except Exception:
+                sum_abs = 0.0
+            try:
+                non_null = int(nn or 0)
+            except Exception:
+                non_null = 0
+            out.append((c, sum_abs, non_null))
+        return out
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def _pick_metric_columns(table: str, date_col: str | None, as_of: date, columns: list[dict], max_n: int = 2) -> list[str]:
     numeric = [c for c in (columns or []) if c.get("data_type") in {"int", "decimal", "float", "double"}]
     if not numeric:
         return []
-    prefer_tokens = ["revenue", "sales", "amount", "total", "value", "cost", "profit", "margin", "qty", "quantity", "count"]
-    scored = []
+    candidates: list[str] = []
     for c in numeric:
-        name = str(c.get("name") or "")
+        name = str(c.get("name") or "").strip()
         lname = name.lower()
-        if lname.endswith("_id") or lname == "id":
+        if not name:
             continue
-        score = 0
-        for i, tok in enumerate(prefer_tokens):
-            if tok in lname:
-                score += (len(prefer_tokens) - i)
-        scored.append((score, name))
-    if not scored:
-        scored = [(0, str(c.get("name") or "")) for c in numeric]
-    scored.sort(key=lambda x: x[0], reverse=True)
-    out = []
-    seen = set()
-    for _, n in scored:
+        if lname.endswith("_id") or lname in {"id", "uuid"} or "uuid" in lname:
+            continue
+        candidates.append(name)
+    if not candidates:
+        return []
+
+    # Rank purely based on data magnitude in the current window (or whole table if no date_col).
+    curr_start, curr_end_excl, _, _ = _window_bounds(as_of)
+    profiled = _profile_numeric_sums(
+        table=table,
+        cols=candidates[:25],  # cap to keep query size bounded
+        date_col=date_col,
+        start=curr_start if date_col else None,
+        end_excl=curr_end_excl if date_col else None,
+    )
+    if profiled:
+        profiled.sort(key=lambda x: (x[1], x[2]), reverse=True)
+        picked = [c for (c, _, nn) in profiled if nn > 0][: max(1, int(max_n))]
+        if picked:
+            return picked
+
+    # Fallback: first N numeric columns (no name-based preference).
+    out: list[str] = []
+    seen: set[str] = set()
+    for n in candidates:
         if n and n not in seen:
             seen.add(n)
             out.append(n)
@@ -198,7 +274,7 @@ def _parse_varchar_len(full_type: str) -> int | None:
         return None
 
 
-def _pick_dimension_columns(columns: list[dict], max_n: int = 6) -> list[str]:
+def _pick_dimension_columns(table: str, date_col: str | None, as_of: date, columns: list[dict], max_n: int = 6) -> list[str]:
     dims = []
     for c in (columns or []):
         dt = str(c.get("data_type") or "").lower()
@@ -214,20 +290,50 @@ def _pick_dimension_columns(columns: list[dict], max_n: int = 6) -> list[str]:
             if ln is not None and ln > 256:
                 continue
         dims.append(name)
-    # Prefer human-readable columns (name, type, status, category) but keep generic
-    prefer = ["name", "type", "status", "category", "segment", "region", "province", "department", "product", "customer"]
-    scored = []
-    for n in dims:
-        score = 0
-        ln = n.lower()
-        for i, tok in enumerate(prefer):
-            if tok in ln:
-                score += (len(prefer) - i)
+
+    if not dims:
+        return []
+
+    # Filter to low/medium cardinality dimensions based on data (no name heuristics).
+    curr_start, curr_end_excl, _, _ = _window_bounds(as_of)
+    candidates = dims[:25]  # cap to keep query count bounded
+    scored: list[tuple[float, str]] = []
+    for n in candidates:
+        distinct = _count_distinct_sample(
+            table,
+            n,
+            date_col,
+            curr_start if date_col else None,
+            curr_end_excl if date_col else None,
+        )
+        if distinct is None:
+            continue
+        if distinct < 2:
+            continue
+        if distinct > 200:
+            continue
+        # Prefer dimensions that are informative but not too high-cardinality.
+        # Peak around ~10 distinct values.
+        score = 100.0 - abs(float(distinct) - 10.0)
         scored.append((score, n))
-    scored.sort(key=lambda x: x[0], reverse=True)
-    out = []
-    seen = set()
-    for _, n in scored:
+
+    if scored:
+        scored.sort(key=lambda x: x[0], reverse=True)
+        out: list[str] = []
+        seen: set[str] = set()
+        for _, n in scored:
+            if n and n not in seen:
+                seen.add(n)
+                out.append(n)
+            if len(out) >= max_n:
+                break
+        if out:
+            return out
+
+    # Fallback: return first N dimension-like columns (stable, schema-driven).
+    out: list[str] = []
+    seen: set[str] = set()
+    for n in dims:
         if n and n not in seen:
             seen.add(n)
             out.append(n)
@@ -478,10 +584,9 @@ def _build_heartbeat_input(as_of: date, metrics: list[dict], n: int, instruction
         prev = m.get("previous")
         delta = m.get("delta")
         pct = m.get("delta_pct")
-        is_money = _is_money_metric(metric)
         kpis.append({
             "label": label[:32],
-            "value": _format_compact_number(float(value or 0), instruction=instruction, money=is_money) if value is not None else "",
+            "value": _format_compact_number(float(value or 0), instruction=instruction) if value is not None else "",
             "delta": (f"{pct*100:+.1f}% so với kỳ trước" if isinstance(pct, (int, float)) else ""),
             "delta_pct": pct,
         })
@@ -598,7 +703,6 @@ def _heartbeat_fallback(metrics: list[dict], n: int, instruction: str) -> list[d
         value = _format_compact_number(
             float(m.get("current") or 0),
             instruction=instruction,
-            money=_is_money_metric(str(m.get("metric") or "")),
         )[:255]
         pct = m.get("delta_pct")
         delta_txt = f"{float(pct)*100:+.1f}% so với kỳ trước" if isinstance(pct, (int, float)) else ""
@@ -627,10 +731,10 @@ def get_signals_page_cached(limit: int = 5, offset: int = 0, instruction: str = 
     if not table:
         return {"items": [], "total": 0, "hasMore": False, "nextOffset": offset, "message": "No tables found."}
 
-    date_col = _pick_date_column(anchor.get("columns") or [])
-    metric_cols = _pick_metric_columns(anchor.get("columns") or [], max_n=2)
-    dim_cols = _pick_dimension_columns(anchor.get("columns") or [], max_n=6)
+    date_col = _pick_date_column(table, anchor.get("columns") or [])
     as_of = _detect_as_of(table, date_col)
+    metric_cols = _pick_metric_columns(table, date_col, as_of, anchor.get("columns") or [], max_n=2)
+    dim_cols = _pick_dimension_columns(table, date_col, as_of, anchor.get("columns") or [], max_n=6)
     as_of_str = as_of.isoformat()
 
     ihash = _instruction_hash(instruction)
@@ -690,10 +794,10 @@ def get_heartbeat_page_cached(limit: int = 4, offset: int = 0, instruction: str 
     if not table:
         return {"items": [], "total": 0, "hasMore": False, "nextOffset": offset, "message": "No tables found."}
 
-    date_col = _pick_date_column(anchor.get("columns") or [])
-    metric_cols = _pick_metric_columns(anchor.get("columns") or [], max_n=2)
-    dim_cols = _pick_dimension_columns(anchor.get("columns") or [], max_n=6)
+    date_col = _pick_date_column(table, anchor.get("columns") or [])
     as_of = _detect_as_of(table, date_col)
+    metric_cols = _pick_metric_columns(table, date_col, as_of, anchor.get("columns") or [], max_n=2)
+    dim_cols = _pick_dimension_columns(table, date_col, as_of, anchor.get("columns") or [], max_n=6)
     as_of_str = as_of.isoformat()
 
     ihash = _instruction_hash(instruction)

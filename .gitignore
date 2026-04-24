@@ -310,3 +310,11 @@ dist
 cypress/videos
 cypress/screenshots
 .vscode/settings.json
+
+# Local/editor backup files
+*.bak
+*.bak*
+*.backup
+
+# Local build artifacts (do not commit)
+backend/static/

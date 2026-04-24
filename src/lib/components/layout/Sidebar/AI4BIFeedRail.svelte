@@ -18,7 +18,10 @@
 		trend: 'up' | 'down' | 'neutral';
 	};
 
-	const INITIAL_FETCH_LIMIT = 4;
+	const SIGNALS_FETCH_LIMIT = 5;
+	const SIGNALS_INITIAL_VISIBLE = 3;
+	const HEARTBEAT_FETCH_LIMIT = 8;
+	const HEARTBEAT_INITIAL_VISIBLE = 4;
 	const LOAD_MORE_FETCH_LIMIT = 12;
 
 	let activeSignalId: number | null = null;
@@ -69,12 +72,12 @@
 
 		try {
 			const offset = reset ? 0 : signalsOffset;
-			const limit = reset ? INITIAL_FETCH_LIMIT : LOAD_MORE_FETCH_LIMIT;
+			const limit = reset ? SIGNALS_FETCH_LIMIT : LOAD_MORE_FETCH_LIMIT;
 			const data = await getSidebarSignals(getToken(), { limit, offset });
 
 			if (data?.isConfigured === false) {
 				signalsStatus = 'ready';
-				signalsError = data?.error || 'Sidebar AI4BI chưa sẵn sàng.';
+				signalsError = data?.error || 'Chưa có thông tin.';
 				signalItems = [];
 				signalsHasMore = false;
 				signalsOffset = 0;
@@ -109,12 +112,12 @@
 
 		try {
 			const offset = reset ? 0 : heartbeatOffset;
-			const limit = reset ? INITIAL_FETCH_LIMIT : LOAD_MORE_FETCH_LIMIT;
+			const limit = reset ? HEARTBEAT_FETCH_LIMIT : LOAD_MORE_FETCH_LIMIT;
 			const data = await getSidebarHeartbeat(getToken(), { limit, offset });
 
 			if (data?.isConfigured === false) {
 				heartbeatStatus = 'ready';
-				heartbeatError = data?.error || 'Sidebar AI4BI chưa sẵn sàng.';
+				heartbeatError = data?.error || 'Chưa có thông tin.';
 				heartbeatItems = [];
 				heartbeatHasMore = false;
 				heartbeatOffset = 0;
@@ -137,12 +140,14 @@
 		}
 	}
 
-	$: visibleSignals = signalsExpanded ? signalItems : signalItems.slice(0, INITIAL_FETCH_LIMIT);
+	$: visibleSignals = signalsExpanded
+		? signalItems
+		: signalItems.slice(0, SIGNALS_INITIAL_VISIBLE);
 	$: visibleHeartbeat = heartbeatExpanded
 		? heartbeatItems
-		: heartbeatItems.slice(0, INITIAL_FETCH_LIMIT);
-	$: signalsCanExpand = signalItems.length > INITIAL_FETCH_LIMIT || signalsHasMore;
-	$: heartbeatCanExpand = heartbeatItems.length > INITIAL_FETCH_LIMIT || heartbeatHasMore;
+		: heartbeatItems.slice(0, HEARTBEAT_INITIAL_VISIBLE);
+	$: signalsCanExpand = signalItems.length > SIGNALS_INITIAL_VISIBLE || signalsHasMore;
+	$: heartbeatCanExpand = heartbeatItems.length > HEARTBEAT_INITIAL_VISIBLE || heartbeatHasMore;
 
 	onMount(async () => {
 		await Promise.all([loadSignals(true), loadHeartbeat(true)]);
@@ -150,14 +155,14 @@
 
 	function handleSignalClick(item: SignalItem) {
 		activeSignalId = item.id;
-		// Create question from signal and send to current chat
-		const question = `${item.title}. ${item.desc}`;
+		// Ask a follow-up question (avoid copying the sidebar text verbatim).
+		const question = `Phân tích sâu hơn về tín hiệu "${item.title}". Nêu nguyên nhân chính, drill-down theo các chiều quan trọng, và đề xuất hành động ưu tiên.`;
 		pendingMessageFromSidebar.set(question);
 	}
 
 	function handleHeartbeatClick(item: HeartbeatItem) {
-		// Create question from heartbeat and send to current chat
-		const question = `Phân tích ${item.label}: ${item.value}`;
+		// Ask a follow-up question (avoid copying the sidebar card verbatim).
+		const question = `Giải thích KPI "${item.label}" hiện tại ${item.value}. So sánh với kỳ trước, tìm nguyên nhân biến động và gợi ý các hướng drill-down phù hợp.`;
 		pendingMessageFromSidebar.set(question);
 	}
 </script>
@@ -178,7 +183,7 @@
 				{#if signalsStatus === 'loading' && signalItems.length === 0}
 					<div class="hint">Đang tải...</div>
 				{:else if signalItems.length === 0}
-					<div class="hint">{signalsError || 'Chưa có tín hiệu.'}</div>
+					<div class="hint">{signalsError || 'Chưa có thông tin.'}</div>
 				{/if}
 
 				{#each visibleSignals as item}
@@ -257,9 +262,9 @@
 								<span class="heartbeat-value">{item.value}</span>
 								{#if item.delta}
 									<span
-											class="heartbeat-delta"
-											class:up={item.trend === 'up'}
-											class:down={item.trend === 'down'}
+										class="heartbeat-delta"
+										class:up={item.trend === 'up'}
+										class:down={item.trend === 'down'}
 									>
 										{item.delta}
 									</span>
@@ -279,14 +284,14 @@
 							</button>
 						{:else if heartbeatCanExpand}
 							<button
-									class="ghost-button"
-									type="button"
-									on:click={async () => {
-										if (heartbeatHasMore) {
-											await loadHeartbeat(false);
-										}
-										heartbeatExpanded = true;
-									}}
+								class="ghost-button"
+								type="button"
+								on:click={async () => {
+									if (heartbeatHasMore) {
+										await loadHeartbeat(false);
+									}
+									heartbeatExpanded = true;
+								}}
 							>
 								Xem thêm
 							</button>
