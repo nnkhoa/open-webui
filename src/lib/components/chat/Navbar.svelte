@@ -158,26 +158,6 @@
 						</Menu>
 					{/if}
 
-					<a
-						href="/"
-						class="self-center flex items-center gap-2 px-2 py-1.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-850 transition no-drag-region"
-						on:click={() => {
-							initNewChat();
-						}}
-					>
-						<img
-							src="{WEBUI_BASE_URL}/static/favicon.png"
-							class="size-6 rounded-full shrink-0"
-							alt=""
-							draggable="false"
-						/>
-						<span
-							id="navbar-webui-name"
-							class="font-medium text-gray-850 dark:text-white font-primary whitespace-nowrap"
-						>
-							{$WEBUI_NAME}
-						</span>
-					</a>
 				</div>
 			</div>
 		</div>

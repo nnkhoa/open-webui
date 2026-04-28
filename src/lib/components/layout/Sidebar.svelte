@@ -827,48 +827,21 @@
 			</div>
 		</button>
 
-		<div>
-			<div>
-				<div class=" py-2 flex justify-center items-center">
-					{#if $user !== undefined && $user !== null}
-						<UserMenu
-							role={$user?.role}
-							profile={$config?.features?.enable_user_status ?? true}
-							showActiveUsers={false}
-							on:show={(e) => {
-								if (e.detail === 'archived-chat') {
-									showArchivedChats.set(true);
-								}
-							}}
-						>
-							<div
-								class=" cursor-pointer flex rounded-xl hover:bg-gray-100 dark:hover:bg-gray-850 transition group"
-							>
-								<div class="self-center relative">
-									<img
-										src={`${WEBUI_API_BASE_URL}/users/${$user?.id}/profile/image`}
-										class=" size-7 object-cover rounded-full"
-										alt={$i18n.t('Open User Profile Menu')}
-										aria-label={$i18n.t('Open User Profile Menu')}
-									/>
-
-									{#if $config?.features?.enable_user_status}
-										<div class="absolute -bottom-0.5 -right-0.5">
-											<span class="relative flex size-2.5">
-												<span
-													class="relative inline-flex size-2.5 rounded-full {true
-														? 'bg-green-500'
-														: 'bg-gray-300 dark:bg-gray-700'} border-2 border-white dark:border-gray-900"
-												></span>
-											</span>
-										</div>
-									{/if}
-								</div>
-							</div>
-						</UserMenu>
-					{/if}
+		<div class="flex justify-center py-2">
+			<a
+				href="/"
+				class="flex rounded-xl hover:bg-gray-100 dark:hover:bg-gray-850 transition no-drag-region"
+				draggable="false"
+			>
+				<div class="self-center flex items-center justify-center size-9">
+					<img
+						src="{WEBUI_BASE_URL}/static/favicon.png"
+						class="size-6 rounded-full"
+						alt=""
+						draggable="false"
+					/>
 				</div>
-			</div>
+			</a>
 		</div>
 	</div>
 {/if}
