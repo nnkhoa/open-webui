@@ -1,12 +1,16 @@
 <script lang="ts">
 	import { getContext, createEventDispatcher } from 'svelte';
-	import { user, showSettings, showControls } from '$lib/stores';
+	import { user, showSettings, showControls, showArchivedChats } from '$lib/stores';
 	import Knobs from '$lib/components/icons/Knobs.svelte';
+	import UserMenu from '$lib/components/layout/Sidebar/UserMenu.svelte';
 	import { projectConfig } from '$lib/stores/projectConfig';
 	import { WEBUI_BASE_URL } from '$lib/constants';
 
 	const i18n = getContext('i18n');
 	const dispatch = createEventDispatcher();
+
+	let showUserMenuMobile = false;
+	let showUserMenuDesktop = false;
 
 	$: orgName = $projectConfig.org_name || 'Nova Consumer Group';
 	$: orgSubtitle = $projectConfig.org_subtitle || 'Chương trình tư vấn chiến lược AI';
@@ -69,24 +73,35 @@
 				</button>
 			{/if}
 		</div>
-		<button
-			type="button"
-			class="h-10 w-10 rounded-full flex items-center justify-center shadow-sm overflow-hidden shrink-0 cursor-pointer"
-			style="background: linear-gradient(to bottom, #1966B9, #0954A4);"
-			aria-label={$i18n.t('User menu')}
-			on:click={() => dispatch('user')}
+		<UserMenu
+			bind:show={showUserMenuMobile}
+			role={$user?.role}
+			showActiveUsers={false}
+			on:show={(e) => {
+				if (e.detail === 'archived-chat') {
+					showArchivedChats.set(true);
+				}
+			}}
 		>
-			{#if $user?.profile_image_url}
-				<img
-					src={$user.profile_image_url}
-					alt=""
-					class="w-full h-full object-cover"
-					draggable="false"
-				/>
-			{:else}
-				<span class="text-white text-sm font-bold leading-none">{userInitial}</span>
-			{/if}
-		</button>
+			<div
+				role="button"
+				tabindex="0"
+				aria-label={$i18n.t('User menu')}
+				class="h-10 w-10 rounded-full flex items-center justify-center shadow-sm overflow-hidden shrink-0 cursor-pointer"
+				style="background: linear-gradient(to bottom, #1966B9, #0954A4);"
+			>
+				{#if $user?.profile_image_url}
+					<img
+						src={$user.profile_image_url}
+						alt=""
+						class="w-full h-full object-cover"
+						draggable="false"
+					/>
+				{:else}
+					<span class="text-white text-sm font-bold leading-none">{userInitial}</span>
+				{/if}
+			</div>
+		</UserMenu>
 	</div>
 
 	<!-- Desktop left (white bg) -->
@@ -220,25 +235,36 @@
 				</button>
 
 				<!-- User avatar -->
-				<button
-					type="button"
-					aria-label={$i18n.t('User menu')}
-					title={$user?.name ?? $i18n.t('Profile')}
-					class="h-9 w-9 rounded-full flex items-center justify-center shadow-sm overflow-hidden shrink-0 cursor-pointer"
-					style="background: linear-gradient(to bottom, #1966B9, #0954A4);"
-					on:click={() => dispatch('user')}
+				<UserMenu
+					bind:show={showUserMenuDesktop}
+					role={$user?.role}
+					showActiveUsers={false}
+					on:show={(e) => {
+						if (e.detail === 'archived-chat') {
+							showArchivedChats.set(true);
+						}
+					}}
 				>
-					{#if $user?.profile_image_url}
-						<img
-							src={$user.profile_image_url}
-							alt=""
-							class="w-full h-full object-cover"
-							draggable="false"
-						/>
-					{:else}
-						<span class="text-white text-xs font-bold leading-none">{userInitial}</span>
-					{/if}
-				</button>
+					<div
+						role="button"
+						tabindex="0"
+						aria-label={$i18n.t('User menu')}
+						title={$user?.name ?? $i18n.t('Profile')}
+						class="h-9 w-9 rounded-full flex items-center justify-center shadow-sm overflow-hidden shrink-0 cursor-pointer"
+						style="background: linear-gradient(to bottom, #1966B9, #0954A4);"
+					>
+						{#if $user?.profile_image_url}
+							<img
+								src={$user.profile_image_url}
+								alt=""
+								class="w-full h-full object-cover"
+								draggable="false"
+							/>
+						{:else}
+							<span class="text-white text-xs font-bold leading-none">{userInitial}</span>
+						{/if}
+					</div>
+				</UserMenu>
 			</div>
 		</div>
 	</div>

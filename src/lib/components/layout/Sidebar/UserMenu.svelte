@@ -41,6 +41,7 @@
 	export let align = 'end';
 
 	export let showActiveUsers = true;
+	export let showSignOut = true;
 
 	let showUserStatusModal = false;
 
@@ -347,23 +348,25 @@
 					<hr class=" border-gray-50/30 dark:border-gray-800/30 my-1 p-0" />
 				{/if}
 
-				<button
-					class="flex rounded-xl py-1.5 px-3 w-full hover:bg-gray-50 dark:hover:bg-gray-800 transition cursor-pointer select-none"
-					type="button"
-				on:click={async () => {
-					const res = await userSignOut();
-					user.set(null);
-					localStorage.removeItem('token');
+				{#if showSignOut}
+					<button
+						class="flex rounded-xl py-1.5 px-3 w-full hover:bg-gray-50 dark:hover:bg-gray-800 transition cursor-pointer select-none"
+						type="button"
+						on:click={async () => {
+							const res = await userSignOut();
+							user.set(null);
+							localStorage.removeItem('token');
 
-					location.href = res?.redirect_url ?? '/auth';
-					show = false;
-				}}
-			>
-				<div class=" self-center mr-3">
-					<SignOut className="w-5 h-5" strokeWidth="1.5" />
-				</div>
-					<div class=" self-center truncate">{$i18n.t('Sign Out')}</div>
-				</button>
+							location.href = res?.redirect_url ?? '/auth';
+							show = false;
+						}}
+					>
+						<div class=" self-center mr-3">
+							<SignOut className="w-5 h-5" strokeWidth="1.5" />
+						</div>
+						<div class=" self-center truncate">{$i18n.t('Sign Out')}</div>
+					</button>
+				{/if}
 
 				{#if role !== 'user' && showActiveUsers && ($config?.features?.enable_public_active_users_count || role === 'admin') && usage}
 					{#if usage?.user_count}
