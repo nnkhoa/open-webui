@@ -1995,7 +1995,14 @@ def _build_heartbeat_input(
     }
 
 
-def _extract_message_text(response: dict[str, Any]) -> str:
+def _extract_message_text(response: Any) -> str:
+    if hasattr(response, "body"):
+        try:
+            response = json.loads(response.body)
+        except Exception:
+            return ""
+    if not isinstance(response, dict):
+        return ""
     choices = response.get("choices") or []
     if not choices:
         return ""
