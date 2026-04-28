@@ -58,6 +58,7 @@
 	import ChannelModal from './Sidebar/ChannelModal.svelte';
 	import ChannelItem from './Sidebar/ChannelItem.svelte';
 	import PencilSquare from '../icons/PencilSquare.svelte';
+	import { projectConfig } from '$lib/stores/projectConfig';
 	import Search from '../icons/Search.svelte';
 	import SearchModal from './SearchModal.svelte';
 	import FolderModal from './Sidebar/Folders/FolderModal.svelte';
@@ -93,6 +94,8 @@
 	let folderRegistry = {};
 
 	let newFolderId = null;
+
+	$: sidebarLogoUrl = `${WEBUI_BASE_URL}/static/favicon.png`;
 
 	$: if ($selectedFolder) {
 		initFolders();
@@ -713,9 +716,12 @@
 					>
 						<div class=" self-center flex items-center justify-center size-9">
 							<img
-								src="{WEBUI_BASE_URL}/static/favicon.png"
+								src={sidebarLogoUrl}
 								class="sidebar-new-chat-icon size-6 rounded-full group-hover:hidden"
 								alt=""
+								on:error={(e) => {
+									e.currentTarget.src = `${WEBUI_BASE_URL}/static/favicon.png`;
+								}}
 							/>
 
 							<Sidebar className="size-5 hidden group-hover:flex" />
@@ -907,10 +913,12 @@
 					on:click={newChatHandler}
 				>
 					<img
-						crossorigin="anonymous"
-						src="{WEBUI_BASE_URL}/static/favicon.png"
+						src={sidebarLogoUrl}
 						class="sidebar-new-chat-icon size-6 rounded-full"
 						alt=""
+						on:error={(e) => {
+							e.currentTarget.src = `${WEBUI_BASE_URL}/static/favicon.png`;
+						}}
 					/>
 				</a>
 
