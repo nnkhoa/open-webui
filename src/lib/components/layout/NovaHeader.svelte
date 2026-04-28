@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { getContext, createEventDispatcher } from 'svelte';
-	import { user, showSettings } from '$lib/stores';
+	import { user, showSettings, showControls } from '$lib/stores';
+	import Knobs from '$lib/components/icons/Knobs.svelte';
 	import { projectConfig } from '$lib/stores/projectConfig';
 	import { WEBUI_BASE_URL } from '$lib/constants';
 
@@ -149,6 +150,19 @@
 
 			<!-- Action buttons -->
 			<div class="flex items-center gap-2 pr-4">
+				<!-- Controls -->
+				<button
+					type="button"
+					aria-label={$i18n.t('Controls')}
+					title={$i18n.t('Controls')}
+					class="flex w-10 h-10 rounded-full items-center justify-center transition-colors cursor-pointer header-icon-btn"
+					on:click={async () => {
+						await showControls.set(!$showControls);
+					}}
+				>
+					<Knobs className="size-5" strokeWidth="1.5" />
+				</button>
+
 				<!-- Settings -->
 				<button
 					type="button"
@@ -234,6 +248,7 @@
 	.header-icon-btn {
 		background: #0c3c82;
 		border: none;
+		color: #fff;
 	}
 	.header-icon-btn:hover {
 		background: #2560b8;

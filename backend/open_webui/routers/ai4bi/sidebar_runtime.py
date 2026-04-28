@@ -73,7 +73,8 @@ def _has_dbhub_connection(request: Request) -> bool:
 def _cache_key(user: UserModel, instruction: str) -> str:
     # Cache must be user-scoped because MCP access control can differ per user.
     uid = str(getattr(user, "id", "") or "").strip()
-    return f"{uid}:{re.sub(r'\s+', ' ', (instruction or '')).strip().lower()}"
+    normalized = re.sub(r'\s+', ' ', (instruction or '')).strip().lower()
+    return f"{uid}:{normalized}"
 
 
 def _get_cached_snapshot(user: UserModel, instruction: str) -> dict[str, Any] | None:
@@ -103,7 +104,8 @@ def _quote_ident(dialect: str, name: str) -> str:
         # SQL Server bracketed identifier; close-bracket inside name must be doubled.
         return f"[{(name or '').replace(']', ']]')}]"
     # postgres / sqlite default to ANSI quoting
-    return f"\"{(name or '').replace('\"', '\"\"')}\""
+    escaped = (name or '').replace('"', '""')
+    return '"' + escaped + '"'
 
 
 def _qualified_table_name_mcp(dialect: str, schema: str | None, table_name: str) -> str:
