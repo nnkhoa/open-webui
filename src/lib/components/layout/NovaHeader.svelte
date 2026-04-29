@@ -166,17 +166,19 @@
 			<!-- Action buttons -->
 			<div class="flex items-center gap-2 pr-4">
 				<!-- Controls -->
-				<button
-					type="button"
-					aria-label={$i18n.t('Controls')}
-					title={$i18n.t('Controls')}
-					class="flex w-10 h-10 rounded-full items-center justify-center transition-colors cursor-pointer header-icon-btn"
-					on:click={async () => {
-						await showControls.set(!$showControls);
-					}}
-				>
-					<Knobs className="size-5" strokeWidth="1.5" />
-				</button>
+				{#if $user?.role !== 'user'}
+					<button
+						type="button"
+						aria-label={$i18n.t('Controls')}
+						title={$i18n.t('Controls')}
+						class="flex w-10 h-10 rounded-full items-center justify-center transition-colors cursor-pointer header-icon-btn"
+						on:click={async () => {
+							await showControls.set(!$showControls);
+						}}
+					>
+						<Knobs className="size-5" strokeWidth="1.5" />
+					</button>
+				{/if}
 
 				<!-- Settings -->
 				<button
