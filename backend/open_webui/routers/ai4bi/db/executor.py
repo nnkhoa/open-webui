@@ -15,9 +15,9 @@ def validate_sql(sql: str):
         raise ValueError(f"SQL chứa lệnh nguy hiểm bị chặn: {stripped[:80]}...")
 
 
-def execute_sql(sql: str) -> dict:
+def execute_sql(sql: str, pool_key: str | None = None) -> dict:
     validate_sql(sql)
-    conn = get_connection()
+    conn = get_connection(pool_key=pool_key)
     cursor = conn.cursor()
     cursor.execute(sql)
     cols = [desc[0] for desc in cursor.description]

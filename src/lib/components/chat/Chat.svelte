@@ -78,6 +78,7 @@
 		updateChatFolderIdById
 	} from '$lib/apis/chats';
 	import { generateOpenAIChatCompletion } from '$lib/apis/openai';
+	import { generateAI4BIChatCompletion } from '$lib/apis/ai4bi';
 	import { processWeb, processWebSearch, processYoutubeVideo } from '$lib/apis/retrieval';
 	import { getAndUpdateUserLocation, getUserSettings } from '$lib/apis/users';
 	import {
@@ -2120,6 +2121,19 @@
 			.map((token) => decodeURIComponent(JSON.parse(`"${token.replace(/"/g, '\\"')}"`)));
 	};
 
+	const isAI4BIModel = (model) => {
+		const modelId = model?.id ?? '';
+		const modelName = model?.name ?? '';
+		const meta = model?.info?.meta ?? {};
+		return (
+			meta?.ai4bi === true ||
+			meta?.pipeline === 'ai4bi' ||
+			meta?.tags?.some?.((tag) => tag?.name === 'ai4bi') ||
+			modelId === 'san-sang-phan-tich' ||
+			modelName === 'Sẵn sàng phân tích'
+		);
+	};
+
 	const sendMessageSocket = async (model, _messages, _history, responseMessageId, _chatId) => {
 		const responseMessage = _history.messages[responseMessageId];
 		const userMessage = _history.messages[responseMessage.parentId];
@@ -2274,73 +2288,81 @@
 		// Use the user-selected terminal from the dropdown
 		const activeTerminalId = $selectedTerminalId ?? null;
 
-		const res = await generateOpenAIChatCompletion(
-			localStorage.token,
-			{
-				stream: stream,
-				model: model.id,
-				messages: messages,
-				params: {
-					...$settings?.params,
-					...params,
-					stop: getStopTokens()
-				},
+		const res = await (
+			isAI4BIModel(model)
+				? generateAI4BIChatCompletion(localStorage.token, {
+						message: userMessage?.content ?? '',
+						sessionId: $socket?.id ?? '',
+						userId: $user?.id ?? '',
+						instruction: ''
+					})
+				: generateOpenAIChatCompletion(
+						localStorage.token,
+						{
+							stream: stream,
+							model: model.id,
+							messages: messages,
+							params: {
+								...$settings?.params,
+								...params,
+								stop: getStopTokens()
+							},
 
-				files: (files?.length ?? 0) > 0 ? files : undefined,
+							files: (files?.length ?? 0) > 0 ? files : undefined,
 
-				filter_ids: selectedFilterIds.length > 0 ? selectedFilterIds : undefined,
-				tool_ids: toolIds.length > 0 ? toolIds : undefined,
-				skill_ids: skillIds.length > 0 ? skillIds : undefined,
-				terminal_id: activeTerminalId ?? undefined,
-				tool_servers: [
-					...($toolServers ?? []).filter(
-						(server, idx) => toolServerIds.includes(idx) || toolServerIds.includes(server?.id)
-					),
-					// Direct terminal servers — always included when enabled (not routed through selectedToolIds)
-					...($terminalServers ?? []).filter((t) => !t.id)
-				],
-				features: getFeatures(),
-				variables: {
-					...getPromptVariables(
-						$user?.name,
-						$settings?.userLocation ? userLocation : undefined,
-						$user?.email
+							filter_ids: selectedFilterIds.length > 0 ? selectedFilterIds : undefined,
+							tool_ids: toolIds.length > 0 ? toolIds : undefined,
+							skill_ids: skillIds.length > 0 ? skillIds : undefined,
+							terminal_id: activeTerminalId ?? undefined,
+							tool_servers: [
+								...($toolServers ?? []).filter(
+									(server, idx) => toolServerIds.includes(idx) || toolServerIds.includes(server?.id)
+								),
+								...($terminalServers ?? []).filter((t) => !t.id)
+							],
+							features: getFeatures(),
+							variables: {
+								...getPromptVariables(
+									$user?.name,
+									$settings?.userLocation ? userLocation : undefined,
+									$user?.email
+								)
+							},
+							model_item: $models.find((m) => m.id === model.id),
+
+							session_id: $socket?.id,
+							chat_id: $chatId,
+							folder_id: $selectedFolder?.id ?? undefined,
+
+							id: responseMessageId,
+							parent_id: userMessage?.id ?? null,
+							parent_message: userMessage,
+
+							background_tasks: {
+								...(!$temporaryChatEnabled &&
+								(messages.length == 1 ||
+									(messages.length == 2 &&
+										messages.at(0)?.role === 'system' &&
+										messages.at(1)?.role === 'user')) &&
+								(selectedModels[0] === model.id || atSelectedModel !== undefined)
+									? {
+											title_generation: $settings?.title?.auto ?? true,
+											tags_generation: $settings?.autoTags ?? true
+										}
+									: {}),
+								follow_up_generation: $settings?.autoFollowUps ?? true
+							},
+
+							...(stream && (model.info?.meta?.capabilities?.usage ?? false)
+								? {
+										stream_options: {
+											include_usage: true
+										}
+									}
+								: {})
+						},
+						`${WEBUI_BASE_URL}/api`
 					)
-				},
-				model_item: $models.find((m) => m.id === model.id),
-
-				session_id: $socket?.id,
-				chat_id: $chatId,
-				folder_id: $selectedFolder?.id ?? undefined,
-
-				id: responseMessageId,
-				parent_id: userMessage?.id ?? null,
-				parent_message: userMessage,
-
-				background_tasks: {
-					...(!$temporaryChatEnabled &&
-					(messages.length == 1 ||
-						(messages.length == 2 &&
-							messages.at(0)?.role === 'system' &&
-							messages.at(1)?.role === 'user')) &&
-					(selectedModels[0] === model.id || atSelectedModel !== undefined)
-						? {
-								title_generation: $settings?.title?.auto ?? true,
-								tags_generation: $settings?.autoTags ?? true
-							}
-						: {}),
-					follow_up_generation: $settings?.autoFollowUps ?? true
-				},
-
-				...(stream && (model.info?.meta?.capabilities?.usage ?? false)
-					? {
-							stream_options: {
-								include_usage: true
-							}
-						}
-					: {})
-			},
-			`${WEBUI_BASE_URL}/api`
 		).catch(async (error) => {
 			console.log(error);
 
@@ -2367,8 +2389,29 @@
 
 			return null;
 		});
-
-		if (res) {
+		if (isAI4BIModel(model)) {
+			responseMessage.done = false;
+			history.messages[responseMessageId] = responseMessage;
+			if (res) {
+				for await (const update of res) {
+					const { value, done, error } = update;
+					if (error) {
+						await handleOpenAIError(error, responseMessage);
+						break;
+					}
+					if (done) {
+						responseMessage.done = true;
+						history.messages[responseMessageId] = responseMessage;
+						break;
+					}
+					if (value) {
+						responseMessage.content += value;
+						history.messages[responseMessageId] = responseMessage;
+						if (autoScroll) scheduleScrollToBottom();
+					}
+				}
+			}
+		} else if (res) {
 			if (res.error) {
 				await handleOpenAIError(res.error, responseMessage);
 			} else {
@@ -2850,7 +2893,10 @@
 						}}
 					/>
 
-					<div id="chat-pane" class="flex flex-col flex-auto z-10 w-full @container overflow-hidden min-h-0">
+					<div
+						id="chat-pane"
+						class="flex flex-col flex-auto z-10 w-full @container overflow-hidden min-h-0"
+					>
 						{#if ($settings?.landingPageMode === 'chat' && !$selectedFolder) || createMessagesList(history, history.currentId).length > 0}
 							<div
 								class=" pb-2.5 flex flex-col justify-between w-full flex-auto overflow-auto h-0 max-w-full z-10 scrollbar-hidden"

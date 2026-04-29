@@ -67,12 +67,12 @@ def agentic_evaluate(question: str, columns: list, rows: list,
     return res
 
 
-def execute_agentic_step(evaluation: dict) -> dict | None:
+def execute_agentic_step(evaluation: dict, pool_key: str | None = None) -> dict | None:
     sql = evaluation.get("additional_sql", "")
     if not sql:
         return None
     try:
-        result = execute_sql(sql)
+        result = execute_sql(sql, pool_key=pool_key)
         return {
             "sql": sql,
             "reason": evaluation.get("reason", ""),

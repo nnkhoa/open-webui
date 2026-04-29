@@ -12,6 +12,7 @@ from llm import (
 from db import get_schema_context, save_chat
 from memory import MemoryService
 from config.messages import get_status_message
+from access_control import ensure_user_has_ai4bi_access, get_pool_key_for_access
 
 SHOW_LLM_PAYLOAD = os.getenv("SHOW_LLM_PAYLOAD", "true").lower() in {"1", "true", "yes", "on"}
 
@@ -43,7 +44,17 @@ async def process_chat(message: str, session_id: str, user_id: str,
                 memory_service.build_stage_memory_context, user_id, session_id, message, "sql"
             )
             sql_memory_context = sql_memory_ctx.render()
-            prompt_data = build_sql_system_prompt(custom_instruction=instruction, memory_context=sql_memory_context)
+            access = await asyncio.to_thread(ensure_user_has_ai4bi_access, user_id)
+            pool_key = get_pool_key_for_access(access)
+            if access.get("mcp_url"):
+                from db.connection import configure_pool
+                await asyncio.to_thread(configure_pool, access["mcp_url"], pool_key, False)
+            prompt_data = build_sql_system_prompt(
+                custom_instruction=instruction,
+                memory_context=sql_memory_context,
+                allowed_tables=access["allowed_tables"],
+                pool_key=pool_key,
+            )
             timings_ms["memory_sql"] = _ms(t)
 
             if SHOW_LLM_PAYLOAD:
@@ -53,6 +64,8 @@ async def process_chat(message: str, session_id: str, user_id: str,
                     "system_prompt": prompt_data["prompt"],
                     "user_content": message,
                     "memory_context": sql_memory_context,
+                    "allowed_tables": access["allowed_tables"],
+                    "groups": access["group_names"],
                 })
                 await asyncio.sleep(0.01)
 
@@ -65,11 +78,15 @@ async def process_chat(message: str, session_id: str, user_id: str,
             from llm import stream_text_to_sql
             sql_result = {"sql": "", "thinking": "", "columns": [], "rows": [], "token_usage": {}}
             
-            async for part in stream_text_to_sql(message, sql_memory_context, instruction):
+            async for part in stream_text_to_sql(message, sql_memory_context, instruction, access["allowed_tables"], pool_key):
                 if part["type"] == "thinking":
                     yield sse_event("thinking", {"thinking": part["chunk"], "stage": "sql"})
                 elif part["type"] == "final":
                     sql_result = part
+
+            if sql_result.get("error"):
+                yield sse_event("error", {"detail": sql_result["error"]})
+                return
             
             timings_ms["sql_stage"] = _ms(t)
             yield sse_event("thinking", {"thinking": "", "stage": "sql"}) # flush
@@ -89,7 +106,7 @@ async def process_chat(message: str, session_id: str, user_id: str,
                 msg = get_status_message("agentic_evaluation")
                 yield sse_event("status", msg)
                 try:
-                    schema_context = await asyncio.to_thread(get_schema_context)
+                    schema_context = await asyncio.to_thread(get_schema_context, access["allowed_tables"], pool_key)
                 except Exception:
                     schema_context = ""
 
@@ -122,7 +139,7 @@ async def process_chat(message: str, session_id: str, user_id: str,
                     })
                     await asyncio.sleep(0.01)
                     t = time.perf_counter()
-                    extra_result = await asyncio.to_thread(execute_agentic_step, evaluation)
+                    extra_result = await asyncio.to_thread(execute_agentic_step, evaluation, pool_key)
                     timings_ms[f"agentic_exec_{step_i+1}"] = _ms(t)
                     if extra_result:
                         additional_data.append(extra_result)

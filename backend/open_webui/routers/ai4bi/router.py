@@ -7,6 +7,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 from fastapi import FastAPI, Header, HTTPException
+from access_control import ensure_user_has_ai4bi_access, get_pool_key_for_access
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -527,9 +528,14 @@ def memory_admin_rebuild(userId: str = "default_user", x_admin_token: str | None
 @app.post("/memory/admin/context-preview")
 def memory_admin_context_preview(req: MemoryContextPreviewRequest, x_admin_token: str | None = Header(default=None)):
     _guard_admin(x_admin_token)
+    access = ensure_user_has_ai4bi_access(req.userId)
+    pool_key = get_pool_key_for_access(access)
+    if access.get("mcp_url"):
+        from db.connection import configure_pool
+        configure_pool(access["mcp_url"], pool_key, False)
     sql_ctx = memory_service.build_stage_memory_context(req.userId, req.sessionId, req.message, stage="sql")
     reply_ctx = memory_service.build_stage_memory_context(req.userId, req.sessionId, req.message, stage="reply")
-    sql_prompt = build_sql_system_prompt(memory_context=sql_ctx.render())
+    sql_prompt = build_sql_system_prompt(memory_context=sql_ctx.render(), allowed_tables=access["allowed_tables"], pool_key=pool_key)
     reply_data = build_reply_contents(
         question=req.message, columns=req.columns or [], rows=req.rows or [],
         memory_context=reply_ctx.render(),
@@ -539,6 +545,7 @@ def memory_admin_context_preview(req: MemoryContextPreviewRequest, x_admin_token
         "session_id": req.sessionId,
         "message": req.message,
         "memory_context": {"sql": sql_ctx.render(), "reply": reply_ctx.render()},
+        "access_control": {"allowed_tables": access["allowed_tables"], "groups": access["group_names"]},
         "stage1_sql_prompt": {"system_prompt": sql_prompt["prompt"], "user_content": req.message},
         "stage2_reply_prompt": {"system_prompt": VISUALIZATION_PROMPT_RULES, "user_content": reply_data["contents"]},
     }
@@ -552,7 +559,8 @@ def database_summary(instruction: str = ""):
     try:
         from db.schema import get_tables_schema
 
-        tables = get_tables_schema()
+        access = ensure_user_has_ai4bi_access("default_user")
+        tables = get_tables_schema(allowed_tables=access["allowed_tables"])
 
         summary = {
             "database_name": "Unknown",
