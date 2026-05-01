@@ -6,6 +6,7 @@ export interface ProjectConfig {
 	brand_color: string | null;
 	org_name: string;
 	org_subtitle: string;
+	app_name: string;
 }
 
 export const getProjectConfig = async (token: string): Promise<ProjectConfig> => {
