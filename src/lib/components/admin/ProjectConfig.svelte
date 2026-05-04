@@ -23,6 +23,7 @@
 	let brandColor = '';
 	let orgName = '';
 	let orgSubtitle = '';
+	let appName = '';
 	let logoFileInput: HTMLInputElement;
 
 	// Get models list for display name editing
@@ -40,13 +41,15 @@
 			brandColor = config.brand_color || '';
 			orgName = config.org_name || 'Nova Consumer Group';
 			orgSubtitle = config.org_subtitle || 'Chương trình tư vấn chiến lược AI';
+			appName = config.app_name || '';
 
 			await projectConfig.set({
 				logo_url: config.logo_url,
 				model_display_names: config.model_display_names || {},
 				brand_color: config.brand_color || '',
 				org_name: orgName,
-				org_subtitle: orgSubtitle
+				org_subtitle: orgSubtitle,
+				app_name: appName
 			});
 		} catch (err) {
 			console.error('Failed to load project config:', err);
@@ -100,7 +103,8 @@
 				model_display_names: displayNames,
 				brand_color: brandColor || null,
 				org_name: orgName,
-				org_subtitle: orgSubtitle
+				org_subtitle: orgSubtitle,
+				app_name: appName
 			});
 
 			await projectConfig.set({
@@ -108,7 +112,8 @@
 				model_display_names: config.model_display_names || {},
 				brand_color: config.brand_color || '',
 				org_name: config.org_name || 'Nova Consumer Group',
-				org_subtitle: config.org_subtitle || 'Chương trình tư vấn chiến lược AI'
+				org_subtitle: config.org_subtitle || 'Chương trình tư vấn chiến lược AI',
+				app_name: config.app_name || ''
 			});
 
 			toast.success('Project config saved');
@@ -238,6 +243,24 @@
 						/>
 					</div>
 				</div>
+			</div>
+
+			<!-- Section: App Name (login screen title) -->
+			<div
+				class="rounded-2xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 p-5"
+			>
+				<h3 class="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-3">App Name</h3>
+				<p class="text-xs text-gray-500 dark:text-gray-400 mb-4">
+					Tên hiển thị trên màn hình đăng nhập (thay cho "Open WebUI"). Để trống để dùng mặc định.
+				</p>
+
+				<input
+					id="app-name-input"
+					type="text"
+					bind:value={appName}
+					placeholder="Open WebUI"
+					class="w-full px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-black dark:focus:ring-white"
+				/>
 			</div>
 
 			<!-- Section: Brand Color -->

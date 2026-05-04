@@ -1703,6 +1703,12 @@ AIBI_ORG_SUBTITLE = PersistentConfig(
     os.environ.get('AIBI_ORG_SUBTITLE', 'Chương trình tư vấn chiến lược AI'),
 )
 
+AIBI_APP_NAME = PersistentConfig(
+    'AIBI_APP_NAME',
+    'aibi.project.app_name',
+    os.environ.get('AIBI_APP_NAME', ''),
+)
+
 
 SHOW_ADMIN_DETAILS = PersistentConfig(
     'SHOW_ADMIN_DETAILS',

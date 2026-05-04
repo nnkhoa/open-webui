@@ -381,6 +381,7 @@ from open_webui.config import (
     AIBI_BRAND_COLOR,
     AIBI_ORG_NAME,
     AIBI_ORG_SUBTITLE,
+    AIBI_APP_NAME,
     ENABLE_SIGNUP,
     ENABLE_LOGIN_FORM,
     ENABLE_API_KEYS,
@@ -876,6 +877,7 @@ app.state.config.AIBI_MODEL_DISPLAY_NAMES = AIBI_MODEL_DISPLAY_NAMES
 app.state.config.AIBI_BRAND_COLOR = AIBI_BRAND_COLOR
 app.state.config.AIBI_ORG_NAME = AIBI_ORG_NAME
 app.state.config.AIBI_ORG_SUBTITLE = AIBI_ORG_SUBTITLE
+app.state.config.AIBI_APP_NAME = AIBI_APP_NAME
 
 
 app.state.config.ENABLE_FOLDERS = ENABLE_FOLDERS
@@ -2126,6 +2128,7 @@ async def get_app_config(request: Request):
             'brand_color': app.state.config.AIBI_BRAND_COLOR,
             'org_name': app.state.config.AIBI_ORG_NAME,
             'org_subtitle': app.state.config.AIBI_ORG_SUBTITLE,
+            'app_name': app.state.config.AIBI_APP_NAME,
         },
         **(
             {

@@ -827,49 +827,21 @@
 			</div>
 		</button>
 
-		<div>
-			<div>
-				<div class=" py-2 flex justify-center items-center">
-					{#if $user !== undefined && $user !== null}
-						<UserMenu
-							role={$user?.role}
-							profile={$config?.features?.enable_user_status ?? true}
-							showActiveUsers={false}
-							showSignOut={false}
-							on:show={(e) => {
-								if (e.detail === 'archived-chat') {
-									showArchivedChats.set(true);
-								}
-							}}
-						>
-							<div
-								class=" cursor-pointer flex rounded-xl hover:bg-gray-100 dark:hover:bg-gray-850 transition group"
-							>
-								<div class="self-center relative">
-									<img
-										src={`${WEBUI_API_BASE_URL}/users/${$user?.id}/profile/image`}
-										class=" size-7 object-cover rounded-full"
-										alt={$i18n.t('Open User Profile Menu')}
-										aria-label={$i18n.t('Open User Profile Menu')}
-									/>
-
-									{#if $config?.features?.enable_user_status}
-										<div class="absolute -bottom-0.5 -right-0.5">
-											<span class="relative flex size-2.5">
-												<span
-													class="relative inline-flex size-2.5 rounded-full {true
-														? 'bg-green-500'
-														: 'bg-gray-300 dark:bg-gray-700'} border-2 border-white dark:border-gray-900"
-												></span>
-											</span>
-										</div>
-									{/if}
-								</div>
-							</div>
-						</UserMenu>
-					{/if}
+		<div class="flex justify-center py-2">
+			<a
+				href="/"
+				class="flex rounded-xl hover:bg-gray-100 dark:hover:bg-gray-850 transition no-drag-region"
+				draggable="false"
+			>
+				<div class="self-center flex items-center justify-center size-9">
+					<img
+						src="{WEBUI_BASE_URL}/static/favicon.png"
+						class="size-6 rounded-full"
+						alt=""
+						draggable="false"
+					/>
 				</div>
-			</div>
+			</a>
 		</div>
 	</div>
 {/if}
@@ -1378,46 +1350,21 @@
 					class=" sidebar-bg-gradient-to-t bg-linear-to-t from-gray-50 dark:from-gray-950 to-transparent from-50% pointer-events-none absolute inset-0 -z-10 -mt-6"
 				></div>
 				<div class="flex flex-col font-primary">
-					{#if $user !== undefined && $user !== null}
-						<UserMenu
-							role={$user?.role}
-							profile={$config?.features?.enable_user_status ?? true}
-							showActiveUsers={false}
-							showSignOut={false}
-							className="w-[calc(var(--sidebar-width)-1rem)]"
-							on:show={(e) => {
-								if (e.detail === 'archived-chat') {
-									showArchivedChats.set(true);
-								}
-							}}
-						>
-							<div
-								class=" flex items-center rounded-2xl py-2 px-1.5 w-full hover:bg-gray-100/50 dark:hover:bg-gray-900/50 transition"
-							>
-								<div class=" self-center mr-3 relative">
-									<img
-										src={`${WEBUI_API_BASE_URL}/users/${$user?.id}/profile/image`}
-										class=" size-7 object-cover rounded-full"
-										alt={$i18n.t('Open User Profile Menu')}
-										aria-label={$i18n.t('Open User Profile Menu')}
-									/>
-
-									{#if $config?.features?.enable_user_status}
-										<div class="absolute -bottom-0.5 -right-0.5">
-											<span class="relative flex size-2.5">
-												<span
-													class="relative inline-flex size-2.5 rounded-full {true
-														? 'bg-green-500'
-														: 'bg-gray-300 dark:bg-gray-700'} border-2 border-white dark:border-gray-900"
-												></span>
-											</span>
-										</div>
-									{/if}
-								</div>
-								<div class=" self-center font-medium">{$user?.name}</div>
-							</div>
-						</UserMenu>
-					{/if}
+					<a
+						href="/"
+						class="flex items-center rounded-2xl py-2 px-1.5 w-full hover:bg-gray-100/50 dark:hover:bg-gray-900/50 transition no-drag-region"
+						draggable="false"
+					>
+						<div class="self-center mr-3">
+							<img
+								src="{WEBUI_BASE_URL}/static/favicon.png"
+								class="size-7 object-cover rounded-full"
+								alt=""
+								draggable="false"
+							/>
+						</div>
+						<div class="self-center font-medium">{$WEBUI_NAME}</div>
+					</a>
 				</div>
 			</div>
 		</div>

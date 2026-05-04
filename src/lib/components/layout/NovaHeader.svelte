@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { getContext, createEventDispatcher } from 'svelte';
-	import { user, showSettings, showControls, showArchivedChats } from '$lib/stores';
-	import Knobs from '$lib/components/icons/Knobs.svelte';
+	import { user, showSettings, showArchivedChats } from '$lib/stores';
 	import UserMenu from '$lib/components/layout/Sidebar/UserMenu.svelte';
 	import { projectConfig } from '$lib/stores/projectConfig';
 	import { WEBUI_BASE_URL } from '$lib/constants';
@@ -10,7 +9,6 @@
 	const dispatch = createEventDispatcher();
 
 	let showUserMenuMobile = false;
-	let showUserMenuDesktop = false;
 
 	$: orgName = $projectConfig.org_name || 'Nova Consumer Group';
 	$: orgSubtitle = $projectConfig.org_subtitle || 'Chương trình tư vấn chiến lược AI';
@@ -165,89 +163,43 @@
 
 			<!-- Action buttons -->
 			<div class="flex items-center gap-2 pr-4">
-				<!-- Controls -->
-				<button
-					type="button"
-					aria-label={$i18n.t('Controls')}
-					title={$i18n.t('Controls')}
-					class="flex w-10 h-10 rounded-full items-center justify-center transition-colors cursor-pointer header-icon-btn"
-					on:click={async () => {
-						await showControls.set(!$showControls);
-					}}
-				>
-					<Knobs className="size-5" strokeWidth="1.5" />
-				</button>
-
-				<!-- Settings -->
-				<button
-					type="button"
-					aria-label={$i18n.t('Settings')}
-					title={$i18n.t('Settings')}
-					class="flex w-10 h-10 rounded-full items-center justify-center transition-colors cursor-pointer header-icon-btn"
-					on:click={() => {
-						showSettings.set(true);
-						dispatch('settings');
-					}}
-				>
-					<svg
-						width="16"
-						height="16"
-						viewBox="0 0 16 16"
-						fill="none"
-						xmlns="http://www.w3.org/2000/svg"
-						aria-hidden="true"
+				<!-- Settings (admin only) -->
+				{#if $user?.role === 'admin'}
+					<button
+						type="button"
+						aria-label={$i18n.t('Settings')}
+						title={$i18n.t('Settings')}
+						class="flex w-10 h-10 rounded-full items-center justify-center transition-colors cursor-pointer header-icon-btn"
+						on:click={() => {
+							showSettings.set(true);
+							dispatch('settings');
+						}}
 					>
-						<path
-							d="M10.0625 0H5.93682L5.46354 2.35418C5.07168 2.52877 4.69907 2.74325 4.35167 2.99418L2.06209 2.224L0 5.776L1.81484 7.36145C1.77101 7.78604 1.77101 8.21396 1.81484 8.63855L0 10.224L2.06282 13.776L4.35167 13.0065C4.69693 13.2553 5.06853 13.4705 5.46354 13.6458L5.93682 16H10.0625L10.5357 13.6458C10.9276 13.4712 11.3002 13.2568 11.6476 13.0058L13.9372 13.776L16 10.224L14.1844 8.63855C14.2283 8.21396 14.2283 7.78604 14.1844 7.36145L15.9993 5.776L13.9365 2.224L11.6483 2.99345C11.3009 2.74277 10.9283 2.52854 10.5365 2.35418L10.0625 0ZM7.99963 10.9091C7.22362 10.9091 6.47938 10.6026 5.93065 10.057C5.38192 9.51148 5.07365 8.77154 5.07365 8C5.07365 7.22846 5.38192 6.48852 5.93065 5.94296C6.47938 5.3974 7.22362 5.09091 7.99963 5.09091C8.77565 5.09091 9.51989 5.3974 10.0686 5.94296C10.6173 6.48852 10.9256 7.22846 10.9256 8C10.9256 8.77154 10.6173 9.51148 10.0686 10.057C9.51989 10.6026 8.77565 10.9091 7.99963 10.9091Z"
-							fill="white"
-						/>
-					</svg>
-				</button>
-
-				<!-- Notifications -->
-				<button
-					type="button"
-					aria-label={$i18n.t('Notifications')}
-					title={$i18n.t('Notifications')}
-					class="relative flex w-10 h-10 rounded-full items-center justify-center transition-colors cursor-pointer header-icon-btn"
-					on:click={() => dispatch('notifications')}
-				>
-					<svg
-						width="14"
-						height="14"
-						viewBox="0 0 14 14"
-						fill="none"
-						xmlns="http://www.w3.org/2000/svg"
-						aria-hidden="true"
-					>
-						<path
-							d="M8.63159 12.4688C8.47989 12.8978 8.19851 13.2695 7.8269 13.5322C7.45516 13.795 7.01063 13.9358 6.55542 13.9355C6.10032 13.9357 5.65658 13.7949 5.28491 13.5322C4.91317 13.2695 4.63196 12.8979 4.48022 12.4688H8.63159ZM6.55542 0C7.91705 0 9.22346 0.541035 10.1863 1.50391C11.149 2.46676 11.6902 3.77315 11.6902 5.13477V7.72168C11.6903 7.83548 11.7164 7.94806 11.7673 8.0498L13.0261 10.5684C13.0875 10.6912 13.1163 10.8276 13.1101 10.9648C13.1039 11.1021 13.0631 11.2356 12.991 11.3525C12.9187 11.4695 12.8172 11.5668 12.697 11.6338C12.577 11.7006 12.4418 11.7354 12.3044 11.7354H0.807373C0.669838 11.7354 0.533951 11.7008 0.413818 11.6338C0.293743 11.5668 0.193135 11.4695 0.12085 11.3525C0.048628 11.2356 0.00690852 11.1022 0.000732422 10.9648C-0.00540945 10.8276 0.0242898 10.6913 0.0856934 10.5684L1.34448 8.0498C1.39523 7.94797 1.42174 7.83546 1.42163 7.72168V5.13477C1.42163 3.77306 1.96272 2.46678 2.92554 1.50391C3.88828 0.541112 5.1939 7.71771e-05 6.55542 0Z"
-							fill="white"
-						/>
-					</svg>
-					{#if unreadCount > 0}
-						<span
-							class="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center leading-none"
+						<svg
+							width="16"
+							height="16"
+							viewBox="0 0 16 16"
+							fill="none"
+							xmlns="http://www.w3.org/2000/svg"
+							aria-hidden="true"
 						>
-							{unreadCount > 9 ? '9+' : unreadCount}
-						</span>
-					{/if}
-				</button>
+							<path
+								d="M10.0625 0H5.93682L5.46354 2.35418C5.07168 2.52877 4.69907 2.74325 4.35167 2.99418L2.06209 2.224L0 5.776L1.81484 7.36145C1.77101 7.78604 1.77101 8.21396 1.81484 8.63855L0 10.224L2.06282 13.776L4.35167 13.0065C4.69693 13.2553 5.06853 13.4705 5.46354 13.6458L5.93682 16H10.0625L10.5357 13.6458C10.9276 13.4712 11.3002 13.2568 11.6476 13.0058L13.9372 13.776L16 10.224L14.1844 8.63855C14.2283 8.21396 14.2283 7.78604 14.1844 7.36145L15.9993 5.776L13.9365 2.224L11.6483 2.99345C11.3009 2.74277 10.9283 2.52854 10.5365 2.35418L10.0625 0ZM7.99963 10.9091C7.22362 10.9091 6.47938 10.6026 5.93065 10.057C5.38192 9.51148 5.07365 8.77154 5.07365 8C5.07365 7.22846 5.38192 6.48852 5.93065 5.94296C6.47938 5.3974 7.22362 5.09091 7.99963 5.09091C8.77565 5.09091 9.51989 5.3974 10.0686 5.94296C10.6173 6.48852 10.9256 7.22846 10.9256 8C10.9256 8.77154 10.6173 9.51148 10.0686 10.057C9.51989 10.6026 8.77565 10.9091 7.99963 10.9091Z"
+								fill="white"
+							/>
+						</svg>
+					</button>
+				{/if}
 
-				<!-- User avatar -->
+				<!-- User avatar: admin = full menu, user = Sign Out only -->
 				<UserMenu
-					bind:show={showUserMenuDesktop}
 					role={$user?.role}
+					minimal={$user?.role !== 'admin'}
+					help={$user?.role === 'admin'}
 					showActiveUsers={false}
-					on:show={(e) => {
-						if (e.detail === 'archived-chat') {
-							showArchivedChats.set(true);
-						}
-					}}
 				>
-					<div
-						role="button"
-						tabindex="0"
+					<button
+						type="button"
 						aria-label={$i18n.t('User menu')}
 						title={$user?.name ?? $i18n.t('Profile')}
 						class="h-9 w-9 rounded-full flex items-center justify-center shadow-sm overflow-hidden shrink-0 cursor-pointer"
@@ -263,7 +215,7 @@
 						{:else}
 							<span class="text-white text-xs font-bold leading-none">{userInitial}</span>
 						{/if}
-					</div>
+					</button>
 				</UserMenu>
 			</div>
 		</div>

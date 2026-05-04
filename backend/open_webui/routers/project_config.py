@@ -25,6 +25,7 @@ class ProjectConfigForm(BaseModel):
     brand_color: Optional[str] = None
     org_name: Optional[str] = None
     org_subtitle: Optional[str] = None
+    app_name: Optional[str] = None
 
 
 ############################
@@ -40,6 +41,7 @@ async def get_project_config(request: Request, user=Depends(get_admin_user)):
         'brand_color': request.app.state.config.AIBI_BRAND_COLOR,
         'org_name': request.app.state.config.AIBI_ORG_NAME,
         'org_subtitle': request.app.state.config.AIBI_ORG_SUBTITLE,
+        'app_name': request.app.state.config.AIBI_APP_NAME,
     }
 
 
@@ -71,12 +73,16 @@ async def set_project_config(
     if 'org_subtitle' in data and data['org_subtitle'] is not None:
         request.app.state.config.AIBI_ORG_SUBTITLE = data['org_subtitle']
 
+    if 'app_name' in data and data['app_name'] is not None:
+        request.app.state.config.AIBI_APP_NAME = data['app_name']
+
     return {
         'logo_url': request.app.state.config.AIBI_PROJECT_LOGO,
         'model_display_names': request.app.state.config.AIBI_MODEL_DISPLAY_NAMES,
         'brand_color': request.app.state.config.AIBI_BRAND_COLOR,
         'org_name': request.app.state.config.AIBI_ORG_NAME,
         'org_subtitle': request.app.state.config.AIBI_ORG_SUBTITLE,
+        'app_name': request.app.state.config.AIBI_APP_NAME,
     }
 
 

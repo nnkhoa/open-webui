@@ -5,5 +5,6 @@ export const projectConfig = writable({
 	model_display_names: {} as Record<string, string>,
 	brand_color: null as string | null,
 	org_name: 'Nova Consumer Group' as string,
-	org_subtitle: 'Chương trình tư vấn chiến lược AI' as string
+	org_subtitle: 'Chương trình tư vấn chiến lược AI' as string,
+	app_name: '' as string
 });

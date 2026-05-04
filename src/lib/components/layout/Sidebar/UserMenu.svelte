@@ -42,6 +42,7 @@
 
 	export let showActiveUsers = true;
 	export let showSignOut = true;
+	export let minimal = false;
 
 	let showUserStatusModal = false;
 
@@ -216,161 +217,165 @@
 						<div class=" self-center truncate">{$i18n.t('Settings')}</div>
 					</button>
 
-					<button
+				<hr class=" border-gray-50/30 dark:border-gray-800/30 my-1.5 p-0" />
+			{/if}
+
+			{#if !minimal}
+				<button
+					class="flex rounded-xl py-1.5 px-3 w-full hover:bg-gray-50 dark:hover:bg-gray-800 transition cursor-pointer select-none"
+					type="button"
+					on:click={async () => {
+						show = false;
+
+						dispatch('show', 'archived-chat');
+
+						if ($mobile) {
+							await tick();
+
+							showSidebar.set(false);
+						}
+					}}
+				>
+					<div class=" self-center mr-3">
+						<ArchiveBox className="size-5" strokeWidth="1.5" />
+					</div>
+					<div class=" self-center truncate">{$i18n.t('Archived Chats')}</div>
+				</button>
+			{/if}
+
+			{#if !minimal && role === 'admin'}
+				<a
+					href="/playground"
+					draggable="false"
+					class="flex rounded-xl py-1.5 px-3 w-full hover:bg-gray-50 dark:hover:bg-gray-800 transition cursor-pointer select-none"
+					on:click={async (e) => {
+						if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) {
+							return;
+						}
+						e.preventDefault();
+						show = false;
+						goto('/playground');
+						if ($mobile) {
+							await tick();
+							showSidebar.set(false);
+						}
+					}}
+				>
+					<div class=" self-center mr-3">
+						<Code className="size-5" strokeWidth="1.5" />
+					</div>
+					<div class=" self-center truncate">{$i18n.t('Playground')}</div>
+				</a>
+				<a
+					href="/admin"
+					draggable="false"
+					class="flex rounded-xl py-1.5 px-3 w-full hover:bg-gray-50 dark:hover:bg-gray-800 transition cursor-pointer select-none"
+					on:click={async (e) => {
+						if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) {
+							return;
+						}
+						e.preventDefault();
+						show = false;
+						goto('/admin');
+						if ($mobile) {
+							await tick();
+							showSidebar.set(false);
+						}
+					}}
+				>
+					<div class=" self-center mr-3">
+						<UserGroup className="w-5 h-5" strokeWidth="1.5" />
+					</div>
+					<div class=" self-center truncate">{$i18n.t('Admin Panel')}</div>
+				</a>
+			{/if}
+
+			{#if help}
+				<hr class=" border-gray-50/30 dark:border-gray-800/30 my-1 p-0" />
+
+				<!-- {$i18n.t('Help')} -->
+
+				{#if $user?.role === 'admin'}
+					<a
+						href="https://docs.openwebui.com"
+						target="_blank"
+						draggable="false"
 						class="flex rounded-xl py-1.5 px-3 w-full hover:bg-gray-50 dark:hover:bg-gray-800 transition cursor-pointer select-none"
-						type="button"
-						on:click={async () => {
+						id="chat-share-button"
+						on:click={() => {
 							show = false;
-
-							dispatch('show', 'archived-chat');
-
-							if ($mobile) {
-								await tick();
-
-								showSidebar.set(false);
-							}
 						}}
 					>
 						<div class=" self-center mr-3">
-							<ArchiveBox className="size-5" strokeWidth="1.5" />
+							<QuestionMarkCircle className="size-5" />
 						</div>
-						<div class=" self-center truncate">{$i18n.t('Archived Chats')}</div>
-					</button>
+						<div class=" self-center truncate">{$i18n.t('Documentation')}</div>
+					</a>
 
-					{#if role === 'admin'}
-						<a
-							href="/playground"
-							draggable="false"
-							class="flex rounded-xl py-1.5 px-3 w-full hover:bg-gray-50 dark:hover:bg-gray-800 transition cursor-pointer select-none"
-							on:click={async (e) => {
-								if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) {
-									return;
-								}
-								e.preventDefault();
-								show = false;
-								goto('/playground');
-								if ($mobile) {
-									await tick();
-									showSidebar.set(false);
-								}
-							}}
-						>
-							<div class=" self-center mr-3">
-								<Code className="size-5" strokeWidth="1.5" />
-							</div>
-							<div class=" self-center truncate">{$i18n.t('Playground')}</div>
-						</a>
-						<a
-							href="/admin"
-							draggable="false"
-							class="flex rounded-xl py-1.5 px-3 w-full hover:bg-gray-50 dark:hover:bg-gray-800 transition cursor-pointer select-none"
-							on:click={async (e) => {
-								if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) {
-									return;
-								}
-								e.preventDefault();
-								show = false;
-								goto('/admin');
-								if ($mobile) {
-									await tick();
-									showSidebar.set(false);
-								}
-							}}
-						>
-							<div class=" self-center mr-3">
-								<UserGroup className="w-5 h-5" strokeWidth="1.5" />
-							</div>
-							<div class=" self-center truncate">{$i18n.t('Admin Panel')}</div>
-						</a>
-					{/if}
+					<!-- Releases -->
+					<a
+						href="https://github.com/open-webui/open-webui/releases"
+						target="_blank"
+						draggable="false"
+						class="flex rounded-xl py-1.5 px-3 w-full hover:bg-gray-50 dark:hover:bg-gray-800 transition cursor-pointer select-none"
+						id="chat-share-button"
+						on:click={() => {
+							show = false;
+						}}
+					>
+						<div class=" self-center mr-3">
+							<Map className="size-5" />
+						</div>
+						<div class=" self-center truncate">{$i18n.t('Releases')}</div>
+					</a>
+				{/if}
 
-					{#if help}
-						<hr class=" border-gray-50/30 dark:border-gray-800/30 my-1 p-0" />
+				<button
+					class="flex rounded-xl py-1.5 px-3 w-full hover:bg-gray-50 dark:hover:bg-gray-800 transition cursor-pointer select-none"
+					type="button"
+					id="chat-share-button"
+					on:click={async () => {
+						show = false;
+						showShortcuts.set(!$showShortcuts);
 
-						<!-- {$i18n.t('Help')} -->
+						if ($mobile) {
+							await tick();
+							showSidebar.set(false);
+						}
+					}}
+				>
+					<div class=" self-center mr-3">
+						<Keyboard className="size-5" />
+					</div>
+					<div class=" self-center truncate">{$i18n.t('Keyboard shortcuts')}</div>
+				</button>
+			{/if}
 
-						{#if $user?.role === 'admin'}
-							<a
-								href="https://docs.openwebui.com"
-								target="_blank"
-								draggable="false"
-								class="flex rounded-xl py-1.5 px-3 w-full hover:bg-gray-50 dark:hover:bg-gray-800 transition cursor-pointer select-none"
-								id="chat-share-button"
-								on:click={() => {
-									show = false;
-								}}
-							>
-								<div class=" self-center mr-3">
-									<QuestionMarkCircle className="size-5" />
-								</div>
-								<div class=" self-center truncate">{$i18n.t('Documentation')}</div>
-							</a>
+			{#if showSignOut}
+				<hr class=" border-gray-50/30 dark:border-gray-800/30 my-1 p-0" />
 
-							<!-- Releases -->
-							<a
-								href="https://github.com/open-webui/open-webui/releases"
-								target="_blank"
-								draggable="false"
-								class="flex rounded-xl py-1.5 px-3 w-full hover:bg-gray-50 dark:hover:bg-gray-800 transition cursor-pointer select-none"
-								id="chat-share-button"
-								on:click={() => {
-									show = false;
-								}}
-							>
-								<div class=" self-center mr-3">
-									<Map className="size-5" />
-								</div>
-								<div class=" self-center truncate">{$i18n.t('Releases')}</div>
-							</a>
-						{/if}
+				<button
+					class="flex rounded-xl py-1.5 px-3 w-full hover:bg-gray-50 dark:hover:bg-gray-800 transition cursor-pointer select-none"
+					type="button"
+					on:click={async () => {
+						const res = await userSignOut();
+						user.set(null);
+						localStorage.removeItem('token');
 
-						<button
-							class="flex rounded-xl py-1.5 px-3 w-full hover:bg-gray-50 dark:hover:bg-gray-800 transition cursor-pointer select-none"
-							type="button"
-							id="chat-share-button"
-							on:click={async () => {
-								show = false;
-								showShortcuts.set(!$showShortcuts);
+						location.href = res?.redirect_url ?? '/auth';
+						show = false;
+					}}
+				>
+					<div class=" self-center mr-3">
+						<SignOut className="w-5 h-5" strokeWidth="1.5" />
+					</div>
+					<div class=" self-center truncate">{$i18n.t('Sign Out')}</div>
+				</button>
+			{/if}
 
-								if ($mobile) {
-									await tick();
-									showSidebar.set(false);
-								}
-							}}
-						>
-							<div class=" self-center mr-3">
-								<Keyboard className="size-5" />
-							</div>
-							<div class=" self-center truncate">{$i18n.t('Keyboard shortcuts')}</div>
-						</button>
-					{/if}
-
+			{#if showActiveUsers && ($config?.features?.enable_public_active_users_count || role === 'admin') && usage}
+				{#if usage?.user_count}
 					<hr class=" border-gray-50/30 dark:border-gray-800/30 my-1 p-0" />
-				{/if}
-
-				{#if showSignOut}
-					<button
-						class="flex rounded-xl py-1.5 px-3 w-full hover:bg-gray-50 dark:hover:bg-gray-800 transition cursor-pointer select-none"
-						type="button"
-						on:click={async () => {
-							const res = await userSignOut();
-							user.set(null);
-							localStorage.removeItem('token');
-
-							location.href = res?.redirect_url ?? '/auth';
-							show = false;
-						}}
-					>
-						<div class=" self-center mr-3">
-							<SignOut className="w-5 h-5" strokeWidth="1.5" />
-						</div>
-						<div class=" self-center truncate">{$i18n.t('Sign Out')}</div>
-					</button>
-				{/if}
-
-				{#if role !== 'user' && showActiveUsers && ($config?.features?.enable_public_active_users_count || role === 'admin') && usage}
-					{#if usage?.user_count}
-						<hr class=" border-gray-50/30 dark:border-gray-800/30 my-1 p-0" />
 
 						<Tooltip
 						content={usage?.model_ids && usage?.model_ids.length > 0

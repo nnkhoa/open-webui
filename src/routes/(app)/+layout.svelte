@@ -404,7 +404,7 @@
 			class=" text-gray-700 dark:text-gray-100 bg-white dark:bg-gray-900 h-screen max-h-[100dvh] overflow-hidden flex flex-col"
 			style="padding-top: var(--topbar-height);"
 		>
-			<div class="flex-1 min-h-0 overflow-auto flex flex-row justify-end">
+			<div class="flex-1 min-h-0 overflow-hidden flex flex-row justify-end">
 				{#if !['user', 'admin'].includes($user?.role)}
 				<AccountPending />
 			{:else}
@@ -495,7 +495,7 @@
 		min-height: calc(100vh - var(--banner-height, 0px)) !important;
 	}
 
-	:global(#sidebar > div) {
+	:global(#sidebar > div:first-child) {
 		height: calc(100vh - var(--banner-height, 0px)) !important;
 		max-height: calc(100dvh - var(--banner-height, 0px)) !important;
 	}
