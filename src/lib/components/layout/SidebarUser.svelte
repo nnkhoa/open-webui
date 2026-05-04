@@ -37,7 +37,7 @@
 		sidebarWidth.subscribe((w) => {
 			document.documentElement.style.setProperty('--sidebar-width', `${w}px`);
 		});
-		showSidebar.set(!$mobile ? localStorage.sidebar === 'true' : false);
+		showSidebar.set(!$mobile);
 	});
 </script>
 
