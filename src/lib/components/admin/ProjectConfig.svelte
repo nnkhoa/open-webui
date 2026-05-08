@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, getContext } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import { models } from '$lib/stores';
+	import { config as configStore, models } from '$lib/stores';
 	import { projectConfig } from '$lib/stores/projectConfig';
 	import {
 		getProjectConfig,
@@ -9,7 +9,9 @@
 		uploadProjectLogo,
 		deleteProjectLogo
 	} from '$lib/apis/configs/project';
+	import { getBackendConfig } from '$lib/apis';
 	import Spinner from '$lib/components/common/Spinner.svelte';
+	import Switch from '$lib/components/common/Switch.svelte';
 	import { WEBUI_BASE_URL } from '$lib/constants';
 
 	const i18n = getContext('i18n');
@@ -24,6 +26,7 @@
 	let orgName = '';
 	let orgSubtitle = '';
 	let appName = '';
+	let enableNewChatOnModelChange = true;
 	let logoFileInput: HTMLInputElement;
 
 	// Get models list for display name editing
@@ -42,6 +45,7 @@
 			orgName = config.org_name || 'Nova Consumer Group';
 			orgSubtitle = config.org_subtitle || 'Chương trình tư vấn chiến lược AI';
 			appName = config.app_name || '';
+			enableNewChatOnModelChange = config.enable_new_chat_on_model_change ?? true;
 
 			await projectConfig.set({
 				logo_url: config.logo_url,
@@ -49,7 +53,8 @@
 				brand_color: config.brand_color || '',
 				org_name: orgName,
 				org_subtitle: orgSubtitle,
-				app_name: appName
+				app_name: appName,
+				enable_new_chat_on_model_change: enableNewChatOnModelChange
 			});
 		} catch (err) {
 			console.error('Failed to load project config:', err);
@@ -104,7 +109,8 @@
 				brand_color: brandColor || null,
 				org_name: orgName,
 				org_subtitle: orgSubtitle,
-				app_name: appName
+				app_name: appName,
+				enable_new_chat_on_model_change: enableNewChatOnModelChange
 			});
 
 			await projectConfig.set({
@@ -113,8 +119,16 @@
 				brand_color: config.brand_color || '',
 				org_name: config.org_name || 'Nova Consumer Group',
 				org_subtitle: config.org_subtitle || 'Chương trình tư vấn chiến lược AI',
-				app_name: config.app_name || ''
+				app_name: config.app_name || '',
+				enable_new_chat_on_model_change: config.enable_new_chat_on_model_change ?? true
 			});
+
+			// Refresh global $config so feature toggles consumed elsewhere
+			// (e.g. Chat.svelte's "new chat on model change" hook) react immediately.
+			const refreshed = await getBackendConfig();
+			if (refreshed) {
+				configStore.set(refreshed);
+			}
 
 			toast.success('Project config saved');
 		} catch (err) {
@@ -261,6 +275,29 @@
 					placeholder="Open WebUI"
 					class="w-full px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-black dark:focus:ring-white"
 				/>
+			</div>
+
+			<!-- Section: Chat Behavior -->
+			<div
+				class="rounded-2xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 p-5"
+			>
+				<h3 class="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-3">Chat Behavior</h3>
+
+				<div class="flex items-start justify-between gap-4">
+					<div class="flex-1 min-w-0">
+						<div class="text-sm text-gray-700 dark:text-gray-200">
+							Tạo khung chat mới khi đổi model
+						</div>
+						<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+							Khi bật, đổi model trong một khung chat hiện có sẽ tự mở khung chat mới với
+							model vừa chọn. Khi tắt, người dùng vẫn dùng tiếp khung chat cũ với model mới.
+						</p>
+					</div>
+
+					<div class="shrink-0 mt-1">
+						<Switch bind:state={enableNewChatOnModelChange} />
+					</div>
+				</div>
 			</div>
 
 			<!-- Section: Brand Color -->

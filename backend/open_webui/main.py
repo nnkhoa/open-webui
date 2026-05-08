@@ -388,6 +388,7 @@ from open_webui.config import (
     ENABLE_API_KEYS_ENDPOINT_RESTRICTIONS,
     API_KEYS_ALLOWED_ENDPOINTS,
     ENABLE_FOLDERS,
+    ENABLE_NEW_CHAT_ON_MODEL_CHANGE,
     FOLDER_MAX_FILE_COUNT,
     ENABLE_CHANNELS,
     ENABLE_NOTES,
@@ -881,6 +882,7 @@ app.state.config.AIBI_APP_NAME = AIBI_APP_NAME
 
 
 app.state.config.ENABLE_FOLDERS = ENABLE_FOLDERS
+app.state.config.ENABLE_NEW_CHAT_ON_MODEL_CHANGE = ENABLE_NEW_CHAT_ON_MODEL_CHANGE
 app.state.config.FOLDER_MAX_FILE_COUNT = FOLDER_MAX_FILE_COUNT
 app.state.config.ENABLE_CHANNELS = ENABLE_CHANNELS
 app.state.config.ENABLE_NOTES = ENABLE_NOTES
@@ -2092,6 +2094,7 @@ async def get_app_config(request: Request):
                 {
                     'enable_direct_connections': app.state.config.ENABLE_DIRECT_CONNECTIONS,
                     'enable_folders': app.state.config.ENABLE_FOLDERS,
+                    'enable_new_chat_on_model_change': app.state.config.ENABLE_NEW_CHAT_ON_MODEL_CHANGE,
                     'folder_max_file_count': app.state.config.FOLDER_MAX_FILE_COUNT,
                     'enable_channels': app.state.config.ENABLE_CHANNELS,
                     'enable_notes': app.state.config.ENABLE_NOTES,
