@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import time
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel
 
 from open_webui.models.ai4bi_sidebar import sidebar_cache
 from open_webui.models.users import UserModel
-from open_webui.utils.auth import get_verified_user
+from open_webui.utils.auth import get_admin_user, get_verified_user
+from open_webui import config as ai4bi_config
 
 from .sidebar_runtime import (
     PERSISTENT_CACHE_TTL_SECONDS,
@@ -18,6 +20,32 @@ from .sidebar_runtime import (
 
 
 router = APIRouter()
+
+
+class SidebarPromptsForm(BaseModel):
+    signals_prompt: str = ''
+    heartbeat_prompt: str = ''
+
+
+@router.get('/admin/sidebar-prompts')
+async def get_sidebar_prompts(user=Depends(get_admin_user)):
+    return {
+        'signals_prompt': ai4bi_config.AI4BI_SIGNALS_PROMPT.value or '',
+        'heartbeat_prompt': ai4bi_config.AI4BI_HEARTBEAT_PROMPT.value or '',
+    }
+
+
+@router.post('/admin/sidebar-prompts')
+async def set_sidebar_prompts(form: SidebarPromptsForm, user=Depends(get_admin_user)):
+    ai4bi_config.AI4BI_SIGNALS_PROMPT.value = form.signals_prompt or ''
+    ai4bi_config.AI4BI_SIGNALS_PROMPT.save()
+    ai4bi_config.AI4BI_HEARTBEAT_PROMPT.value = form.heartbeat_prompt or ''
+    ai4bi_config.AI4BI_HEARTBEAT_PROMPT.save()
+    sidebar_cache.clear_all()
+    return {
+        'signals_prompt': ai4bi_config.AI4BI_SIGNALS_PROMPT.value,
+        'heartbeat_prompt': ai4bi_config.AI4BI_HEARTBEAT_PROMPT.value,
+    }
 
 
 def _empty_response(offset: int, error: str = '', is_configured: bool = False, is_generating_flag: bool = False) -> dict:

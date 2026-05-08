@@ -105,3 +105,28 @@ export const generateAI4BIChatCompletion = async (
 
 	return createOpenAITextStream(res.body, false);
 };
+
+export const getSidebarPrompts = async (token: string) => {
+	return fetch(`${AI4BI_API_BASE_URL}/admin/sidebar-prompts`, {
+		method: 'GET',
+		headers: {
+			Accept: 'application/json',
+			...(token ? { authorization: `Bearer ${token}` } : {})
+		}
+	}).then(parseJson);
+};
+
+export const setSidebarPrompts = async (
+	token: string,
+	body: { signals_prompt: string; heartbeat_prompt: string }
+) => {
+	return fetch(`${AI4BI_API_BASE_URL}/admin/sidebar-prompts`, {
+		method: 'POST',
+		headers: {
+			Accept: 'application/json',
+			'Content-Type': 'application/json',
+			...(token ? { authorization: `Bearer ${token}` } : {})
+		},
+		body: JSON.stringify(body)
+	}).then(parseJson);
+};
