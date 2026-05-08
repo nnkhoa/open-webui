@@ -7,6 +7,7 @@ export interface ProjectConfig {
 	org_name: string;
 	org_subtitle: string;
 	app_name: string;
+	enable_new_chat_on_model_change: boolean;
 }
 
 export const getProjectConfig = async (token: string): Promise<ProjectConfig> => {

@@ -26,6 +26,7 @@ class ProjectConfigForm(BaseModel):
     org_name: Optional[str] = None
     org_subtitle: Optional[str] = None
     app_name: Optional[str] = None
+    enable_new_chat_on_model_change: Optional[bool] = None
 
 
 ############################
@@ -42,6 +43,7 @@ async def get_project_config(request: Request, user=Depends(get_admin_user)):
         'org_name': request.app.state.config.AIBI_ORG_NAME,
         'org_subtitle': request.app.state.config.AIBI_ORG_SUBTITLE,
         'app_name': request.app.state.config.AIBI_APP_NAME,
+        'enable_new_chat_on_model_change': request.app.state.config.ENABLE_NEW_CHAT_ON_MODEL_CHANGE,
     }
 
 
@@ -76,6 +78,9 @@ async def set_project_config(
     if 'app_name' in data and data['app_name'] is not None:
         request.app.state.config.AIBI_APP_NAME = data['app_name']
 
+    if 'enable_new_chat_on_model_change' in data and data['enable_new_chat_on_model_change'] is not None:
+        request.app.state.config.ENABLE_NEW_CHAT_ON_MODEL_CHANGE = data['enable_new_chat_on_model_change']
+
     return {
         'logo_url': request.app.state.config.AIBI_PROJECT_LOGO,
         'model_display_names': request.app.state.config.AIBI_MODEL_DISPLAY_NAMES,
@@ -83,6 +88,7 @@ async def set_project_config(
         'org_name': request.app.state.config.AIBI_ORG_NAME,
         'org_subtitle': request.app.state.config.AIBI_ORG_SUBTITLE,
         'app_name': request.app.state.config.AIBI_APP_NAME,
+        'enable_new_chat_on_model_change': request.app.state.config.ENABLE_NEW_CHAT_ON_MODEL_CHANGE,
     }
 
 

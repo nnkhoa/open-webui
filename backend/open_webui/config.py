@@ -1522,6 +1522,12 @@ ENABLE_FOLDERS = PersistentConfig(
     os.environ.get('ENABLE_FOLDERS', 'True').lower() == 'true',
 )
 
+ENABLE_NEW_CHAT_ON_MODEL_CHANGE = PersistentConfig(
+    'ENABLE_NEW_CHAT_ON_MODEL_CHANGE',
+    'ui.enable_new_chat_on_model_change',
+    os.environ.get('ENABLE_NEW_CHAT_ON_MODEL_CHANGE', 'True').lower() == 'true',
+)
+
 FOLDER_MAX_FILE_COUNT = PersistentConfig(
     'FOLDER_MAX_FILE_COUNT',
     'folders.max_file_count',

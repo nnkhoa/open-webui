@@ -6,5 +6,6 @@ export const projectConfig = writable({
 	brand_color: null as string | null,
 	org_name: 'Nova Consumer Group' as string,
 	org_subtitle: 'Chương trình tư vấn chiến lược AI' as string,
-	app_name: '' as string
+	app_name: '' as string,
+	enable_new_chat_on_model_change: true as boolean
 });
