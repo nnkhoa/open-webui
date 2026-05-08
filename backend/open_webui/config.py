@@ -4067,3 +4067,19 @@ LDAP_ATTRIBUTE_FOR_GROUPS = PersistentConfig(
     'ldap.server.attribute_for_groups',
     os.environ.get('LDAP_ATTRIBUTE_FOR_GROUPS', 'memberOf'),
 )
+
+####################################
+# AI4BI Sidebar Prompts (admin-configurable)
+####################################
+
+AI4BI_SIGNALS_PROMPT = PersistentConfig(
+    'AI4BI_SIGNALS_PROMPT',
+    'ai4bi.sidebar.signals_prompt',
+    os.environ.get('AI4BI_SIGNALS_PROMPT', ''),
+)
+
+AI4BI_HEARTBEAT_PROMPT = PersistentConfig(
+    'AI4BI_HEARTBEAT_PROMPT',
+    'ai4bi.sidebar.heartbeat_prompt',
+    os.environ.get('AI4BI_HEARTBEAT_PROMPT', ''),
+)

@@ -213,8 +213,9 @@
 
 				await tick();
 
-				// Send message to CURRENT chat (not new chat)
-				await sendMessage(history, userMessageId, { newChat: false });
+				// If no chat exists yet, create a new one; otherwise continue current chat
+				const isFirstMessage = !chatIdProp;
+				await sendMessage(history, userMessageId, { newChat: isFirstMessage });
 
 				// Reset flag after sending
 				pendingMessageHandled = false;

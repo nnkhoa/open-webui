@@ -605,8 +605,14 @@ def _build_heartbeat_input(as_of: date, metrics: list[dict], n: int, instruction
 
 
 def _generate_signals_llm(input_payload: dict[str, Any]) -> list[dict]:
+    from open_webui.config import AI4BI_SIGNALS_PROMPT as _ADMIN_SIGNALS_PROMPT
+
+    admin_prompt = (_ADMIN_SIGNALS_PROMPT.value or "").strip()
+    if not admin_prompt:
+        return []
+
     resp = generate_chat(
-        system_prompt=DAILY_SIGNALS_PROMPT,
+        system_prompt=admin_prompt,
         user_prompt=json.dumps(input_payload, ensure_ascii=False),
         temperature=0.3,
     )
@@ -634,8 +640,14 @@ def _generate_signals_llm(input_payload: dict[str, Any]) -> list[dict]:
 
 
 def _generate_heartbeat_llm(input_payload: dict[str, Any]) -> list[dict]:
+    from open_webui.config import AI4BI_HEARTBEAT_PROMPT as _ADMIN_HEARTBEAT_PROMPT
+
+    admin_prompt = (_ADMIN_HEARTBEAT_PROMPT.value or "").strip()
+    if not admin_prompt:
+        return []
+
     resp = generate_chat(
-        system_prompt=DAILY_HEARTBEAT_PROMPT,
+        system_prompt=admin_prompt,
         user_prompt=json.dumps(input_payload, ensure_ascii=False),
         temperature=0.3,
     )

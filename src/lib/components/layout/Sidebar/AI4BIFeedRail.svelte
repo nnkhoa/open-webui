@@ -192,9 +192,7 @@
 		ensurePolling();
 	}
 
-	$: visibleSignals = signalsExpanded
-		? signalItems
-		: signalItems.slice(0, SIGNALS_INITIAL_VISIBLE);
+	$: visibleSignals = signalItems.slice(0, SIGNALS_INITIAL_VISIBLE);
 	$: visibleHeartbeat = heartbeatExpanded
 		? heartbeatItems
 		: heartbeatItems.slice(0, HEARTBEAT_INITIAL_VISIBLE);
@@ -270,36 +268,6 @@
 				{/each}
 			</div>
 
-			{#if signalItems.length > 0}
-				<div class="footer-actions">
-					{#if signalsLoading}
-						<span class="footer-note">Đang tải...</span>
-					{:else if signalsExpanded}
-						<button
-							class="ghost-button"
-							type="button"
-							on:click={() => {
-								signalsExpanded = false;
-							}}
-						>
-							Ẩn bớt
-						</button>
-					{:else if signalsCanExpand}
-						<button
-							class="ghost-button"
-							type="button"
-							on:click={async () => {
-								if (signalsHasMore) {
-									await loadSignals(false);
-								}
-								signalsExpanded = true;
-							}}
-						>
-							Xem thêm
-						</button>
-					{/if}
-				</div>
-			{/if}
 		</div>
 
 		<div class="heartbeat-section">

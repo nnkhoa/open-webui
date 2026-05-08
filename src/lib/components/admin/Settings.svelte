@@ -21,6 +21,7 @@
 	import Evaluations from './Settings/Evaluations.svelte';
 	import CodeExecution from './Settings/CodeExecution.svelte';
 	import Integrations from './Settings/Integrations.svelte';
+	import AI4BISidebar from './Settings/AI4BISidebar.svelte';
 
 	import ChartBar from '../icons/ChartBar.svelte';
 	import DocumentChartBar from '../icons/DocumentChartBar.svelte';
@@ -48,6 +49,7 @@
 			'audio',
 			'images',
 			'pipelines',
+			'ai4bi-sidebar',
 			'db'
 		].includes(tabFromPath)
 			? tabFromPath
@@ -237,6 +239,12 @@
 			title: 'Pipelines',
 			route: '/admin/settings/pipelines',
 			keywords: ['pipelines', 'workflows', 'filters', 'valves', 'middleware']
+		},
+		{
+			id: 'ai4bi-sidebar',
+			title: 'AI4BI Sidebar',
+			route: '/admin/settings/ai4bi-sidebar',
+			keywords: ['ai4bi', 'sidebar', 'prompt', 'tín hiệu', 'nhịp đập', 'signals', 'heartbeat']
 		},
 		{
 			id: 'db',
@@ -464,6 +472,19 @@
 								clip-rule="evenodd"
 							/>
 						</svg>
+					{:else if tab.id === 'ai4bi-sidebar'}
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							viewBox="0 0 16 16"
+							fill="currentColor"
+							class="w-4 h-4"
+						>
+							<path
+								fill-rule="evenodd"
+								d="M2 3.75A1.75 1.75 0 0 1 3.75 2h8.5c.966 0 1.75.784 1.75 1.75v8.5A1.75 1.75 0 0 1 12.25 14h-8.5A1.75 1.75 0 0 1 2 12.25v-8.5ZM5 5.5a.75.75 0 0 1 .75-.75h.5a.75.75 0 0 1 0 1.5h-.5A.75.75 0 0 1 5 5.5Zm0 2.5a.75.75 0 0 1 .75-.75h.5a.75.75 0 0 1 0 1.5h-.5A.75.75 0 0 1 5 8Zm0 2.5a.75.75 0 0 1 .75-.75h.5a.75.75 0 0 1 0 1.5h-.5A.75.75 0 0 1 5 10.5ZM8.25 4.75a.75.75 0 0 0 0 1.5h2.25a.75.75 0 0 0 0-1.5H8.25Zm0 2.5a.75.75 0 0 0 0 1.5h2.25a.75.75 0 0 0 0-1.5H8.25Zm0 2.5a.75.75 0 0 0 0 1.5h2.25a.75.75 0 0 0 0-1.5H8.25Z"
+								clip-rule="evenodd"
+							/>
+						</svg>
 					{:else if tab.id === 'pipelines'}
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
@@ -584,6 +605,8 @@
 					toast.success($i18n.t('Settings saved successfully!'));
 				}}
 			/>
+		{:else if selectedTab === 'ai4bi-sidebar'}
+			<AI4BISidebar />
 		{/if}
 	</div>
 </div>

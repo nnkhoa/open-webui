@@ -203,5 +203,15 @@ class SidebarCache:
                 db.rollback()
                 return 0
 
+    def clear_all(self, db: Optional[Session] = None) -> None:
+        with get_db_context(db) as db:
+            try:
+                db.query(AI4BISidebarSignal).delete(synchronize_session=False)
+                db.query(AI4BISidebarHeartbeat).delete(synchronize_session=False)
+                db.commit()
+            except Exception as error:
+                log.exception('Error clearing sidebar cache: %s', error)
+                db.rollback()
+
 
 sidebar_cache = SidebarCache()

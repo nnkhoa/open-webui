@@ -2263,9 +2263,27 @@ async def build_sidebar_snapshot(request: Request, user: UserModel, instruction:
     signal_payload = _build_signals_input(as_of, metrics, 5)
     heartbeat_payload = _build_heartbeat_input(as_of, metrics, 8, instruction)
 
-    signals = _normalize_signals(await _generate_json_payload(request, user, DAILY_SIGNALS_PROMPT, signal_payload))
-    heartbeat = _normalize_heartbeat(
-        await _generate_json_payload(request, user, DAILY_HEARTBEAT_PROMPT, heartbeat_payload)
+    from open_webui.config import (
+        AI4BI_HEARTBEAT_PROMPT as _ADMIN_HEARTBEAT_PROMPT,
+        AI4BI_SIGNALS_PROMPT as _ADMIN_SIGNALS_PROMPT,
+    )
+
+    admin_signals_prompt = (_ADMIN_SIGNALS_PROMPT.value or "").strip()
+    admin_heartbeat_prompt = (_ADMIN_HEARTBEAT_PROMPT.value or "").strip()
+
+    signals = (
+        _normalize_signals(
+            await _generate_json_payload(request, user, admin_signals_prompt, signal_payload)
+        )
+        if admin_signals_prompt
+        else []
+    )
+    heartbeat = (
+        _normalize_heartbeat(
+            await _generate_json_payload(request, user, admin_heartbeat_prompt, heartbeat_payload)
+        )
+        if admin_heartbeat_prompt
+        else []
     )
 
     payload = {
