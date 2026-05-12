@@ -526,6 +526,52 @@ def serialize_output(output: list) -> str:
     return content.strip()
 
 
+def build_tool_result_fallback_message(results: list) -> str:
+    had_tool_result_error = False
+    had_empty_tool_result = False
+    fallback_tool_error_messages = []
+
+    for result in results:
+        result_content = result.get('content', '')
+
+        if not isinstance(result_content, str):
+            continue
+
+        stripped_result_content = result_content.strip()
+        if not stripped_result_content:
+            continue
+
+        try:
+            parsed_tool_result = json.loads(stripped_result_content)
+        except Exception:
+            continue
+
+        if isinstance(parsed_tool_result, list) and len(parsed_tool_result) == 0:
+            had_empty_tool_result = True
+        elif isinstance(parsed_tool_result, dict):
+            tool_error_message = parsed_tool_result.get('error') or parsed_tool_result.get('message')
+            if parsed_tool_result.get('error'):
+                had_tool_result_error = True
+            if tool_error_message:
+                fallback_tool_error_messages.append(str(tool_error_message))
+
+    if had_tool_result_error:
+        unique_messages = []
+        for message in fallback_tool_error_messages:
+            if message and message not in unique_messages:
+                unique_messages.append(message)
+
+        primary_message = unique_messages[0] if unique_messages else ''
+        if primary_message:
+            return 'Mình chưa lấy được kết quả cuối cùng từ công cụ dữ liệu. ' f'Chi tiết: {primary_message}'
+        return 'Mình chưa lấy được kết quả cuối cùng từ công cụ dữ liệu. Vui lòng kiểm tra lại nguồn dữ liệu hoặc thử lại.'
+
+    if had_empty_tool_result:
+        return 'Mình đã chạy công cụ dữ liệu nhưng hiện chưa nhận được bản ghi phù hợp để trả lời câu hỏi này.'
+
+    return ''
+
+
 def deep_merge(target, source):
     """
     Merge source into target recursively (returning new structure).
@@ -3975,6 +4021,17 @@ async def streaming_chat_response_handler(response, ctx):
                                 continue
                     await flush_pending_delta_data()
 
+                    streamed_response_has_visible_text = False
+                    for item in output:
+                        if item.get('type') != 'message':
+                            continue
+                        for content_part in item.get('content', []):
+                            if content_part.get('type') == 'output_text' and content_part.get('text', '').strip():
+                                streamed_response_has_visible_text = True
+                                break
+                        if streamed_response_has_visible_text:
+                            break
+
                     if output:
                         # Clean up the last message item
                         if output[-1].get('type') == 'message':
@@ -4236,8 +4293,10 @@ async def streaming_chat_response_handler(response, ctx):
                                 item['arguments'] = tc.get('function', {}).get('arguments', '{}')
                                 break
 
+                    fallback_message = build_tool_result_fallback_message(results)
                     for result in results:
-                        output_parts = [{'type': 'input_text', 'text': result.get('content', '')}]
+                        result_content = result.get('content', '')
+                        output_parts = [{'type': 'input_text', 'text': result_content}]
 
                         # Separate image data URIs (for LLM via input_image) from
                         # other files (for frontend display via files attribute).
@@ -4262,14 +4321,17 @@ async def streaming_chat_response_handler(response, ctx):
                             }
                         )
 
-                    # Append a new empty message item for the next response
+                    # Append a new assistant message for the next response.
+                    # If a tool returned an explicit error payload, seed the message
+                    # with a user-visible fallback instead of leaving a blank
+                    # placeholder that can render as an empty result area.
                     output.append(
                         {
                             'type': 'message',
                             'id': output_id('msg'),
-                            'status': 'in_progress',
+                            'status': 'in_progress' if not fallback_message else 'completed',
                             'role': 'assistant',
-                            'content': [{'type': 'output_text', 'text': ''}],
+                            'content': [{'type': 'output_text', 'text': fallback_message}],
                         }
                     )
 
@@ -4346,6 +4408,27 @@ async def streaming_chat_response_handler(response, ctx):
                             },
                         }
                     )
+
+                    if not streamed_response_has_visible_text:
+                        fallback_message = build_tool_result_fallback_message(results)
+                        if fallback_message:
+                            if output and output[-1].get('type') == 'message':
+                                output[-1]['status'] = 'completed'
+                                output[-1]['content'] = [
+                                    {'type': 'output_text', 'text': fallback_message}
+                                ]
+                            else:
+                                output.append(
+                                    {
+                                        'type': 'message',
+                                        'id': output_id('msg'),
+                                        'status': 'completed',
+                                        'role': 'assistant',
+                                        'content': [
+                                            {'type': 'output_text', 'text': fallback_message}
+                                        ],
+                                    }
+                                )
 
                     try:
                         new_form_data = {
