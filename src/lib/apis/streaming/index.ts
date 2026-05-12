@@ -53,6 +53,7 @@ async function* openAIStreamToIterator(
 			continue;
 		}
 		const data = value.data;
+		const event = value.event;
 		if (data.startsWith('[DONE]')) {
 			yield { done: true, value: '' };
 			break;
@@ -60,10 +61,17 @@ async function* openAIStreamToIterator(
 
 		try {
 			const parsedData = JSON.parse(data);
-			console.log(parsedData);
 
 			if (parsedData.error) {
 				yield { done: true, value: '', error: parsedData.error };
+				break;
+			}
+
+			if (event === 'done' || parsedData.done === true) {
+				if (parsedData.usage) {
+					yield { done: false, value: '', usage: parsedData.usage };
+				}
+				yield { done: true, value: '' };
 				break;
 			}
 
@@ -82,12 +90,20 @@ async function* openAIStreamToIterator(
 				continue;
 			}
 
+			if (event === 'reply_chunk') {
+				yield {
+					done: false,
+					value: parsedData.text ?? ''
+				};
+				continue;
+			}
+
 			yield {
 				done: false,
 				value: parsedData.choices?.[0]?.delta?.content ?? ''
 			};
 		} catch (e) {
-			console.error('Error extracting delta from SSE event:', e);
+			console.error('Error extracting delta from SSE event:', e, { event, data });
 		}
 	}
 }

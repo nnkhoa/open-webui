@@ -2466,10 +2466,27 @@
 			history.messages[responseMessageId] = responseMessage;
 			if (res) {
 				for await (const update of res) {
-					const { value, done, error } = update;
+					const { value, done, error, usage, sources, selectedModelId } = update;
 					if (error) {
 						await handleOpenAIError(error, responseMessage);
 						break;
+					}
+					if (sources) {
+						responseMessage.sources = Array.isArray(responseMessage.sources)
+							? [...responseMessage.sources, ...sources]
+							: [...sources];
+						history.messages[responseMessageId] = responseMessage;
+						continue;
+					}
+					if (selectedModelId) {
+						responseMessage.selectedModelId = selectedModelId;
+						history.messages[responseMessageId] = responseMessage;
+						continue;
+					}
+					if (usage) {
+						responseMessage.usage = usage;
+						history.messages[responseMessageId] = responseMessage;
+						continue;
 					}
 					if (done) {
 						responseMessage.done = true;
