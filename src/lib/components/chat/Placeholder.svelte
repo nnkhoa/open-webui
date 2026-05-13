@@ -20,8 +20,7 @@
 		currentChatPage
 	} from '$lib/stores';
 	import { sanitizeResponseContent, extractCurlyBraceWords } from '$lib/utils';
-	import { WEBUI_API_BASE_URL, WEBUI_BASE_URL } from '$lib/constants';
-	import { projectConfig } from '$lib/stores/projectConfig';
+	import { WEBUI_API_BASE_URL } from '$lib/constants';
 
 	import Suggestions from './Suggestions.svelte';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
@@ -126,12 +125,12 @@
 										}}
 									>
 										<img
-											src={$projectConfig.logo_url ? `${WEBUI_BASE_URL}${$projectConfig.logo_url}` : `${WEBUI_API_BASE_URL}/models/model/profile/image?id=${model?.id}&lang=${$i18n.language}`}
+											src={`${WEBUI_API_BASE_URL}/models/model/profile/image?id=${model?.id}&lang=${$i18n.language}`}
 											class=" h-9 @sm:h-10 w-auto object-contain"
 											aria-hidden="true"
 											draggable="false"
 											on:error={(e) => {
-												e.currentTarget.src = $projectConfig.logo_url ? `${WEBUI_BASE_URL}${$projectConfig.logo_url}` : '/favicon.png';
+												e.currentTarget.src = '/favicon.png';
 											}}
 										/>
 									</button>
