@@ -3551,12 +3551,20 @@ async def streaming_chat_response_handler(response, ctx):
                         },
                     )
 
+                # Tracks whether the most recently streamed response produced
+                # any user-visible text. Declared in the enclosing scope so the
+                # outer tool-call retry loop (below) can read it after
+                # stream_body_handler returns; mutated via `nonlocal` inside the
+                # handler each time it runs.
+                streamed_response_has_visible_text = False
+
                 async def stream_body_handler(response, form_data):
                     nonlocal content
                     nonlocal usage
                     nonlocal output
                     nonlocal prior_output
                     nonlocal last_response_id
+                    nonlocal streamed_response_has_visible_text
 
                     response_tool_calls = []
 
