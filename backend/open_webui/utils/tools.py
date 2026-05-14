@@ -283,18 +283,45 @@ async def get_tools(request: Request, tool_ids: list[str], user: UserModel, extr
                         continue
 
                     specs = tool_server_data.get('specs', [])
-                    function_name_filter_list = tool_server_connection.get('config', {}).get(
-                        'function_name_filter_list', ''
-                    )
+                    tool_conn_config = tool_server_connection.get('config', {}) or {}
+                    function_name_filter_list = tool_conn_config.get('function_name_filter_list', '')
 
                     if isinstance(function_name_filter_list, str):
                         function_name_filter_list = function_name_filter_list.split(',')
 
+                    # Per-group filter: only register tools that the user's groups are allowed to use.
+                    # Config format on tool_server_connection.config:
+                    #   "function_name_filters_by_group": { "<group_id>": "name1,name2" | ["name1","name2"] }
+                    # If the user belongs to multiple groups present in the map, filters are unioned.
+                    # Falls back to function_name_filter_list when no group-specific entry matches.
+                    per_group_filter_map = tool_conn_config.get('function_name_filters_by_group') or {}
+                    effective_filter_list = function_name_filter_list
+                    if per_group_filter_map and user_group_ids:
+                        matching_entries = [
+                            per_group_filter_map.get(gid)
+                            for gid in user_group_ids
+                            if per_group_filter_map.get(gid) is not None
+                        ]
+                        if matching_entries:
+                            merged: list[str] = []
+                            for entry in matching_entries:
+                                if isinstance(entry, list):
+                                    merged.extend(str(e) for e in entry)
+                                else:
+                                    merged.extend(str(entry).split(','))
+                            effective_filter_list = [
+                                item.strip() for item in merged if item and str(item).strip()
+                            ]
+
+                    # Admin bypass: skip filtering when admin has BYPASS_ADMIN_ACCESS_CONTROL.
+                    if user.role == 'admin' and BYPASS_ADMIN_ACCESS_CONTROL:
+                        effective_filter_list = []
+
                     for spec in specs:
                         function_name = spec['name']
-                        if function_name_filter_list:
-                            if not is_string_allowed(function_name, function_name_filter_list):
-                                # Skip this function
+                        if effective_filter_list:
+                            if not is_string_allowed(function_name, effective_filter_list):
+                                # Skip this function — user's group is not allowed to use it
                                 continue
 
                         auth_type = tool_server_connection.get('auth_type', 'bearer')

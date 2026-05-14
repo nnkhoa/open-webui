@@ -563,11 +563,11 @@ def build_tool_result_fallback_message(results: list) -> str:
 
         primary_message = unique_messages[0] if unique_messages else ''
         if primary_message:
-            return 'Mình chưa lấy được kết quả cuối cùng từ công cụ dữ liệu. ' f'Chi tiết: {primary_message}'
-        return 'Mình chưa lấy được kết quả cuối cùng từ công cụ dữ liệu. Vui lòng kiểm tra lại nguồn dữ liệu hoặc thử lại.'
+            return "I couldn't get a final result from the data tool. " f'Details: {primary_message}'
+        return "I couldn't get a final result from the data tool. Please verify the data source or try again."
 
     if had_empty_tool_result:
-        return 'Mình đã chạy công cụ dữ liệu nhưng hiện chưa nhận được bản ghi phù hợp để trả lời câu hỏi này.'
+        return 'I ran the data tool but did not receive any matching records to answer this question.'
 
     return ''
 
@@ -4163,6 +4163,10 @@ async def streaming_chat_response_handler(response, ctx):
                     tools = metadata.get('tools', {})
 
                     results = []
+                    # Track permission errors so the loop can stop early instead of
+                    # letting the model retry denied resources and burn tokens.
+                    permission_error = False
+                    permission_error_tool = ''
 
                     for tool_call in response_tool_calls:
                         tool_call_id = tool_call.get('id', '')
@@ -4239,6 +4243,44 @@ async def streaming_chat_response_handler(response, ctx):
 
                             except Exception as e:
                                 tool_result = str(e)
+                                err_text = tool_result.lower()
+                                if any(
+                                    kw in err_text
+                                    for kw in (
+                                        'permission denied',
+                                        'access denied',
+                                        'forbidden',
+                                        'unauthorized',
+                                        'not authorized',
+                                    )
+                                ):
+                                    permission_error = True
+                                    permission_error_tool = tool_function_name
+
+                        # MCP/HTTP tool servers often return a permission error as a
+                        # successful tool_result string instead of raising — scan the
+                        # returned payload too so the loop can still stop early.
+                        if not permission_error and tool_result is not None:
+                            payload_text = ''
+                            try:
+                                if isinstance(tool_result, str):
+                                    payload_text = tool_result.lower()
+                                elif isinstance(tool_result, (dict, list)):
+                                    payload_text = json.dumps(tool_result).lower()
+                            except Exception:
+                                payload_text = ''
+                            if payload_text and any(
+                                kw in payload_text
+                                for kw in (
+                                    'permission denied',
+                                    'access denied',
+                                    'forbidden',
+                                    'unauthorized',
+                                    'not authorized',
+                                )
+                            ):
+                                permission_error = True
+                                permission_error_tool = tool_function_name
 
                         tool_result, tool_result_files, tool_result_embeds = process_tool_result(
                             request,
@@ -4328,6 +4370,49 @@ async def streaming_chat_response_handler(response, ctx):
                                 **({'embeds': result.get('embeds')} if result.get('embeds') else {}),
                             }
                         )
+
+                    # Stop the agentic tool-call loop immediately on permission errors.
+                    # Prevents the model from retrying denied resources, looping until
+                    # the retry cap is hit, or fabricating an answer without real data.
+                    if permission_error:
+                        refusal_text = (
+                            f"This request requires access to a resource you don't "
+                            f'have permission for (tool: `{permission_error_tool}`). '
+                            f'Please ask within your permission scope or contact your '
+                            f'administrator to request access.'
+                        )
+                        await event_emitter(
+                            {
+                                'type': 'notification',
+                                'data': {
+                                    'type': 'error',
+                                    'content': (
+                                        f"You don't have permission to access the "
+                                        f'resource that tool `{permission_error_tool}` '
+                                        f'needs.'
+                                    ),
+                                },
+                            }
+                        )
+                        output.append(
+                            {
+                                'type': 'message',
+                                'id': output_id('msg'),
+                                'status': 'completed',
+                                'role': 'assistant',
+                                'content': [{'type': 'output_text', 'text': refusal_text}],
+                            }
+                        )
+                        await event_emitter(
+                            {
+                                'type': 'chat:completion',
+                                'data': {
+                                    'content': serialize_output(output),
+                                    'output': output,
+                                },
+                            }
+                        )
+                        break
 
                     # Append a new assistant message for the next response.
                     # If a tool returned an explicit error payload, seed the message
@@ -4521,6 +4606,52 @@ async def streaming_chat_response_handler(response, ctx):
                     except Exception as e:
                         log.debug(e)
                         break
+
+                # If the agentic tool-call loop exhausted its retry budget while
+                # the model still wanted more tool calls, the loop exited without
+                # producing a final assistant message — emit one so the UI has
+                # content to render instead of an empty body.
+                if (
+                    tool_call_retries >= CHAT_RESPONSE_MAX_TOOL_CALL_RETRIES
+                    and len(tool_calls) > 0
+                ):
+                    cap_msg = (
+                        f'⚠️ Reached the limit of {CHAT_RESPONSE_MAX_TOOL_CALL_RETRIES} '
+                        f'tool calls for this request. The model cannot query further. '
+                        f'Please ask a more specific question or narrow the scope.'
+                    )
+                    await event_emitter(
+                        {
+                            'type': 'notification',
+                            'data': {'type': 'warning', 'content': cap_msg},
+                        }
+                    )
+                    if (
+                        output
+                        and output[-1].get('type') == 'message'
+                        and output[-1].get('status') == 'in_progress'
+                    ):
+                        output[-1]['status'] = 'completed'
+                        output[-1]['content'] = [{'type': 'output_text', 'text': cap_msg}]
+                    else:
+                        output.append(
+                            {
+                                'type': 'message',
+                                'id': output_id('msg'),
+                                'status': 'completed',
+                                'role': 'assistant',
+                                'content': [{'type': 'output_text', 'text': cap_msg}],
+                            }
+                        )
+                    await event_emitter(
+                        {
+                            'type': 'chat:completion',
+                            'data': {
+                                'content': serialize_output(output),
+                                'output': output,
+                            },
+                        }
+                    )
 
                 if DETECT_CODE_INTERPRETER:
                     MAX_RETRIES = 5

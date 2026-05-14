@@ -173,9 +173,14 @@ window.Chart = parent.Chart; // Chart previously assigned on parent
 	const onLoad = async () => {
 		requestAnimationFrame(resizeSameOrigin);
 
-		// if arguments are provided, inject them into the iframe window
+		// if arguments are provided, inject them into the iframe window.
+		// Wrapped in try/catch because cross-origin iframes will throw SecurityError.
 		if (args && iframe?.contentWindow) {
-			(iframe.contentWindow as any).args = args;
+			try {
+				(iframe.contentWindow as any).args = args;
+			} catch {
+				// cross-origin frame — cannot inject, ignore
+			}
 		}
 	};
 

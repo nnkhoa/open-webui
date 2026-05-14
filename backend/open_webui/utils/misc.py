@@ -1,4 +1,6 @@
+import asyncio
 import hashlib
+import os
 import re
 import threading
 import time
@@ -914,10 +916,33 @@ async def stream_wrapper(response, session, content_handler=None):
     """
     Wrap a stream to ensure cleanup happens even if streaming is interrupted.
     This is more reliable than BackgroundTask which may not run if client disconnects.
+
+    Emits SSE comment ":keepalive" lines when the upstream is idle longer than
+    STREAM_KEEPALIVE_INTERVAL seconds (default 15) so reverse proxies (Cloudflare,
+    nginx) don't terminate the connection on slow LLM responses. SSE comments are
+    silently ignored by browser EventSource parsers and by EventSourceParserStream
+    on the frontend, so they don't affect message content.
     """
     try:
+        keepalive_interval = int(os.environ.get('STREAM_KEEPALIVE_INTERVAL', '15') or '15')
+    except Exception:
+        keepalive_interval = 15
+
+    try:
         stream = content_handler(response.content) if content_handler else response.content
-        async for chunk in stream:
+        stream_iter = stream.__aiter__()
+        while True:
+            try:
+                chunk = await asyncio.wait_for(
+                    stream_iter.__anext__(), timeout=keepalive_interval
+                )
+            except StopAsyncIteration:
+                break
+            except asyncio.TimeoutError:
+                # Idle window — emit SSE keepalive comment so the connection
+                # is not closed by proxies. Continue waiting for real data.
+                yield b': keepalive\n\n'
+                continue
             yield chunk
     finally:
         await cleanup_response(response, session)

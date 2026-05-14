@@ -2519,6 +2519,7 @@ async def get_manifest_json():
             'share_target': {
                 'action': '/',
                 'method': 'GET',
+                'enctype': 'application/x-www-form-urlencoded',
                 'params': {'text': 'shared'},
             },
         }
