@@ -558,7 +558,8 @@ async def create_new_chat(
         chat = Chats.insert_new_chat(user.id, form_data, db=db)
         # AI4BI: warm cache schema metadata ngay khi user tạo chat mới,
         # để message đầu tiên đã có sẵn metadata trong system prompt.
-        asyncio.create_task(_ai4bi_warm_schema_cache(request))
+        # Truyền user để filter DBHub theo access_grants.
+        asyncio.create_task(_ai4bi_warm_schema_cache(request, user))
         return ChatResponse(**chat.model_dump())
     except Exception as e:
         log.exception(e)

@@ -1050,8 +1050,9 @@ async def generate_chat_completion(
         if not bypass_system_prompt:
             # AI4BI: preload DB schema metadata vào system prompt ngay từ
             # request đầu tiên của chat. Lần đầu fetch DBHub MCP; các lần
-            # sau hit cache (TTL theo env AI4BI_SCHEMA_TTL).
-            schema_block = await _ai4bi_get_schema_block(request)
+            # sau hit cache (TTL theo env AI4BI_SCHEMA_TTL). Filter DBHub
+            # theo access_grants của user.
+            schema_block = await _ai4bi_get_schema_block(request, user)
             if system or schema_block:
                 payload = apply_system_prompt_to_body(
                     system, payload, metadata, user, schema_block=schema_block

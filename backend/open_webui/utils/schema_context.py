@@ -1,22 +1,18 @@
-"""AI4BI: preload DB metadata vào system prompt mỗi chat.
+"""AI4BI: preload mô tả ngắn bảng/cột vào system prompt mỗi chat.
 
-Theo cấu hình TOOL_SERVER_CONNECTIONS trong Admin → Tool Servers,
-module này tự discover các DBHub MCP đang BẬT, gọi `search_objects` để
-tìm các bảng `_meta_*` trong mọi schema, query chúng, rồi inject toàn
-bộ vào system prompt. LLM "thuộc" schema từ message đầu tiên — không
-cần gọi list_tables/describe_table khi user hỏi.
-
-Cache key bám theo danh sách URL DBHub → đổi setup DBHub thì cache tự
-invalidate ở lần fetch kế.
+Quy tắc:
+- Chỉ inject metadata của các DBHub MCP mà user CÓ access_grants
+  (theo principal_id = user.id hoặc group.id của user). Admin bypass.
+- Mỗi schema: lấy `_meta_tables` (table_name, description_vi) +
+  `_meta_columns` (column_name, data_type, description_vi).
+  KHÔNG lấy `_meta_kpi`, `_meta_glossary`, business_context, example_values.
 
 Env vars:
 - AI4BI_SCHEMA_INJECTION  : "true"/"false" (default: true)
-- AI4BI_METADATA_TABLE    : Tên bảng metadata cốt lõi (default: _meta_tables)
-- AI4BI_METADATA_EXTRA    : Comma-list bảng metadata bổ sung
-                             (default: _meta_columns,_meta_kpi,_meta_glossary)
+- AI4BI_METADATA_TABLE    : Tên bảng metadata cốt (default: _meta_tables)
+- AI4BI_COLUMNS_TABLE     : Tên bảng metadata cột (default: _meta_columns)
 - AI4BI_SCHEMA_TTL        : TTL cache, giây (default: 3600)
-- AI4BI_DBHUB_URL_FALLBACK: URL DBHub dùng khi không có TOOL_SERVER_CONNECTIONS
-                             (default: rỗng → tắt)
+- AI4BI_DBHUB_URL_FALLBACK: URL DBHub fallback nếu không có TOOL_SERVER_CONNECTIONS
 """
 
 from __future__ import annotations
@@ -36,13 +32,7 @@ log = logging.getLogger(__name__)
 
 ENABLED = os.environ.get('AI4BI_SCHEMA_INJECTION', 'true').lower() == 'true'
 METADATA_TABLE = os.environ.get('AI4BI_METADATA_TABLE', '_meta_tables').strip()
-METADATA_EXTRA = [
-    t.strip()
-    for t in os.environ.get(
-        'AI4BI_METADATA_EXTRA', '_meta_columns,_meta_kpi,_meta_glossary'
-    ).split(',')
-    if t.strip()
-]
+COLUMNS_TABLE = os.environ.get('AI4BI_COLUMNS_TABLE', '_meta_columns').strip()
 TTL_SECONDS = int(os.environ.get('AI4BI_SCHEMA_TTL', '3600'))
 FALLBACK_URL = os.environ.get('AI4BI_DBHUB_URL_FALLBACK', '').rstrip('/')
 
@@ -66,11 +56,43 @@ def _redis_from(request) -> Any:
         return None
 
 
-def _discover_dbhubs(request) -> list[dict]:
-    """Đọc TOOL_SERVER_CONNECTIONS, trả về list DBHub MCP đang enable.
+def _user_principal_ids(user) -> set[str]:
+    """user.id + tất cả group.id mà user là member."""
+    if user is None:
+        return set()
+    ids: set[str] = set()
+    user_id = getattr(user, 'id', None)
+    if user_id:
+        ids.add(user_id)
+    try:
+        from open_webui.models.groups import Groups  # lazy import tránh circular
+        for g in Groups.get_groups_by_member_id(user_id) or []:
+            gid = getattr(g, 'id', None)
+            if gid:
+                ids.add(gid)
+    except Exception as e:
+        log.debug('schema_context: cannot fetch user groups: %s', e)
+    return ids
 
-    Mỗi item: {url, name, id}.
-    """
+
+def _has_access(conn: dict, user_principal_ids: set[str], user_role: Optional[str]) -> bool:
+    # Admin bypass — admin thấy mọi DBHub đã enable
+    if user_role == 'admin':
+        return True
+    grants = conn.get('config', {}).get('access_grants') or []
+    if not grants:
+        # Không khai báo grant → coi như public (giống behavior của Open WebUI cho tool)
+        return True
+    grant_ids = {
+        g.get('principal_id')
+        for g in grants
+        if isinstance(g, dict) and g.get('permission') == 'read'
+    }
+    return bool(user_principal_ids & grant_ids)
+
+
+def _discover_dbhubs(request, user=None) -> list[dict]:
+    """Đọc TOOL_SERVER_CONNECTIONS, filter theo (enable + type=mcp + access_grants)."""
     if request is None:
         if FALLBACK_URL:
             return [{'url': FALLBACK_URL, 'name': 'fallback', 'id': 'fallback'}]
@@ -84,6 +106,9 @@ def _discover_dbhubs(request) -> list[dict]:
             return [{'url': FALLBACK_URL, 'name': 'fallback', 'id': 'fallback'}]
         return []
 
+    principal_ids = _user_principal_ids(user)
+    user_role = getattr(user, 'role', None) if user is not None else None
+
     servers = []
     for conn in connections:
         if not isinstance(conn, dict):
@@ -95,6 +120,8 @@ def _discover_dbhubs(request) -> list[dict]:
         url = (conn.get('url') or '').rstrip('/')
         if not url:
             continue
+        if not _has_access(conn, principal_ids, user_role):
+            continue
         info = conn.get('info') or {}
         servers.append({
             'url': url,
@@ -105,7 +132,6 @@ def _discover_dbhubs(request) -> list[dict]:
 
 
 async def _mcp_call(url: str, tool: str, args: dict, timeout: float = 15.0) -> Optional[Any]:
-    """Gọi 1 JSON-RPC tools/call tới MCP server."""
     payload = {
         'jsonrpc': '2.0',
         'id': 1,
@@ -125,10 +151,7 @@ async def _mcp_call(url: str, tool: str, args: dict, timeout: float = 15.0) -> O
                 if resp.status != 200:
                     log.warning(
                         'schema_context: %s %s HTTP %s: %s',
-                        url,
-                        tool,
-                        resp.status,
-                        text[:200],
+                        url, tool, resp.status, text[:200],
                     )
                     return None
     except Exception as e:
@@ -168,8 +191,7 @@ def _extract_result(obj: dict) -> Optional[Any]:
     content = result.get('content') if isinstance(result, dict) else None
     if isinstance(content, list):
         texts = [
-            c.get('text', '')
-            for c in content
+            c.get('text', '') for c in content
             if isinstance(c, dict) and c.get('type') == 'text'
         ]
         merged = '\n'.join(t for t in texts if t)
@@ -182,8 +204,17 @@ def _extract_result(obj: dict) -> Optional[Any]:
     return result
 
 
+def _extract_rows(result: Any) -> list[dict]:
+    if not isinstance(result, dict):
+        return []
+    data = result.get('data')
+    if isinstance(data, dict):
+        rows = data.get('rows', [])
+        return rows if isinstance(rows, list) else []
+    return []
+
+
 def _extract_schemas(search_result: Any, table_name: str) -> list[str]:
-    """Từ kết quả search_objects, trả về list schema có bảng table_name."""
     if not search_result:
         return []
     data = search_result.get('data') if isinstance(search_result, dict) else None
@@ -216,91 +247,132 @@ def _qualified(schema: str, table: str) -> Optional[str]:
 
 
 async def _fetch_server(server: dict) -> Optional[dict]:
-    """Discover các schema có _meta_tables, fetch tất cả metadata table.
+    """Discover schema, fetch CHỈ tên + mô tả của bảng/cột.
 
-    Returns: {name, url, schemas: [{schema, tables: {table_name: rows}}]} hoặc None
+    Returns: {name, url, schemas: [{schema, tables: [(name, desc)], cols: [(table, name, type, desc)]}]}
     """
     url = server['url']
 
-    # B1: tìm các schema chứa METADATA_TABLE
     discovery = await _mcp_call(
         url,
         'search_objects',
-        {
-            'object_type': 'table',
-            'pattern': METADATA_TABLE,
-            'detail_level': 'names',
-        },
+        {'object_type': 'table', 'pattern': METADATA_TABLE, 'detail_level': 'names'},
     )
     schemas = _extract_schemas(discovery, METADATA_TABLE)
     if not schemas:
         log.info('schema_context: %s không có bảng %s', url, METADATA_TABLE)
         return None
 
-    # B2: với mỗi schema, fetch METADATA_TABLE + các bảng EXTRA (nếu tồn tại)
     schemas_out = []
     for schema in schemas:
-        tables_out: dict[str, Any] = {}
-        for table in [METADATA_TABLE, *METADATA_EXTRA]:
-            qualified = _qualified(schema, table)
-            if not qualified:
-                continue
-            rows = await _mcp_call(
-                url, 'execute_sql', {'sql': f'SELECT * FROM {qualified}'}
+        tbl_q = _qualified(schema, METADATA_TABLE)
+        if not tbl_q:
+            continue
+
+        # Chỉ SELECT các cột cần — không SELECT *
+        tables_resp = await _mcp_call(
+            url, 'execute_sql',
+            {'sql': f'SELECT table_name, description_vi FROM {tbl_q}'},
+        )
+        tables = [
+            (r.get('table_name', ''), (r.get('description_vi') or '').strip())
+            for r in _extract_rows(tables_resp)
+            if r.get('table_name')
+        ]
+
+        col_q = _qualified(schema, COLUMNS_TABLE)
+        cols = []
+        if col_q:
+            cols_resp = await _mcp_call(
+                url, 'execute_sql',
+                {'sql': f'SELECT table_name, column_name, data_type, description_vi FROM {col_q}'},
             )
-            if rows is not None:
-                tables_out[table] = rows
-        if tables_out:
-            schemas_out.append({'schema': schema or 'default', 'tables': tables_out})
+            cols = [
+                (
+                    r.get('table_name', ''),
+                    r.get('column_name', ''),
+                    (r.get('data_type') or '').strip(),
+                    (r.get('description_vi') or '').strip(),
+                )
+                for r in _extract_rows(cols_resp)
+                if r.get('table_name') and r.get('column_name')
+            ]
+
+        if not tables and not cols:
+            continue
+        schemas_out.append({
+            'schema': schema or 'default',
+            'tables': tables,
+            'cols': cols,
+        })
 
     if not schemas_out:
         return None
-
     return {'name': server['name'], 'url': url, 'schemas': schemas_out}
 
 
 def _format_combined(server_blocks: list[dict]) -> str:
-    """Ghép các fragment thành 1 block lớn cho system prompt."""
-    sections = []
+    sections: list[str] = []
     for sb in server_blocks:
-        schema_parts = []
         for s in sb['schemas']:
-            tables_json = json.dumps(s['tables'], ensure_ascii=False, indent=2)
-            schema_parts.append(
-                f'### Schema `{s["schema"]}` (DBHub: {sb["name"]})\n```json\n{tables_json}\n```'
-            )
-        sections.append('\n\n'.join(schema_parts))
+            lines: list[str] = []
+            lines.append(f'## Schema `{s["schema"]}` (DBHub: {sb["name"]})')
+
+            cols_by_table: dict[str, list[tuple]] = {}
+            for tname, cname, ctype, cdesc in s.get('cols', []):
+                cols_by_table.setdefault(tname, []).append((cname, ctype, cdesc))
+
+            for tname, tdesc in s.get('tables', []):
+                # Bỏ qua các bảng metadata khỏi block (tránh self-reference noise)
+                if tname.startswith('_meta_'):
+                    continue
+                header = f'### {tname}'
+                if tdesc:
+                    header += f' — {tdesc}'
+                lines.append('')
+                lines.append(header)
+                for cname, ctype, cdesc in cols_by_table.get(tname, []):
+                    type_part = f' ({ctype.upper()})' if ctype else ''
+                    desc_part = f': {cdesc}' if cdesc else ''
+                    lines.append(f'- {cname}{type_part}{desc_part}')
+
+            sections.append('\n'.join(lines))
 
     body = '\n\n'.join(sections)
-
     return (
         '<bi_schema_metadata>\n'
-        'Bạn là trợ lý phân tích dữ liệu (BI) cho doanh nghiệp. Dưới đây là '
-        'metadata mô tả TOÀN BỘ bảng/cột/KPI/glossary của các database mà bạn '
-        'có quyền truy vấn, đã được preload sẵn ngay khi mở phiên chat này. '
-        'Hãy dựa vào đây để chọn đúng bảng/cột và sinh SQL — KHÔNG cần gọi '
-        'search_objects / list_tables / describe_table khi user hỏi.\n\n'
+        'Mô tả ngắn các bảng/cột trong database mà bạn được phép truy vấn '
+        '(preload sẵn khi mở chat). Dùng thông tin này để chọn đúng bảng/cột '
+        'khi sinh SQL. KHÔNG cần gọi search_objects / list_tables / '
+        'describe_table.\n\n'
         f'{body}\n'
         '</bi_schema_metadata>'
     )
 
 
-def _cache_key(servers: list[dict]) -> str:
-    fingerprint = ','.join(sorted(s['url'] for s in servers))
+def _cache_key(servers: list[dict], user_principal_ids: set[str], user_role: Optional[str]) -> str:
+    fp_parts = [','.join(sorted(s['url'] for s in servers))]
+    # Admin chia sẻ cache chung; user thường cache theo (servers, groups) — đảm bảo
+    # 2 user khác group không lẫn cache.
+    if user_role != 'admin':
+        fp_parts.append('|'.join(sorted(user_principal_ids)))
+    fingerprint = '||'.join(fp_parts)
     digest = hashlib.sha256(fingerprint.encode()).hexdigest()[:16]
-    return f'ai4bi:schema_block:v2:{digest}'
+    return f'ai4bi:schema_block:v3:{digest}'
 
 
-async def get_schema_block(request=None) -> Optional[str]:
-    """Trả về schema block đã preload (cached hoặc fetch). None nếu tắt/không có DBHub."""
+async def get_schema_block(request=None, user=None) -> Optional[str]:
+    """Trả về schema block (cached/fetch). None nếu tắt/không có DBHub user truy cập được."""
     if not ENABLED:
         return None
 
-    servers = _discover_dbhubs(request)
+    servers = _discover_dbhubs(request, user)
     if not servers:
         return None
 
-    key = _cache_key(servers)
+    principal_ids = _user_principal_ids(user)
+    user_role = getattr(user, 'role', None) if user is not None else None
+    key = _cache_key(servers, principal_ids, user_role)
     redis = _redis_from(request)
 
     if redis is not None:
@@ -339,22 +411,22 @@ async def get_schema_block(request=None) -> Optional[str]:
                 await redis.set(key, block, ex=TTL_SECONDS)
             except Exception as e:
                 log.debug('schema_context: redis set failed: %s', e)
+
         schema_count = sum(len(p.get('schemas', [])) for p in parts)
         server_names = ', '.join(p.get('name', '?') for p in parts)
+        user_label = (
+            f'{user_role or "anon"}:{getattr(user, "email", "?")}' if user else 'anon'
+        )
         log.info(
-            'AI4BI schema injected: %d chars | %d server(s) [%s] | %d schema(s) | TTL=%ds',
-            len(block),
-            len(parts),
-            server_names,
-            schema_count,
-            TTL_SECONDS,
+            'AI4BI schema injected: %d chars | %d server(s) [%s] | %d schema(s) | user=%s | TTL=%ds',
+            len(block), len(parts), server_names, schema_count, user_label, TTL_SECONDS,
         )
         return block
 
 
-async def warm_schema_cache(request=None) -> None:
+async def warm_schema_cache(request=None, user=None) -> None:
     """Fire-and-forget: gọi khi user tạo chat/workspace mới."""
     try:
-        await get_schema_block(request)
+        await get_schema_block(request, user)
     except Exception as e:
         log.warning('schema_context: warm-up failed: %s', e)
