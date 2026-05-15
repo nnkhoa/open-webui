@@ -1,16 +1,18 @@
-"""AI4BI: preload mô tả ngắn bảng/cột vào system prompt mỗi chat.
+"""AI4BI: preload metadata các bảng `_meta_*` vào system prompt mỗi chat.
 
-Quy tắc:
-- Chỉ inject metadata của các DBHub MCP mà user CÓ access_grants
-  (theo principal_id = user.id hoặc group.id của user). Admin bypass.
-- Mỗi schema: lấy `_meta_tables` (table_name, description_vi) +
-  `_meta_columns` (column_name, data_type, description_vi).
-  KHÔNG lấy `_meta_kpi`, `_meta_glossary`, business_context, example_values.
+Logic schema-agnostic:
+- Với mỗi DBHub MCP user có quyền truy cập, tìm các bảng khớp pattern
+  metadata (default `_meta_%`) ở mọi schema qua `search_objects`.
+- Với mỗi bảng tìm được, `SELECT *` rồi dump compact JSON (1 dòng/row).
+- KHÔNG hardcode tên cột — DB nào có cột gì thì LLM thấy cột đó.
+
+Quy tắc RBAC:
+- Filter DBHub theo access_grants (principal_id = user.id hoặc group.id).
+- Admin bypass.
 
 Env vars:
 - AI4BI_SCHEMA_INJECTION  : "true"/"false" (default: true)
-- AI4BI_METADATA_TABLE    : Tên bảng metadata cốt (default: _meta_tables)
-- AI4BI_COLUMNS_TABLE     : Tên bảng metadata cột (default: _meta_columns)
+- AI4BI_METADATA_PATTERN  : LIKE pattern cho tên bảng metadata (default: _meta_%)
 - AI4BI_SCHEMA_TTL        : TTL cache, giây (default: 3600)
 - AI4BI_DBHUB_URL_FALLBACK: URL DBHub fallback nếu không có TOOL_SERVER_CONNECTIONS
 """
@@ -31,8 +33,7 @@ import aiohttp
 log = logging.getLogger(__name__)
 
 ENABLED = os.environ.get('AI4BI_SCHEMA_INJECTION', 'true').lower() == 'true'
-METADATA_TABLE = os.environ.get('AI4BI_METADATA_TABLE', '_meta_tables').strip()
-COLUMNS_TABLE = os.environ.get('AI4BI_COLUMNS_TABLE', '_meta_columns').strip()
+METADATA_PATTERN = os.environ.get('AI4BI_METADATA_PATTERN', '_meta_%').strip()
 TTL_SECONDS = int(os.environ.get('AI4BI_SCHEMA_TTL', '3600'))
 FALLBACK_URL = os.environ.get('AI4BI_DBHUB_URL_FALLBACK', '').rstrip('/')
 
@@ -214,26 +215,29 @@ def _extract_rows(result: Any) -> list[dict]:
     return []
 
 
-def _extract_schemas(search_result: Any, table_name: str) -> list[str]:
+def _extract_meta_tables(search_result: Any) -> list[tuple[str, str]]:
+    """Từ kết quả search_objects, trả về list (schema, table_name) match pattern."""
     if not search_result:
         return []
     data = search_result.get('data') if isinstance(search_result, dict) else None
     results = data.get('results') if isinstance(data, dict) else None
     if not isinstance(results, list):
         return []
-    schemas: list[str] = []
-    seen: set[str] = set()
+    out: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
     for r in results:
         if not isinstance(r, dict):
             continue
-        if r.get('name') != table_name:
+        name = r.get('name')
+        if not name:
             continue
         schema = r.get('schema') or ''
-        if schema in seen:
+        key = (schema, name)
+        if key in seen:
             continue
-        seen.add(schema)
-        schemas.append(schema)
-    return schemas
+        seen.add(key)
+        out.append(key)
+    return out
 
 
 def _qualified(schema: str, table: str) -> Optional[str]:
@@ -247,104 +251,68 @@ def _qualified(schema: str, table: str) -> Optional[str]:
 
 
 async def _fetch_server(server: dict) -> Optional[dict]:
-    """Discover schema, fetch CHỈ tên + mô tả của bảng/cột.
+    """Discover các bảng metadata match pattern, SELECT * từng bảng — schema-agnostic.
 
-    Returns: {name, url, schemas: [{schema, tables: [(name, desc)], cols: [(table, name, type, desc)]}]}
+    Returns: {name, url, schemas: { schema_name: { table_name: [row_dict, ...] } }}
     """
     url = server['url']
 
     discovery = await _mcp_call(
-        url,
-        'search_objects',
-        {'object_type': 'table', 'pattern': METADATA_TABLE, 'detail_level': 'names'},
+        url, 'search_objects',
+        {'object_type': 'table', 'pattern': METADATA_PATTERN, 'detail_level': 'names'},
     )
-    schemas = _extract_schemas(discovery, METADATA_TABLE)
-    if not schemas:
-        log.info('schema_context: %s không có bảng %s', url, METADATA_TABLE)
+    meta_tables = _extract_meta_tables(discovery)
+    if not meta_tables:
+        log.info('schema_context: %s không có bảng match %r', url, METADATA_PATTERN)
         return None
 
-    schemas_out = []
-    for schema in schemas:
-        tbl_q = _qualified(schema, METADATA_TABLE)
-        if not tbl_q:
+    schemas: dict[str, dict[str, list[dict]]] = {}
+    for schema, table in meta_tables:
+        qualified = _qualified(schema, table)
+        if not qualified:
             continue
-
-        # Chỉ SELECT các cột cần — không SELECT *
-        tables_resp = await _mcp_call(
-            url, 'execute_sql',
-            {'sql': f'SELECT table_name, description_vi FROM {tbl_q}'},
+        resp = await _mcp_call(
+            url, 'execute_sql', {'sql': f'SELECT * FROM {qualified}'},
         )
-        tables = [
-            (r.get('table_name', ''), (r.get('description_vi') or '').strip())
-            for r in _extract_rows(tables_resp)
-            if r.get('table_name')
-        ]
-
-        col_q = _qualified(schema, COLUMNS_TABLE)
-        cols = []
-        if col_q:
-            cols_resp = await _mcp_call(
-                url, 'execute_sql',
-                {'sql': f'SELECT table_name, column_name, data_type, description_vi FROM {col_q}'},
-            )
-            cols = [
-                (
-                    r.get('table_name', ''),
-                    r.get('column_name', ''),
-                    (r.get('data_type') or '').strip(),
-                    (r.get('description_vi') or '').strip(),
-                )
-                for r in _extract_rows(cols_resp)
-                if r.get('table_name') and r.get('column_name')
-            ]
-
-        if not tables and not cols:
+        rows = _extract_rows(resp)
+        if not rows:
             continue
-        schemas_out.append({
-            'schema': schema or 'default',
-            'tables': tables,
-            'cols': cols,
-        })
+        schemas.setdefault(schema or 'default', {})[table] = rows
 
-    if not schemas_out:
+    if not schemas:
         return None
-    return {'name': server['name'], 'url': url, 'schemas': schemas_out}
+    return {'name': server['name'], 'url': url, 'schemas': schemas}
+
+
+def _format_row(row: dict) -> str:
+    """Dump 1 row compact JSON, bỏ field null/rỗng để gọn."""
+    clean = {k: v for k, v in row.items() if v not in (None, '', [])}
+    return json.dumps(clean, ensure_ascii=False, separators=(',', ':'))
 
 
 def _format_combined(server_blocks: list[dict]) -> str:
     sections: list[str] = []
     for sb in server_blocks:
-        for s in sb['schemas']:
-            lines: list[str] = []
-            lines.append(f'## Schema `{s["schema"]}` (DBHub: {sb["name"]})')
-
-            cols_by_table: dict[str, list[tuple]] = {}
-            for tname, cname, ctype, cdesc in s.get('cols', []):
-                cols_by_table.setdefault(tname, []).append((cname, ctype, cdesc))
-
-            for tname, tdesc in s.get('tables', []):
-                # Bỏ qua các bảng metadata khỏi block (tránh self-reference noise)
-                if tname.startswith('_meta_'):
-                    continue
-                header = f'### {tname}'
-                if tdesc:
-                    header += f' — {tdesc}'
+        for schema, tables in sb['schemas'].items():
+            lines: list[str] = [f'## Schema `{schema}` (DBHub: {sb["name"]})']
+            for table_name, rows in tables.items():
                 lines.append('')
-                lines.append(header)
-                for cname, ctype, cdesc in cols_by_table.get(tname, []):
-                    type_part = f' ({ctype.upper()})' if ctype else ''
-                    desc_part = f': {cdesc}' if cdesc else ''
-                    lines.append(f'- {cname}{type_part}{desc_part}')
-
+                lines.append(f'### {table_name} ({len(rows)} rows)')
+                for row in rows:
+                    lines.append(f'- {_format_row(row)}')
             sections.append('\n'.join(lines))
 
     body = '\n\n'.join(sections)
     return (
         '<bi_schema_metadata>\n'
-        'Mô tả ngắn các bảng/cột trong database mà bạn được phép truy vấn '
-        '(preload sẵn khi mở chat). Dùng thông tin này để chọn đúng bảng/cột '
-        'khi sinh SQL. KHÔNG cần gọi search_objects / list_tables / '
-        'describe_table.\n\n'
+        'Dữ liệu metadata từ các bảng `_meta_*` của các database mà bạn (LLM) '
+        'được phép truy vấn, preload sẵn khi mở chat. Mỗi dòng là 1 row compact '
+        'JSON — cấu trúc field tuỳ thuộc DB cụ thể, hãy tự suy luận:\n'
+        '- Bảng mô tả bảng: dùng để biết bảng nào liên quan câu hỏi.\n'
+        '- Bảng mô tả cột: dùng để biết cột nào cần SELECT.\n'
+        '- Bảng KPI (nếu có): chứa công thức SQL có sẵn — dùng thẳng thay vì tự nghĩ.\n'
+        '- Bảng glossary (nếu có): dịch/giải nghĩa acronym ngành.\n'
+        'KHÔNG cần gọi search_objects / list_tables / describe_table khi user hỏi.\n\n'
         f'{body}\n'
         '</bi_schema_metadata>'
     )
@@ -412,7 +380,7 @@ async def get_schema_block(request=None, user=None) -> Optional[str]:
             except Exception as e:
                 log.debug('schema_context: redis set failed: %s', e)
 
-        schema_count = sum(len(p.get('schemas', [])) for p in parts)
+        schema_count = sum(len(p.get('schemas', {})) for p in parts)
         server_names = ', '.join(p.get('name', '?') for p in parts)
         user_label = (
             f'{user_role or "anon"}:{getattr(user, "email", "?")}' if user else 'anon'
