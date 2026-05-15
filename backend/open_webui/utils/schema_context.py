@@ -293,11 +293,15 @@ def _format_row(row: dict) -> str:
 def _format_combined(server_blocks: list[dict]) -> str:
     sections: list[str] = []
     for sb in server_blocks:
-        for schema, tables in sb['schemas'].items():
-            lines: list[str] = [f'## Schema `{schema}` (DBHub: {sb["name"]})']
+        for namespace, tables in sb['schemas'].items():
+            lines: list[str] = [
+                f'## Metadata cho database `{namespace}` (DBHub: {sb["name"]})'
+            ]
             for table_name, rows in tables.items():
                 lines.append('')
-                lines.append(f'### {table_name} ({len(rows)} rows)')
+                lines.append(
+                    f'### Nguồn `{namespace}.{table_name}` ({len(rows)} dòng)'
+                )
                 for row in rows:
                     lines.append(f'- {_format_row(row)}')
             sections.append('\n'.join(lines))
