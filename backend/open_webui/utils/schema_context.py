@@ -250,12 +250,46 @@ def _qualified(schema: str, table: str) -> Optional[str]:
     return f'{schema}.{table}'
 
 
+async def _detect_connected_schemas(url: str) -> set[str]:
+    """Detect DBHub này đang kết nối tới schema/database NÀO.
+
+    Chỉ những schema này mới được inject metadata — bỏ qua các DB khác
+    mà user MySQL/PG có quyền nhìn nhưng KHÔNG phải intent của DBHub.
+
+    Trả về set rỗng nếu không detect được (caller fallback all).
+    """
+    # MySQL: SELECT DATABASE() trả tên DB hiện tại
+    resp = await _mcp_call(url, 'execute_sql', {'sql': 'SELECT DATABASE() AS db'})
+    for r in _extract_rows(resp):
+        db = (r.get('db') or '').strip()
+        if db:
+            return {db}
+
+    # Postgres: current_schema() trả schema mặc định (thường 'public')
+    resp = await _mcp_call(url, 'execute_sql', {'sql': 'SELECT current_schema() AS sch'})
+    for r in _extract_rows(resp):
+        sch = (r.get('sch') or '').strip()
+        if sch:
+            return {sch}
+
+    return set()
+
+
 async def _fetch_server(server: dict) -> Optional[dict]:
-    """Discover các bảng metadata match pattern, SELECT * từng bảng — schema-agnostic.
+    """Discover bảng metadata match pattern trong CHỈ schema mà DBHub kết nối tới.
 
     Returns: {name, url, schemas: { schema_name: { table_name: [row_dict, ...] } }}
     """
     url = server['url']
+
+    allowed_schemas = await _detect_connected_schemas(url)
+    if allowed_schemas:
+        log.info('schema_context: %s kết nối tới: %s', url, ', '.join(allowed_schemas))
+    else:
+        log.warning(
+            'schema_context: %s không detect được default schema → fallback all',
+            url,
+        )
 
     discovery = await _mcp_call(
         url, 'search_objects',
@@ -268,6 +302,9 @@ async def _fetch_server(server: dict) -> Optional[dict]:
 
     schemas: dict[str, dict[str, list[dict]]] = {}
     for schema, table in meta_tables:
+        # Filter: chỉ giữ bảng thuộc schema mà DBHub kết nối tới
+        if allowed_schemas and schema and schema not in allowed_schemas:
+            continue
         qualified = _qualified(schema, table)
         if not qualified:
             continue
