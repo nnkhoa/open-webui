@@ -3574,10 +3574,18 @@ async def streaming_chat_response_handler(response, ctx):
                         int(metadata.get('params', {}).get('stream_delta_chunk_size') or 1),
                     )
                     last_delta_data = None
+                    # AI4BI: thời điểm flush gần nhất — dùng để timeout-flush khi
+                    # LLM stream không đều (vd reasoning model bắn cụm 1 chunk
+                    # rồi pause 200ms). Không có timeout này, backend giữ 1-2
+                    # chunk pending tới lúc đủ delta_chunk_size mới emit
+                    # socket.io → frontend giật cục.
+                    last_flush_at = time.monotonic()
+                    FLUSH_TIMEOUT_S = 0.05  # 50ms — đủ ngắn để user không cảm nhận
 
                     async def flush_pending_delta_data(threshold: int = 0):
                         nonlocal delta_count
                         nonlocal last_delta_data
+                        nonlocal last_flush_at
 
                         if delta_count >= threshold and last_delta_data:
                             await event_emitter(
@@ -3588,6 +3596,7 @@ async def streaming_chat_response_handler(response, ctx):
                             )
                             delta_count = 0
                             last_delta_data = None
+                            last_flush_at = time.monotonic()
 
                     async for line in response.body_iterator:
                         line = line.decode('utf-8', 'replace') if isinstance(line, bytes) else line
@@ -4013,6 +4022,13 @@ async def streaming_chat_response_handler(response, ctx):
                                     last_delta_data = data
                                     if delta_count >= delta_chunk_size:
                                         await flush_pending_delta_data(delta_chunk_size)
+                                    elif (
+                                        time.monotonic() - last_flush_at
+                                    ) >= FLUSH_TIMEOUT_S:
+                                        # AI4BI: chunk pending quá 50ms vẫn chưa
+                                        # đủ batch → flush ngay để frontend nhận
+                                        # liên tục, không cảm giác giật cục.
+                                        await flush_pending_delta_data()
                                 else:
                                     await event_emitter(
                                         {
