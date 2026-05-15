@@ -19,23 +19,29 @@ def apply_system_prompt_to_body(
     metadata: Optional[dict] = None,
     user=None,
     replace: bool = False,
+    schema_block: Optional[str] = None,
 ) -> dict:
-    if not system:
+    if not system and not schema_block:
         return form_data
 
-    # Metadata (WebUI Usage)
-    if metadata:
-        variables = metadata.get('variables', {})
-        if variables:
-            system = prompt_variables_template(system, variables)
+    if system:
+        if metadata:
+            variables = metadata.get('variables', {})
+            if variables:
+                system = prompt_variables_template(system, variables)
+        system = prompt_template(system, user)
 
-    # Legacy (API Usage)
-    system = prompt_template(system, user)
+    # AI4BI: schema metadata đứng trước model system prompt để LLM "hiểu" DB
+    # ngay từ message đầu tiên. Block này là kết quả preload từ DBHub MCP.
+    if schema_block and system:
+        combined = f'{schema_block}\n\n{system}'
+    else:
+        combined = schema_block or system
 
     if replace:
-        form_data['messages'] = replace_system_message_content(system, form_data.get('messages', []))
+        form_data['messages'] = replace_system_message_content(combined, form_data.get('messages', []))
     else:
-        form_data['messages'] = add_or_update_system_message(system, form_data.get('messages', []))
+        form_data['messages'] = add_or_update_system_message(combined, form_data.get('messages', []))
 
     return form_data
 

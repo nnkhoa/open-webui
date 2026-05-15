@@ -49,6 +49,7 @@ from open_webui.utils.payload import (
     apply_model_params_to_body_openai,
     apply_system_prompt_to_body,
 )
+from open_webui.utils.schema_context import get_schema_block as _ai4bi_get_schema_block
 from open_webui.utils.misc import (
     cleanup_response,
     convert_logit_bias_input_to_json,
@@ -1041,13 +1042,20 @@ async def generate_chat_completion(
             model_id = base_model_id
 
         params = model_info.params.model_dump()
-
+        system = None
         if params:
             system = params.pop('system', None)
-
             payload = apply_model_params_to_body_openai(params, payload)
-            if not bypass_system_prompt:
-                payload = apply_system_prompt_to_body(system, payload, metadata, user)
+
+        if not bypass_system_prompt:
+            # AI4BI: preload DB schema metadata vào system prompt ngay từ
+            # request đầu tiên của chat. Lần đầu fetch DBHub MCP; các lần
+            # sau hit cache (TTL theo env AI4BI_SCHEMA_TTL).
+            schema_block = await _ai4bi_get_schema_block(request)
+            if system or schema_block:
+                payload = apply_system_prompt_to_body(
+                    system, payload, metadata, user, schema_block=schema_block
+                )
 
         # Check if user has access to the model
         if not bypass_filter and user.role == 'user':

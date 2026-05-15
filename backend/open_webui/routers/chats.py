@@ -29,6 +29,7 @@ from open_webui.internal.db import get_session
 
 from open_webui.config import ENABLE_ADMIN_CHAT_ACCESS, ENABLE_ADMIN_EXPORT
 from open_webui.constants import ERROR_MESSAGES
+from open_webui.utils.schema_context import warm_schema_cache as _ai4bi_warm_schema_cache
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 
@@ -549,11 +550,15 @@ async def get_user_chat_list_by_user_id(
 @router.post('/new', response_model=Optional[ChatResponse])
 async def create_new_chat(
     form_data: ChatForm,
+    request: Request,
     user=Depends(get_verified_user),
     db: Session = Depends(get_session),
 ):
     try:
         chat = Chats.insert_new_chat(user.id, form_data, db=db)
+        # AI4BI: warm cache schema metadata ngay khi user tạo chat mới,
+        # để message đầu tiên đã có sẵn metadata trong system prompt.
+        asyncio.create_task(_ai4bi_warm_schema_cache(request))
         return ChatResponse(**chat.model_dump())
     except Exception as e:
         log.exception(e)
