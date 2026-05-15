@@ -339,6 +339,16 @@ async def get_schema_block(request=None) -> Optional[str]:
                 await redis.set(key, block, ex=TTL_SECONDS)
             except Exception as e:
                 log.debug('schema_context: redis set failed: %s', e)
+        schema_count = sum(len(p.get('schemas', [])) for p in parts)
+        server_names = ', '.join(p.get('name', '?') for p in parts)
+        log.info(
+            'AI4BI schema injected: %d chars | %d server(s) [%s] | %d schema(s) | TTL=%ds',
+            len(block),
+            len(parts),
+            server_names,
+            schema_count,
+            TTL_SECONDS,
+        )
         return block
 
 
