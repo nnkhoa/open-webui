@@ -3573,6 +3573,16 @@ async def streaming_chat_response_handler(response, ctx):
                         CHAT_RESPONSE_STREAM_DELTA_CHUNK_SIZE,
                         int(metadata.get('params', {}).get('stream_delta_chunk_size') or 1),
                     )
+
+                    # AI4BI: Khi có tool output lớn, tăng chunk size để giảm
+                    # số events gửi frontend → giảm structuredClone + marked.lexer()
+                    has_large_tool_output = any(
+                        item.get('type') == 'function_call_output'
+                        and len(json.dumps(item.get('output', ''), ensure_ascii=False)) > 10_000
+                        for item in output
+                    )
+                    if has_large_tool_output:
+                        delta_chunk_size = max(delta_chunk_size, 8)
                     last_delta_data = None
                     # AI4BI: thời điểm flush gần nhất — dùng để timeout-flush khi
                     # LLM stream không đều (vd reasoning model bắn cụm 1 chunk
