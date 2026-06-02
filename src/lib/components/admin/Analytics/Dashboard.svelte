@@ -14,6 +14,7 @@
 	import ChevronDown from '$lib/components/icons/ChevronDown.svelte';
 	import ChartLine from './ChartLine.svelte';
 	import AnalyticsModelModal from './AnalyticsModelModal.svelte';
+	import ChatUsage from './ChatUsage.svelte';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
 	import { WEBUI_API_BASE_URL } from '$lib/constants';
 	import { formatNumber } from '$lib/utils';
@@ -527,5 +528,10 @@
 
 	<div class="text-gray-500 text-xs mt-1.5 text-right">
 		ⓘ {$i18n.t('Message counts are based on assistant responses.')}
+	</div>
+
+	<!-- Per-chat session token usage breakdown -->
+	<div class="mt-6 border-t border-gray-200 dark:border-gray-800 pt-6">
+		<ChatUsage />
 	</div>
 {/if}

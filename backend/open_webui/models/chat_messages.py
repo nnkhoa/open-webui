@@ -130,7 +130,13 @@ class ChatMessageTable:
         data: dict,
         db: Optional[Session] = None,
     ) -> Optional[ChatMessageModel]:
-        """Insert or update a chat message."""
+        """Insert or update a chat message.
+
+        Defensive normalization: gọi normalize_usage trước khi lưu, đảm bảo usage JSON
+        luôn có input_tokens + output_tokens chuẩn dù provider trả format gì (OpenAI raw,
+        Ollama, llama.cpp). Tránh lệch giữa save path và analytics SQL.
+        """
+        from open_webui.utils.response import normalize_usage
         with get_db_context(db) as db:
             now = int(time.time())
             timestamp = data.get('timestamp', now)
@@ -169,7 +175,7 @@ class ChatMessageTable:
                     info = data.get('info', {})
                     usage = info.get('usage') if info else None
                 if usage:
-                    existing.usage = usage
+                    existing.usage = normalize_usage(usage)
                 existing.updated_at = now
                 db.commit()
                 db.refresh(existing)
@@ -196,7 +202,7 @@ class ChatMessageTable:
                     done=data.get('done', True),
                     status_history=data.get('status_history') or data.get('statusHistory'),
                     error=data.get('error'),
-                    usage=usage,
+                    usage=normalize_usage(usage) if usage else None,
                     created_at=timestamp,
                     updated_at=now,
                 )
@@ -326,7 +332,11 @@ class ChatMessageTable:
         group_id: Optional[str] = None,
         db: Optional[Session] = None,
     ) -> dict[str, dict]:
-        """Aggregate token usage by model using database-level aggregation."""
+        """Aggregate token usage by model using database-level aggregation.
+
+        Fallback chain: input_tokens (normalized) → prompt_tokens (OpenAI raw).
+        Cùng pattern cho output. Đảm bảo data từ provider lưu raw vẫn được aggregate đúng.
+        """
         with get_db_context(db) as db:
             from sqlalchemy import func, cast, Integer
             from open_webui.models.groups import GroupMember
@@ -334,17 +344,26 @@ class ChatMessageTable:
             dialect = db.bind.dialect.name
 
             if dialect == 'sqlite':
-                input_tokens = cast(func.json_extract(ChatMessage.usage, '$.input_tokens'), Integer)
-                output_tokens = cast(func.json_extract(ChatMessage.usage, '$.output_tokens'), Integer)
-            elif dialect == 'postgresql':
-                # Use json_extract_path_text for PostgreSQL JSON columns
-                input_tokens = cast(
-                    func.json_extract_path_text(ChatMessage.usage, 'input_tokens'),
-                    Integer,
+                input_tokens = func.coalesce(
+                    cast(func.json_extract(ChatMessage.usage, '$.input_tokens'), Integer),
+                    cast(func.json_extract(ChatMessage.usage, '$.prompt_tokens'), Integer),
+                    0,
                 )
-                output_tokens = cast(
-                    func.json_extract_path_text(ChatMessage.usage, 'output_tokens'),
-                    Integer,
+                output_tokens = func.coalesce(
+                    cast(func.json_extract(ChatMessage.usage, '$.output_tokens'), Integer),
+                    cast(func.json_extract(ChatMessage.usage, '$.completion_tokens'), Integer),
+                    0,
+                )
+            elif dialect == 'postgresql':
+                input_tokens = func.coalesce(
+                    cast(func.nullif(func.json_extract_path_text(ChatMessage.usage, 'input_tokens'), ''), Integer),
+                    cast(func.nullif(func.json_extract_path_text(ChatMessage.usage, 'prompt_tokens'), ''), Integer),
+                    0,
+                )
+                output_tokens = func.coalesce(
+                    cast(func.nullif(func.json_extract_path_text(ChatMessage.usage, 'output_tokens'), ''), Integer),
+                    cast(func.nullif(func.json_extract_path_text(ChatMessage.usage, 'completion_tokens'), ''), Integer),
+                    0,
                 )
             else:
                 raise NotImplementedError(f'Unsupported dialect: {dialect}')
@@ -388,7 +407,10 @@ class ChatMessageTable:
         group_id: Optional[str] = None,
         db: Optional[Session] = None,
     ) -> dict[str, dict]:
-        """Aggregate token usage by user using database-level aggregation."""
+        """Aggregate token usage by user using database-level aggregation.
+
+        Fallback chain giống get_token_usage_by_model: input_tokens → prompt_tokens.
+        """
         with get_db_context(db) as db:
             from sqlalchemy import func, cast, Integer
             from open_webui.models.groups import GroupMember
@@ -396,17 +418,26 @@ class ChatMessageTable:
             dialect = db.bind.dialect.name
 
             if dialect == 'sqlite':
-                input_tokens = cast(func.json_extract(ChatMessage.usage, '$.input_tokens'), Integer)
-                output_tokens = cast(func.json_extract(ChatMessage.usage, '$.output_tokens'), Integer)
-            elif dialect == 'postgresql':
-                # Use json_extract_path_text for PostgreSQL JSON columns
-                input_tokens = cast(
-                    func.json_extract_path_text(ChatMessage.usage, 'input_tokens'),
-                    Integer,
+                input_tokens = func.coalesce(
+                    cast(func.json_extract(ChatMessage.usage, '$.input_tokens'), Integer),
+                    cast(func.json_extract(ChatMessage.usage, '$.prompt_tokens'), Integer),
+                    0,
                 )
-                output_tokens = cast(
-                    func.json_extract_path_text(ChatMessage.usage, 'output_tokens'),
-                    Integer,
+                output_tokens = func.coalesce(
+                    cast(func.json_extract(ChatMessage.usage, '$.output_tokens'), Integer),
+                    cast(func.json_extract(ChatMessage.usage, '$.completion_tokens'), Integer),
+                    0,
+                )
+            elif dialect == 'postgresql':
+                input_tokens = func.coalesce(
+                    cast(func.nullif(func.json_extract_path_text(ChatMessage.usage, 'input_tokens'), ''), Integer),
+                    cast(func.nullif(func.json_extract_path_text(ChatMessage.usage, 'prompt_tokens'), ''), Integer),
+                    0,
+                )
+                output_tokens = func.coalesce(
+                    cast(func.nullif(func.json_extract_path_text(ChatMessage.usage, 'output_tokens'), ''), Integer),
+                    cast(func.nullif(func.json_extract_path_text(ChatMessage.usage, 'completion_tokens'), ''), Integer),
+                    0,
                 )
             else:
                 raise NotImplementedError(f'Unsupported dialect: {dialect}')
@@ -587,6 +618,132 @@ class ChatMessageTable:
                     current += timedelta(hours=1)
 
             return hourly_counts
+
+
+    def get_chat_usage_aggregate(self, chat_id: str, db: Optional[Session] = None) -> dict:
+        """Aggregate token usage cho 1 chat session.
+
+        Returns: {
+            'chat_id', 'total_input_tokens', 'total_output_tokens', 'total_tokens',
+            'message_count', 'by_model': {model_id: {...}}, 'messages': [...]
+        }
+        """
+        with get_db_context(db) as db:
+            messages = (
+                db.query(ChatMessage)
+                .filter(ChatMessage.chat_id == chat_id, ChatMessage.role == 'assistant')
+                .order_by(ChatMessage.created_at.asc())
+                .all()
+            )
+
+            by_model: dict[str, dict] = {}
+            message_breakdown: list[dict] = []
+            total_input = 0
+            total_output = 0
+
+            for m in messages:
+                usage = m.usage or {}
+                # Fallback: input_tokens (normalized) → prompt_tokens (OpenAI raw)
+                inp = int(usage.get('input_tokens') or usage.get('prompt_tokens') or 0)
+                out = int(usage.get('output_tokens') or usage.get('completion_tokens') or 0)
+
+                total_input += inp
+                total_output += out
+
+                model_id = m.model_id or 'unknown'
+                if model_id not in by_model:
+                    by_model[model_id] = {
+                        'input_tokens': 0,
+                        'output_tokens': 0,
+                        'total_tokens': 0,
+                        'message_count': 0,
+                    }
+                by_model[model_id]['input_tokens'] += inp
+                by_model[model_id]['output_tokens'] += out
+                by_model[model_id]['total_tokens'] += inp + out
+                by_model[model_id]['message_count'] += 1
+
+                message_breakdown.append({
+                    'message_id': m.id,
+                    'role': m.role,
+                    'model_id': m.model_id,
+                    'input_tokens': inp,
+                    'output_tokens': out,
+                    'total_tokens': inp + out,
+                    'created_at': m.created_at,
+                })
+
+            return {
+                'chat_id': chat_id,
+                'total_input_tokens': total_input,
+                'total_output_tokens': total_output,
+                'total_tokens': total_input + total_output,
+                'message_count': len(messages),
+                'by_model': by_model,
+                'messages': message_breakdown,
+            }
+
+    def get_model_totals(self, model_id: str, db: Optional[Session] = None) -> dict:
+        """All-time totals cho 1 model: tokens + count chats/users + first/last used."""
+        with get_db_context(db) as db:
+            from sqlalchemy import func, cast, Integer
+
+            dialect = db.bind.dialect.name
+
+            if dialect == 'sqlite':
+                input_tokens = func.coalesce(
+                    cast(func.json_extract(ChatMessage.usage, '$.input_tokens'), Integer),
+                    cast(func.json_extract(ChatMessage.usage, '$.prompt_tokens'), Integer),
+                    0,
+                )
+                output_tokens = func.coalesce(
+                    cast(func.json_extract(ChatMessage.usage, '$.output_tokens'), Integer),
+                    cast(func.json_extract(ChatMessage.usage, '$.completion_tokens'), Integer),
+                    0,
+                )
+            elif dialect == 'postgresql':
+                input_tokens = func.coalesce(
+                    cast(func.nullif(func.json_extract_path_text(ChatMessage.usage, 'input_tokens'), ''), Integer),
+                    cast(func.nullif(func.json_extract_path_text(ChatMessage.usage, 'prompt_tokens'), ''), Integer),
+                    0,
+                )
+                output_tokens = func.coalesce(
+                    cast(func.nullif(func.json_extract_path_text(ChatMessage.usage, 'output_tokens'), ''), Integer),
+                    cast(func.nullif(func.json_extract_path_text(ChatMessage.usage, 'completion_tokens'), ''), Integer),
+                    0,
+                )
+            else:
+                raise NotImplementedError(f'Unsupported dialect: {dialect}')
+
+            row = (
+                db.query(
+                    func.coalesce(func.sum(input_tokens), 0).label('input_tokens'),
+                    func.coalesce(func.sum(output_tokens), 0).label('output_tokens'),
+                    func.count(ChatMessage.id).label('message_count'),
+                    func.count(func.distinct(ChatMessage.chat_id)).label('chat_count'),
+                    func.count(func.distinct(ChatMessage.user_id)).label('user_count'),
+                    func.min(ChatMessage.created_at).label('first_used'),
+                    func.max(ChatMessage.created_at).label('last_used'),
+                )
+                .filter(
+                    ChatMessage.model_id == model_id,
+                    ChatMessage.role == 'assistant',
+                    ~ChatMessage.user_id.like('shared-%'),
+                )
+                .one()
+            )
+
+            return {
+                'model_id': model_id,
+                'total_input_tokens': int(row.input_tokens or 0),
+                'total_output_tokens': int(row.output_tokens or 0),
+                'total_tokens': int((row.input_tokens or 0) + (row.output_tokens or 0)),
+                'total_messages': int(row.message_count or 0),
+                'total_chats': int(row.chat_count or 0),
+                'total_users': int(row.user_count or 0),
+                'first_used_at': int(row.first_used) if row.first_used else None,
+                'last_used_at': int(row.last_used) if row.last_used else None,
+            }
 
 
 ChatMessages = ChatMessageTable()

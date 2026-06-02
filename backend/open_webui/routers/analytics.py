@@ -10,7 +10,8 @@ from open_webui.models.chats import Chats
 from open_webui.models.groups import Groups
 from open_webui.models.users import Users
 from open_webui.models.feedbacks import Feedbacks
-from open_webui.utils.auth import get_admin_user
+from open_webui.utils.auth import get_admin_user, get_verified_user
+from fastapi import HTTPException, status
 from open_webui.internal.db import get_session
 from sqlalchemy.orm import Session
 
@@ -46,6 +47,45 @@ class UserAnalyticsEntry(BaseModel):
 
 class UserAnalyticsResponse(BaseModel):
     users: list[UserAnalyticsEntry]
+
+
+class ChatMessageUsage(BaseModel):
+    message_id: str
+    role: str
+    model_id: Optional[str] = None
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    created_at: int
+
+
+class ChatUsageByModelEntry(BaseModel):
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+    message_count: int
+
+
+class ChatUsageResponse(BaseModel):
+    chat_id: str
+    total_input_tokens: int
+    total_output_tokens: int
+    total_tokens: int
+    message_count: int
+    by_model: dict[str, ChatUsageByModelEntry]
+    messages: list[ChatMessageUsage]
+
+
+class ModelTotalsResponse(BaseModel):
+    model_id: str
+    total_input_tokens: int
+    total_output_tokens: int
+    total_tokens: int
+    total_messages: int
+    total_chats: int
+    total_users: int
+    first_used_at: Optional[int] = None
+    last_used_at: Optional[int] = None
 
 
 ####################
@@ -434,3 +474,35 @@ async def get_model_overview(
     tags = [TagEntry(tag=tag, count=count) for tag, count in sorted(tag_counts.items(), key=lambda x: -x[1])[:10]]
 
     return ModelOverviewResponse(history=history, tags=tags)
+
+
+@router.get('/chats/{chat_id}/usage', response_model=ChatUsageResponse)
+async def get_chat_usage(
+    chat_id: str,
+    user=Depends(get_verified_user),
+    db: Session = Depends(get_session),
+):
+    """Token usage breakdown cho 1 chat session.
+
+    Auth: user phải own chat hoặc admin.
+    """
+    chat = Chats.get_chat_by_id_and_user_id(chat_id, user.id)
+    if not chat and user.role != 'admin':
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Chat not found')
+
+    data = ChatMessages.get_chat_usage_aggregate(chat_id, db=db)
+    return ChatUsageResponse(**data)
+
+
+@router.get('/models/{model_id:path}/totals', response_model=ModelTotalsResponse)
+async def get_model_totals(
+    model_id: str,
+    user=Depends(get_admin_user),
+    db: Session = Depends(get_session),
+):
+    """All-time cumulative totals cho 1 model (no date filter).
+
+    Khác /tokens — endpoint kia filter theo date range. Đây là số tổng kể từ ngày đầu.
+    """
+    data = ChatMessages.get_model_totals(model_id, db=db)
+    return ModelTotalsResponse(**data)
