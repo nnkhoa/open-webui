@@ -1,13 +1,9 @@
 """AI4BI: preload metadata các bảng `_meta_*` vào system prompt mỗi chat.
 
 Logic schema-agnostic:
-- Với mỗi DBHub MCP user có quyền truy cập, liệt kê tool thật qua `tools/list`.
-  DBHub multi-source gắn hậu tố theo source id (`execute_sql_<id>`,
-  `search_objects_<id>`) → ghép từng cặp thành 1 "logical source".
-- Với mỗi source, tìm các bảng khớp pattern metadata (default `_meta_%`) qua
-  `search_objects[_<id>]`, rồi `SELECT *` mỗi bảng và dump compact JSON.
-- KHÔNG hardcode tên tool (trần `execute_sql`/`search_objects` chỉ tồn tại khi
-  DBHub single-source) — luôn discover qua tools/list.
+- Với mỗi DBHub MCP user có quyền truy cập, tìm các bảng khớp pattern
+  metadata (default `_meta_%`) ở mọi schema qua `search_objects`.
+- Với mỗi bảng tìm được, `SELECT *` rồi dump compact JSON (1 dòng/row).
 - KHÔNG hardcode tên cột — DB nào có cột gì thì LLM thấy cột đó.
 
 Quy tắc RBAC:
@@ -193,10 +189,6 @@ def _extract_result(obj: dict) -> Optional[Any]:
     result = obj.get('result')
     if not result:
         return None
-    # MCP tool error: result.isError=true, content=[{text:"MCP error ..."}].
-    # KHÔNG coi là data — trả None để caller fallback đúng (vd tool-not-found).
-    if isinstance(result, dict) and result.get('isError'):
-        return None
     content = result.get('content') if isinstance(result, dict) else None
     if isinstance(content, list):
         texts = [
@@ -211,101 +203,6 @@ def _extract_result(obj: dict) -> Optional[Any]:
                 return merged
         return result
     return result
-
-
-def _parse_sse_or_json(text: str) -> list[dict]:
-    """Trả list JSON-RPC object từ response (plain JSON hoặc SSE `data:` lines)."""
-    objs: list[dict] = []
-    if 'data:' in text and ('event:' in text or text.lstrip().startswith('data:')):
-        for line in text.splitlines():
-            line = line.strip()
-            if line.startswith('data:'):
-                try:
-                    objs.append(json.loads(line[5:].strip()))
-                except Exception:
-                    continue
-    else:
-        try:
-            objs.append(json.loads(text))
-        except Exception:
-            pass
-    return objs
-
-
-def _extract_tool_names(text: str) -> list[str]:
-    for obj in _parse_sse_or_json(text):
-        if not isinstance(obj, dict):
-            continue
-        result = obj.get('result')
-        tools = result.get('tools') if isinstance(result, dict) else None
-        if isinstance(tools, list):
-            return [
-                t.get('name') for t in tools
-                if isinstance(t, dict) and t.get('name')
-            ]
-    return []
-
-
-async def _mcp_list_tools(url: str, timeout: float = 15.0) -> list[str]:
-    """Liệt kê tên tool MCP server expose (stateless, không cần session)."""
-    payload = {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list', 'params': {}}
-    headers = {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json, text/event-stream',
-    }
-    try:
-        async with aiohttp.ClientSession(
-            timeout=aiohttp.ClientTimeout(total=timeout), trust_env=True
-        ) as session:
-            async with session.post(url, json=payload, headers=headers) as resp:
-                text = await resp.text()
-                if resp.status != 200:
-                    log.warning(
-                        'schema_context: %s tools/list HTTP %s: %s',
-                        url, resp.status, text[:200],
-                    )
-                    return []
-    except Exception as e:
-        log.warning('schema_context: %s tools/list failed: %s', url, e)
-        return []
-    return _extract_tool_names(text)
-
-
-def _pair_source_tools(tool_names: list[str]) -> list[dict]:
-    """Ghép execute_sql + search_objects cùng hậu tố source thành 'logical source'.
-
-    DBHub multi-source gắn hậu tố theo source id (vd `execute_sql_asiafoods`,
-    `search_objects_aibi_pg`). DBHub single-source dùng tên trần. Hỗ trợ cả hai.
-    Trả list {suffix, exec, search}.
-    """
-    execs: dict[str, str] = {}
-    searches: dict[str, str] = {}
-    for name in tool_names:
-        if name == 'execute_sql':
-            execs[''] = name
-        elif name.startswith('execute_sql_'):
-            execs[name[len('execute_sql_'):]] = name
-        elif name == 'search_objects':
-            searches[''] = name
-        elif name.startswith('search_objects_'):
-            searches[name[len('search_objects_'):]] = name
-
-    sources: list[dict] = []
-    for suffix in sorted(searches):
-        exec_tool = execs.get(suffix)
-        if not exec_tool:
-            # Có search nhưng thiếu execute_sql cùng source → không SELECT được.
-            log.debug(
-                'schema_context: source %r thiếu execute_sql, bỏ qua',
-                suffix or '(default)',
-            )
-            continue
-        sources.append({
-            'suffix': suffix,
-            'exec': exec_tool,
-            'search': searches[suffix],
-        })
-    return sources
 
 
 def _extract_rows(result: Any) -> list[dict]:
@@ -353,23 +250,23 @@ def _qualified(schema: str, table: str) -> Optional[str]:
     return f'{schema}.{table}'
 
 
-async def _detect_connected_schemas(url: str, exec_tool: str) -> set[str]:
-    """Detect source này (qua `exec_tool`) đang kết nối tới schema/database NÀO.
+async def _detect_connected_schemas(url: str) -> set[str]:
+    """Detect DBHub này đang kết nối tới schema/database NÀO.
 
     Chỉ những schema này mới được inject metadata — bỏ qua các DB khác
-    mà user MySQL/PG có quyền nhìn nhưng KHÔNG phải intent của source.
+    mà user MySQL/PG có quyền nhìn nhưng KHÔNG phải intent của DBHub.
 
     Trả về set rỗng nếu không detect được (caller fallback all).
     """
     # MySQL: SELECT DATABASE() trả tên DB hiện tại
-    resp = await _mcp_call(url, exec_tool, {'sql': 'SELECT DATABASE() AS db'})
+    resp = await _mcp_call(url, 'execute_sql', {'sql': 'SELECT DATABASE() AS db'})
     for r in _extract_rows(resp):
         db = (r.get('db') or '').strip()
         if db:
             return {db}
 
     # Postgres: current_schema() trả schema mặc định (thường 'public')
-    resp = await _mcp_call(url, exec_tool, {'sql': 'SELECT current_schema() AS sch'})
+    resp = await _mcp_call(url, 'execute_sql', {'sql': 'SELECT current_schema() AS sch'})
     for r in _extract_rows(resp):
         sch = (r.get('sch') or '').strip()
         if sch:
@@ -378,93 +275,50 @@ async def _detect_connected_schemas(url: str, exec_tool: str) -> set[str]:
     return set()
 
 
-async def _fetch_source(url: str, src: dict) -> dict[str, dict[str, list[dict]]]:
-    """Discover bảng metadata match pattern cho 1 source (cặp exec/search tool).
+async def _fetch_server(server: dict) -> Optional[dict]:
+    """Discover bảng metadata match pattern trong CHỈ schema mà DBHub kết nối tới.
 
-    Returns: { schema_name: { table_name: [row_dict, ...] } } (rỗng nếu không có).
+    Returns: {name, url, schemas: { schema_name: { table_name: [row_dict, ...] } }}
     """
-    exec_tool = src['exec']
-    search_tool = src['search']
-    label = src['suffix'] or '(default)'
+    url = server['url']
 
-    allowed_schemas = await _detect_connected_schemas(url, exec_tool)
+    allowed_schemas = await _detect_connected_schemas(url)
     if allowed_schemas:
-        log.info(
-            'schema_context: %s [%s] kết nối tới: %s',
-            url, label, ', '.join(allowed_schemas),
-        )
+        log.info('schema_context: %s kết nối tới: %s', url, ', '.join(allowed_schemas))
     else:
         log.warning(
-            'schema_context: %s [%s] không detect được default schema → fallback all',
-            url, label,
+            'schema_context: %s không detect được default schema → fallback all',
+            url,
         )
 
     discovery = await _mcp_call(
-        url, search_tool,
+        url, 'search_objects',
         {'object_type': 'table', 'pattern': METADATA_PATTERN, 'detail_level': 'names'},
     )
     meta_tables = _extract_meta_tables(discovery)
     if not meta_tables:
-        log.info(
-            'schema_context: %s [%s] không có bảng match %r',
-            url, label, METADATA_PATTERN,
-        )
-        return {}
+        log.info('schema_context: %s không có bảng match %r', url, METADATA_PATTERN)
+        return None
 
     schemas: dict[str, dict[str, list[dict]]] = {}
     for schema, table in meta_tables:
-        # Filter: chỉ giữ bảng thuộc schema mà source kết nối tới
+        # Filter: chỉ giữ bảng thuộc schema mà DBHub kết nối tới
         if allowed_schemas and schema and schema not in allowed_schemas:
             continue
         qualified = _qualified(schema, table)
         if not qualified:
             continue
         resp = await _mcp_call(
-            url, exec_tool, {'sql': f'SELECT * FROM {qualified}'},
+            url, 'execute_sql', {'sql': f'SELECT * FROM {qualified}'},
         )
         rows = _extract_rows(resp)
         if not rows:
             continue
         schemas.setdefault(schema or 'default', {})[table] = rows
 
-    return schemas
-
-
-async def _fetch_server(server: dict) -> Optional[dict]:
-    """Discover metadata cho MỌI source của 1 DBHub endpoint.
-
-    Liệt kê tool thật qua tools/list (DBHub multi-source gắn hậu tố theo source),
-    ghép từng cặp exec/search rồi fetch song song.
-
-    Returns: {name, url, schemas: { schema_name: { table_name: [row_dict, ...] } }}
-    """
-    url = server['url']
-
-    tool_names = await _mcp_list_tools(url)
-    sources = _pair_source_tools(tool_names)
-    if not sources:
-        # tools/list rỗng/fail → thử tên trần (DBHub single-source / config cũ).
-        log.info(
-            'schema_context: %s không liệt kê được source tool → thử tên mặc định',
-            url,
-        )
-        sources = [{'suffix': '', 'exec': 'execute_sql', 'search': 'search_objects'}]
-
-    sub_results = await asyncio.gather(
-        *[_fetch_source(url, s) for s in sources],
-        return_exceptions=True,
-    )
-
-    merged: dict[str, dict[str, list[dict]]] = {}
-    for sub in sub_results:
-        if not isinstance(sub, dict):
-            continue
-        for schema, tables in sub.items():
-            merged.setdefault(schema, {}).update(tables)
-
-    if not merged:
+    if not schemas:
         return None
-    return {'name': server['name'], 'url': url, 'schemas': merged}
+    return {'name': server['name'], 'url': url, 'schemas': schemas}
 
 
 def _format_row(row: dict) -> str:

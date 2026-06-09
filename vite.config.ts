@@ -23,17 +23,6 @@ export default defineConfig({
 	build: {
 		sourcemap: true
 	},
-	server: {
-		proxy: {
-			'/api': 'http://localhost:8080',
-			'/openai': 'http://localhost:8080',
-			'/ollama': 'http://localhost:8080',
-			'/socket.io': {
-				target: 'http://localhost:8080',
-				ws: true
-			}
-		}
-	},
 	worker: {
 		format: 'es'
 	},
