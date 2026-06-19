@@ -4045,3 +4045,41 @@ LDAP_ATTRIBUTE_FOR_GROUPS = ConfigVar(
     'ldap.server.attribute_for_groups',
     os.getenv('LDAP_ATTRIBUTE_FOR_GROUPS', 'memberOf'),
 )
+
+# ── AI4BI branding / customization ──────────────────────────────────────────
+
+AIBI_PROJECT_LOGO = ConfigVar(
+    'AIBI_PROJECT_LOGO',
+    'aibi.project_logo',
+    os.getenv('AIBI_PROJECT_LOGO', ''),
+)
+
+AIBI_MODEL_DISPLAY_NAMES = ConfigVar(
+    'AIBI_MODEL_DISPLAY_NAMES',
+    'aibi.model_display_names',
+    {},
+)
+
+AIBI_BRAND_COLOR = ConfigVar(
+    'AIBI_BRAND_COLOR',
+    'aibi.brand_color',
+    os.getenv('AIBI_BRAND_COLOR', '#6c2eb9'),
+)
+
+AIBI_ORG_NAME = ConfigVar(
+    'AIBI_ORG_NAME',
+    'aibi.org_name',
+    os.getenv('AIBI_ORG_NAME', ''),
+)
+
+AIBI_ORG_SUBTITLE = ConfigVar(
+    'AIBI_ORG_SUBTITLE',
+    'aibi.org_subtitle',
+    os.getenv('AIBI_ORG_SUBTITLE', ''),
+)
+
+AIBI_APP_NAME = ConfigVar(
+    'AIBI_APP_NAME',
+    'aibi.app_name',
+    os.getenv('AIBI_APP_NAME', ''),
+)
