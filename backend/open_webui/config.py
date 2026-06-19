@@ -4083,3 +4083,9 @@ AIBI_APP_NAME = ConfigVar(
     'aibi.app_name',
     os.getenv('AIBI_APP_NAME', ''),
 )
+
+ENABLE_NEW_CHAT_ON_MODEL_CHANGE = ConfigVar(
+    'ENABLE_NEW_CHAT_ON_MODEL_CHANGE',
+    'ui.enable_new_chat_on_model_change',
+    os.getenv('ENABLE_NEW_CHAT_ON_MODEL_CHANGE', 'True').lower() == 'true',
+)
