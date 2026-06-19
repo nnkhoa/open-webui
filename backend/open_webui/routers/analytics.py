@@ -12,7 +12,6 @@ from open_webui.models.groups import Groups
 from open_webui.models.users import Users
 from open_webui.utils.auth import get_admin_user, get_verified_user
 from fastapi import HTTPException, status
-from open_webui.internal.db import get_async_session
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -487,7 +486,7 @@ async def get_model_overview(
 async def get_chat_usage(
     chat_id: str,
     user=Depends(get_verified_user),
-    db: Session = Depends(get_session),
+    db: AsyncSession = Depends(get_async_session),
 ):
     """Token usage breakdown cho 1 chat session.
 
@@ -497,7 +496,7 @@ async def get_chat_usage(
     if not chat and user.role != 'admin':
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Chat not found')
 
-    data = ChatMessages.get_chat_usage_aggregate(chat_id, db=db)
+    data = await ChatMessages.get_chat_usage_aggregate(chat_id, db=db)
     return ChatUsageResponse(**data)
 
 
@@ -505,11 +504,11 @@ async def get_chat_usage(
 async def get_model_totals(
     model_id: str,
     user=Depends(get_admin_user),
-    db: Session = Depends(get_session),
+    db: AsyncSession = Depends(get_async_session),
 ):
     """All-time cumulative totals cho 1 model (no date filter).
 
     Khác /tokens — endpoint kia filter theo date range. Đây là số tổng kể từ ngày đầu.
     """
-    data = ChatMessages.get_model_totals(model_id, db=db)
+    data = await ChatMessages.get_model_totals(model_id, db=db)
     return ModelTotalsResponse(**data)

@@ -695,7 +695,7 @@ class ChatMessageTable:
             return hourly_counts
 
 
-    def get_chat_usage_aggregate(self, chat_id: str, db: Optional[Session] = None) -> dict:
+    async def get_chat_usage_aggregate(self, chat_id: str, db: Optional[AsyncSession] = None) -> dict:
         """Aggregate token usage cho 1 chat session.
 
         Returns: {
@@ -703,12 +703,13 @@ class ChatMessageTable:
             'message_count', 'by_model': {model_id: {...}}, 'messages': [...]
         }
         """
-        with get_db_context(db) as db:
+        async with get_async_db_context(db) as db:
             messages = (
-                db.query(ChatMessage)
-                .filter(ChatMessage.chat_id == chat_id, ChatMessage.role == 'assistant')
-                .order_by(ChatMessage.created_at.asc())
-                .all()
+                (await db.execute(
+                    select(ChatMessage)
+                    .filter(ChatMessage.chat_id == chat_id, ChatMessage.role == 'assistant')
+                    .order_by(ChatMessage.created_at.asc())
+                )).scalars().all()
             )
 
             by_model: dict[str, dict] = {}
@@ -758,9 +759,9 @@ class ChatMessageTable:
                 'messages': message_breakdown,
             }
 
-    def get_model_totals(self, model_id: str, db: Optional[Session] = None) -> dict:
+    async def get_model_totals(self, model_id: str, db: Optional[AsyncSession] = None) -> dict:
         """All-time totals cho 1 model: tokens + count chats/users + first/last used."""
-        with get_db_context(db) as db:
+        async with get_async_db_context(db) as db:
             from sqlalchemy import func, cast, Integer
 
             dialect = db.bind.dialect.name
@@ -791,21 +792,22 @@ class ChatMessageTable:
                 raise NotImplementedError(f'Unsupported dialect: {dialect}')
 
             row = (
-                db.query(
-                    func.coalesce(func.sum(input_tokens), 0).label('input_tokens'),
-                    func.coalesce(func.sum(output_tokens), 0).label('output_tokens'),
-                    func.count(ChatMessage.id).label('message_count'),
-                    func.count(func.distinct(ChatMessage.chat_id)).label('chat_count'),
-                    func.count(func.distinct(ChatMessage.user_id)).label('user_count'),
-                    func.min(ChatMessage.created_at).label('first_used'),
-                    func.max(ChatMessage.created_at).label('last_used'),
-                )
-                .filter(
-                    ChatMessage.model_id == model_id,
-                    ChatMessage.role == 'assistant',
-                    ~ChatMessage.user_id.like('shared-%'),
-                )
-                .one()
+                (await db.execute(
+                    select(
+                        func.coalesce(func.sum(input_tokens), 0).label('input_tokens'),
+                        func.coalesce(func.sum(output_tokens), 0).label('output_tokens'),
+                        func.count(ChatMessage.id).label('message_count'),
+                        func.count(func.distinct(ChatMessage.chat_id)).label('chat_count'),
+                        func.count(func.distinct(ChatMessage.user_id)).label('user_count'),
+                        func.min(ChatMessage.created_at).label('first_used'),
+                        func.max(ChatMessage.created_at).label('last_used'),
+                    )
+                    .filter(
+                        ChatMessage.model_id == model_id,
+                        ChatMessage.role == 'assistant',
+                        ~ChatMessage.user_id.like('shared-%'),
+                    )
+                )).one()
             )
 
             return {
