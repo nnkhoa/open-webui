@@ -972,7 +972,7 @@
 						</UserMenu>
 					{/if}
 				</div>
-			</a>
+			</div>
 		</div>
 	</div>
 {/if}
