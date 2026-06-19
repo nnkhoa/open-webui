@@ -24,7 +24,8 @@
 	export let paragraphTag = 'p';
 	export let editCodeBlock = true;
 	export let topPadding = false;
-	export let hideCodeBlock = false; // New prop to hide code blocks for artifacts
+	export let hideCodeBlock = false; // Custom: hide code blocks for artifacts
+	export let allowEmbeds = true;
 
 	export let sourceIds = [];
 
@@ -89,7 +90,7 @@
 	$: updateHandler(content);
 
 	// Throttle parsing to once per animation frame while streaming
-	$: onDestroy(() => {
+	onDestroy(() => {
 		cancelAnimationFrame(pendingUpdate);
 	});
 </script>
@@ -106,6 +107,7 @@
 		{sourceIds}
 		{topPadding}
 		{hideCodeBlock}
+		{allowEmbeds}
 		{onTaskClick}
 		{onSourceClick}
 		{onSave}
