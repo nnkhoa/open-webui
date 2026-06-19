@@ -3,10 +3,8 @@
 	const i18n = getContext('i18n');
 
 	import Markdown from './Markdown.svelte';
-	import InlineArtifact from './InlineArtifact.svelte';
 	import {
 		artifactCode,
-		artifactContents,
 		chatId,
 		mobile,
 		settings,
@@ -94,10 +92,6 @@
 
 	let contentContainerElement;
 	let floatingButtonsElement;
-
-	let inlineArtifactContent = null;
-	let inlineArtifactType = 'iframe';
-	let showInlineArtifact = false;
 
 	let sourceIds = [];
 	$: getSourceIds(sources);
@@ -197,36 +191,6 @@
 		}
 	};
 
-	const openSidebarArtifact = () => {
-		showArtifacts.set(true);
-		showControls.set(true);
-	};
-
-	const artifactDisplayMode = () => {
-		return $settings?.artifactDisplayMode ?? 'inline';
-	};
-
-	const shouldShowInline = () => {
-		const mode = artifactDisplayMode();
-		return mode === 'inline' || mode === 'both';
-	};
-
-	const shouldShowSidebar = () => {
-		const mode = artifactDisplayMode();
-		return mode === 'sidebar' || mode === 'both';
-	};
-
-	const shouldHideCodeBlock = (lang) => {
-		// Hide code blocks for HTML/SVG when using inline mode
-		const isArtifact = ['html', 'svg'].includes(lang) || (lang === 'xml' && content.includes('svg'));
-		return shouldShowInline() && isArtifact;
-	};
-
-	// Watch for changes in done status
-	$: if (done && inlineArtifactContent && shouldShowInline()) {
-		showInlineArtifact = true;
-	}
-
 	// Reactive listener attachment: re-attaches when floatingButtons
 	// transitions from false → true (e.g. when message.done flips).
 	let listenersAttached = false;
@@ -288,56 +252,19 @@
 					!$mobile &&
 					$chatId
 				) {
-					// Store artifact content for inline display (only when done)
-					if (shouldShowInline()) {
-						inlineArtifactContent = code;
-						inlineArtifactType = lang === 'svg' || (lang === 'xml' && code.includes('svg')) ? 'svg' : 'iframe';
-					}
-
-					// Show sidebar if needed
-					if (shouldShowSidebar()) {
-						await tick();
-						showArtifacts.set(true);
-						showControls.set(true);
-					}
+					await tick();
+					showArtifacts.set(true);
+					showControls.set(true);
 				}
 			}}
 			onPreview={async (value) => {
+				console.log('Preview', value);
 				await artifactCode.set(value);
-
-				if (shouldShowInline()) {
-					inlineArtifactContent = value;
-					inlineArtifactType = 'iframe';
-				}
-
 				await showControls.set(true);
-
-				if (shouldShowSidebar()) {
-					await showArtifacts.set(true);
-				}
+				await showArtifacts.set(true);
 				await showEmbeds.set(false);
 			}}
-			hideCodeBlock={false}
-			allowEmbeds
 		/>
-
-		{#if showInlineArtifact && inlineArtifactContent && done}
-			<InlineArtifact
-				content={inlineArtifactContent}
-				type={inlineArtifactType}
-				on:openSidebar={openSidebarArtifact}
-			/>
-		{:else}
-			{@const extracted = extractDetailsBlocks(content)}
-
-			{#if extracted.detailsContent}
-				<!-- Render structural blocks (tool calls, reasoning, etc.) through Markdown -->
-				<Markdown {id} content={extracted.detailsContent} {done} />
-			{/if}
-			{#if extracted.plainContent}
-				<div class="whitespace-pre-wrap">{extracted.plainContent}</div>
-			{/if}
-		{/if}
 	{:else}
 		{@const extracted = extractDetailsBlocks(content)}
 

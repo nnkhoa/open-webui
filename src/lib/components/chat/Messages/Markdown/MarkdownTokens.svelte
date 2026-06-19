@@ -41,7 +41,6 @@
 
 	export let editCodeBlock = true;
 	export let topPadding = false;
-	export let hideCodeBlock = false; // Custom: hide code blocks for artifacts
 	export let allowEmbeds = true;
 
 	export let onSave: Function = () => {};
@@ -154,33 +153,31 @@
 			/>
 		</svelte:element>
 	{:else if token.type === 'code'}
-		{#if !hideCodeBlock || !['html', 'svg', 'xml'].includes(token?.lang ?? '')}
-			{#if token.raw.includes('```')}
-				<CodeBlock
-					id={`${id}-${tokenIdx}`}
-					collapsed={$settings?.collapseCodeBlocks ?? false}
-					{token}
-					lang={token?.lang ?? ''}
-					code={token?.text ?? ''}
-					{attributes}
-					{save}
-					{preview}
-					edit={editCodeBlock}
-					stickyButtonsClassName={topPadding ? 'top-10' : 'top-0'}
-					onSave={(value) => {
-						onSave({
-							raw: token.raw,
-							oldContent: token.text,
-							newContent: value
-						});
-					}}
-					{onUpdate}
-					{onPreview}
-				/>
-				{/if}
-				{:else}
-				{token.text}
-				{/if}
+		{#if token.raw.includes('```')}
+			<CodeBlock
+				id={`${id}-${tokenIdx}`}
+				collapsed={$settings?.collapseCodeBlocks ?? false}
+				{token}
+				lang={token?.lang ?? ''}
+				code={token?.text ?? ''}
+				{attributes}
+				{save}
+				{preview}
+				edit={editCodeBlock}
+				stickyButtonsClassName={topPadding ? 'top-10' : 'top-0'}
+				onSave={(value) => {
+					onSave({
+						raw: token.raw,
+						oldContent: token.text,
+						newContent: value
+					});
+				}}
+				{onUpdate}
+				{onPreview}
+			/>
+		{:else}
+			{token.text}
+		{/if}
 	{:else if token.type === 'table'}
 		<div class="relative w-full group mb-2">
 			<div class="scrollbar-hidden relative overflow-x-auto max-w-full">

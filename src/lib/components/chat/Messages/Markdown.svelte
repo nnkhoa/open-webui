@@ -24,7 +24,6 @@
 	export let paragraphTag = 'p';
 	export let editCodeBlock = true;
 	export let topPadding = false;
-	export let hideCodeBlock = false; // Custom: hide code blocks for artifacts
 	export let allowEmbeds = true;
 
 	export let sourceIds = [];
@@ -106,7 +105,6 @@
 		{editCodeBlock}
 		{sourceIds}
 		{topPadding}
-		{hideCodeBlock}
 		{allowEmbeds}
 		{onTaskClick}
 		{onSourceClick}
