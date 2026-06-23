@@ -852,127 +852,84 @@
 					</Tooltip>
 				</div>
 
-				{#each pinnedItems as itemId (itemId)}
-					{@const meta = getMenuItemMeta(itemId)}
-					{#if meta && isMenuItemVisible(itemId)}
-						<div class="">
-							<Tooltip content={$i18n.t(meta.label)} placement="right">
-								<a
-									class=" cursor-pointer flex rounded-xl hover:bg-gray-100 dark:hover:bg-gray-850 transition group"
-									href={meta.href}
-									on:click={async (e) => {
-										e.stopImmediatePropagation();
-										e.preventDefault();
-										goto(meta.href);
-										itemClickHandler();
-									}}
-									draggable="false"
-									aria-label={$i18n.t(meta.label)}
-								>
-									<div class=" self-center flex items-center justify-center size-9">
-										{#if itemId === 'notes'}
-											<Note className="size-4.5" />
-										{:else if itemId === 'workspace'}
-											<svg
-												xmlns="http://www.w3.org/2000/svg"
-												fill="none"
-												viewBox="0 0 24 24"
-												stroke-width="1.5"
-												stroke="currentColor"
-												class="size-4.5"
-											>
-												<path
-													stroke-linecap="round"
-													stroke-linejoin="round"
-													d="M13.5 16.875h3.375m0 0h3.375m-3.375 0V13.5m0 3.375v3.375M6 10.5h2.25a2.25 2.25 0 0 0 2.25-2.25V6a2.25 2.25 0 0 0-2.25-2.25H6A2.25 2.25 0 0 0 3.75 6v2.25A2.25 2.25 0 0 0 6 10.5Zm0 9.75h2.25A2.25 2.25 0 0 0 10.5 18v-2.25a2.25 2.25 0 0 0-2.25-2.25H6a2.25 2.25 0 0 0-2.25 2.25V18A2.25 2.25 0 0 0 6 20.25Zm9.75-9.75H18a2.25 2.25 0 0 0 2.25-2.25V6A2.25 2.25 0 0 0 18 3.75h-2.25A2.25 2.25 0 0 0 13.5 6v2.25a2.25 2.25 0 0 0 2.25 2.25Z"
-												/>
-											</svg>
-										{:else if itemId === 'automations'}
-											<svg
-												xmlns="http://www.w3.org/2000/svg"
-												fill="none"
-												viewBox="0 0 24 24"
-												stroke-width="1.5"
-												stroke="currentColor"
-												class="size-4.5"
-											>
-												<path
-													stroke-linecap="round"
-													stroke-linejoin="round"
-													d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
-												/>
-											</svg>
-										{:else if itemId === 'calendar'}
-											<svg
-												xmlns="http://www.w3.org/2000/svg"
-												fill="none"
-												viewBox="0 0 24 24"
-												stroke-width="1.5"
-												stroke="currentColor"
-												class="size-4.5"
-											>
-												<path
-													stroke-linecap="round"
-													stroke-linejoin="round"
-													d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5"
-												/>
-											</svg>
-										{:else if itemId === 'playground'}
-											<Code className="size-4.5" />
-										{/if}
-									</div>
-								</a>
-							</Tooltip>
-						</div>
-					{/if}
-				{/each}
+				{#if ($config?.features?.enable_notes ?? false) && ($user?.role === 'admin' || ($user?.permissions?.features?.notes ?? true))}
+					<div class="">
+						<Tooltip content={$i18n.t('Notes')} placement="right">
+							<a
+								class=" cursor-pointer flex rounded-xl hover:bg-gray-100 dark:hover:bg-gray-850 transition group"
+								href="/notes"
+								on:click={async (e) => {
+									e.stopImmediatePropagation();
+									e.preventDefault();
+
+									goto('/notes');
+									itemClickHandler();
+								}}
+								draggable="false"
+								aria-label={$i18n.t('Notes')}
+							>
+								<div class=" self-center flex items-center justify-center size-9">
+									<Note className="size-4.5" />
+								</div>
+							</a>
+						</Tooltip>
+					</div>
+				{/if}
+
+				{#if $user?.role === 'admin' || $user?.permissions?.workspace?.models || $user?.permissions?.workspace?.knowledge || $user?.permissions?.workspace?.prompts || $user?.permissions?.workspace?.tools}
+					<div class="">
+						<Tooltip content={$i18n.t('Workspace')} placement="right">
+							<a
+								class=" cursor-pointer flex rounded-xl hover:bg-gray-100 dark:hover:bg-gray-850 transition group"
+								href="/workspace"
+								on:click={async (e) => {
+									e.stopImmediatePropagation();
+									e.preventDefault();
+
+									goto('/workspace');
+									itemClickHandler();
+								}}
+								aria-label={$i18n.t('Workspace')}
+								draggable="false"
+							>
+								<div class=" self-center flex items-center justify-center size-9">
+									<svg
+										xmlns="http://www.w3.org/2000/svg"
+										fill="none"
+										viewBox="0 0 24 24"
+										stroke-width="1.5"
+										stroke="currentColor"
+										class="size-4.5"
+									>
+										<path
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											d="M13.5 16.875h3.375m0 0h3.375m-3.375 0V13.5m0 3.375v3.375M6 10.5h2.25a2.25 2.25 0 0 0 2.25-2.25V6a2.25 2.25 0 0 0-2.25-2.25H6A2.25 2.25 0 0 0 3.75 6v2.25A2.25 2.25 0 0 0 6 10.5Zm0 9.75h2.25A2.25 2.25 0 0 0 10.5 18v-2.25a2.25 2.25 0 0 0-2.25-2.25H6a2.25 2.25 0 0 0-2.25 2.25V18A2.25 2.25 0 0 0 6 20.25Zm9.75-9.75H18a2.25 2.25 0 0 0 2.25-2.25V6A2.25 2.25 0 0 0 18 3.75h-2.25A2.25 2.25 0 0 0 13.5 6v2.25a2.25 2.25 0 0 0 2.25 2.25Z"
+										/>
+									</svg>
+								</div>
+							</a>
+						</Tooltip>
+					</div>
+				{/if}
 			</div>
 		</button>
 
-		<div>
-			<div>
-				<div class=" py-2 flex justify-center items-center">
-					{#if $user !== undefined && $user !== null}
-						<UserMenu
-							role={$user?.role}
-							profile={$config?.features?.enable_user_status ?? true}
-							showActiveUsers={false}
-							on:show={(e) => {
-								if (e.detail === 'archived-chat') {
-									showArchivedChats.set(true);
-								}
-							}}
-						>
-							<button
-								type="button"
-								class=" cursor-pointer flex rounded-xl hover:bg-gray-100 dark:hover:bg-gray-850 transition group"
-								aria-label={$i18n.t('User menu')}
-							>
-								<div class="self-center relative">
-									<img
-										src={`${WEBUI_API_BASE_URL}/users/${$user?.id}/profile/image`}
-										class=" size-7 object-cover rounded-full"
-										alt={$i18n.t('Open User Profile Menu')}
-										aria-label={$i18n.t('Open User Profile Menu')}
-									/>
-
-									{#if $config?.features?.enable_user_status}
-										<div class="absolute -bottom-0.5 -right-0.5">
-											<span class="relative flex size-2.5">
-												<span
-													class="relative inline-flex size-2.5 rounded-full {true
-														? 'bg-green-500'
-														: 'bg-gray-300 dark:bg-gray-700'} border-2 border-white dark:border-gray-900"
-												></span>
-											</span>
-										</div>
-									{/if}
-								</div>
-							</button>
-						</UserMenu>
-					{/if}
+		<div class="flex justify-center py-2">
+			<a
+				href="/"
+				class="flex rounded-xl hover:bg-gray-100 dark:hover:bg-gray-850 transition no-drag-region"
+				draggable="false"
+			>
+				<div class="self-center flex items-center justify-center size-9">
+					<img
+						src="{WEBUI_BASE_URL}/static/favicon.png"
+						class="size-6 rounded-full"
+						alt=""
+						draggable="false"
+					/>
 				</div>
-			</div>
+			</a>
 		</div>
 	</div>
 {/if}
@@ -1001,28 +958,7 @@
 			<div
 				class="sidebar px-[0.5625rem] pt-2 pb-1.5 flex justify-between space-x-1 text-gray-600 dark:text-gray-400 sticky top-0 z-10 -mb-3"
 			>
-				<a
-					class="flex items-center rounded-xl size-8.5 h-full justify-center hover:bg-gray-100/50 dark:hover:bg-gray-850/50 transition no-drag-region"
-					href="/"
-					draggable="false"
-					on:click={newChatHandler}
-				>
-					<img
-						crossorigin="anonymous"
-						src="{WEBUI_BASE_URL}/static/favicon.png"
-						class="sidebar-new-chat-icon size-6 rounded-full"
-						alt=""
-					/>
-				</a>
-
-				<a href="/" class="flex flex-1 px-0.5" on:click={newChatHandler}>
-					<div
-						id="sidebar-webui-name"
-						class=" self-center font-medium text-gray-850 dark:text-white font-primary"
-					>
-						{$WEBUI_NAME}
-					</div>
-				</a>
+				<div class="flex flex-1"></div>
 				<Tooltip
 					content={$showSidebar ? $i18n.t('Close Sidebar') : $i18n.t('Open Sidebar')}
 					placement="bottom"
@@ -1102,83 +1038,60 @@
 						</button>
 					</div>
 
-					<div id="pinned-menu-items-list">
-						{#each pinnedItems as itemId (itemId)}
-							{@const meta = getMenuItemMeta(itemId)}
-							{#if meta && isMenuItemVisible(itemId)}
-								<div
-									class="px-[0.4375rem] flex justify-center text-gray-800 dark:text-gray-200"
-									data-id={itemId}
-								>
-									<a
-										id="sidebar-{itemId}-button"
-										class="grow flex items-center space-x-3 rounded-2xl px-2.5 py-2 hover:bg-gray-100 dark:hover:bg-gray-900 transition"
-										href={meta.href}
-										on:click={itemClickHandler}
-										draggable="false"
-										aria-label={$i18n.t(meta.label)}
-									>
-										<div class="self-center">
-											{#if itemId === 'notes'}
-												<Note className="size-4.5" strokeWidth="2" />
-											{:else if itemId === 'workspace'}
-												<svg
-													xmlns="http://www.w3.org/2000/svg"
-													fill="none"
-													viewBox="0 0 24 24"
-													stroke-width="2"
-													stroke="currentColor"
-													class="size-4.5"
-												>
-													<path
-														stroke-linecap="round"
-														stroke-linejoin="round"
-														d="M13.5 16.875h3.375m0 0h3.375m-3.375 0V13.5m0 3.375v3.375M6 10.5h2.25a2.25 2.25 0 0 0 2.25-2.25V6a2.25 2.25 0 0 0-2.25-2.25H6A2.25 2.25 0 0 0 3.75 6v2.25A2.25 2.25 0 0 0 6 10.5Zm0 9.75h2.25A2.25 2.25 0 0 0 10.5 18v-2.25a2.25 2.25 0 0 0-2.25-2.25H6a2.25 2.25 0 0 0-2.25 2.25V18A2.25 2.25 0 0 0 6 20.25Zm9.75-9.75H18a2.25 2.25 0 0 0 2.25-2.25V6A2.25 2.25 0 0 0 18 3.75h-2.25A2.25 2.25 0 0 0 13.5 6v2.25a2.25 2.25 0 0 0 2.25 2.25Z"
-													/>
-												</svg>
-											{:else if itemId === 'automations'}
-												<svg
-													xmlns="http://www.w3.org/2000/svg"
-													fill="none"
-													viewBox="0 0 24 24"
-													stroke-width="2"
-													stroke="currentColor"
-													class="size-4.5"
-												>
-													<path
-														stroke-linecap="round"
-														stroke-linejoin="round"
-														d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
-													/>
-												</svg>
-											{:else if itemId === 'calendar'}
-												<svg
-													xmlns="http://www.w3.org/2000/svg"
-													fill="none"
-													viewBox="0 0 24 24"
-													stroke-width="2"
-													stroke="currentColor"
-													class="size-4.5"
-												>
-													<path
-														stroke-linecap="round"
-														stroke-linejoin="round"
-														d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5"
-													/>
-												</svg>
-											{:else if itemId === 'playground'}
-												<Code className="size-4.5" strokeWidth="2" />
-											{/if}
-										</div>
-
-										<div class="flex self-center translate-y-[0.5px]">
-											<div class=" self-center text-sm font-primary">{$i18n.t(meta.label)}</div>
-										</div>
-									</a>
+					{#if ($config?.features?.enable_notes ?? false) && ($user?.role === 'admin' || ($user?.permissions?.features?.notes ?? true))}
+						<div class="px-[0.4375rem] flex justify-center text-gray-800 dark:text-gray-200">
+							<a
+								id="sidebar-notes-button"
+								class="grow flex items-center space-x-3 rounded-2xl px-2.5 py-2 hover:bg-gray-100 dark:hover:bg-gray-900 transition"
+								href="/notes"
+								on:click={itemClickHandler}
+								draggable="false"
+								aria-label={$i18n.t('Notes')}
+							>
+								<div class="self-center">
+									<Note className="size-4.5" strokeWidth="2" />
 								</div>
-							{/if}
-						{/each}
-					</div>
+
+								<div class="flex self-center translate-y-[0.5px]">
+									<div class=" self-center text-sm font-primary">{$i18n.t('Notes')}</div>
+								</div>
+							</a>
+						</div>
+					{/if}
+
+					{#if $user?.role === 'admin' || $user?.permissions?.workspace?.models || $user?.permissions?.workspace?.knowledge || $user?.permissions?.workspace?.prompts || $user?.permissions?.workspace?.tools}
+						<div class="px-[0.4375rem] flex justify-center text-gray-800 dark:text-gray-200">
+							<a
+								id="sidebar-workspace-button"
+								class="grow flex items-center space-x-3 rounded-2xl px-2.5 py-2 hover:bg-gray-100 dark:hover:bg-gray-900 transition"
+								href="/workspace"
+								on:click={itemClickHandler}
+								draggable="false"
+								aria-label={$i18n.t('Workspace')}
+							>
+								<div class="self-center">
+									<svg
+										xmlns="http://www.w3.org/2000/svg"
+										fill="none"
+										viewBox="0 0 24 24"
+										stroke-width="2"
+										stroke="currentColor"
+										class="size-4.5"
+									>
+										<path
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											d="M13.5 16.875h3.375m0 0h3.375m-3.375 0V13.5m0 3.375v3.375M6 10.5h2.25a2.25 2.25 0 0 0 2.25-2.25V6a2.25 2.25 0 0 0-2.25-2.25H6A2.25 2.25 0 0 0 3.75 6v2.25A2.25 2.25 0 0 0 6 10.5Zm0 9.75h2.25A2.25 2.25 0 0 0 10.5 18v-2.25a2.25 2.25 0 0 0-2.25-2.25H6a2.25 2.25 0 0 0-2.25 2.25V18A2.25 2.25 0 0 0 6 20.25Zm9.75-9.75H18a2.25 2.25 0 0 0 2.25-2.25V6A2.25 2.25 0 0 0 18 3.75h-2.25A2.25 2.25 0 0 0 13.5 6v2.25a2.25 2.25 0 0 0 2.25 2.25Z"
+										/>
+									</svg>
+								</div>
+
+								<div class="flex self-center translate-y-[0.5px]">
+									<div class=" self-center text-sm font-primary">{$i18n.t('Workspace')}</div>
+								</div>
+							</a>
+						</div>
+					{/if}
 				</div>
 
 				{#if ($models ?? []).length > 0 && (($settings?.pinnedModels ?? []).length > 0 || $config?.default_pinned_models)}
@@ -1191,70 +1104,6 @@
 						dragAndDrop={false}
 					>
 						<PinnedModelList bind:selectedChatId {shiftKey} />
-					</Folder>
-				{/if}
-
-				{#if ($config?.features?.enable_notes ?? false) && ($user?.role === 'admin' || ($user?.permissions?.features?.notes ?? true)) && $pinnedNotes.length > 0}
-					<Folder
-						id="sidebar-pinned-notes"
-						bind:open={showPinnedNotes}
-						className="px-2 mt-0.5"
-						name={$i18n.t('Notes')}
-						chevron={false}
-						dragAndDrop={false}
-						onAdd={async () => {
-							const note = await createNoteHandler('New Note');
-							if (note) {
-								goto(`/notes/${note.id}`);
-							}
-						}}
-						onAddLabel={$i18n.t('New Note')}
-					>
-						<div class="mt-0.5 pb-1.5">
-							{#each $pinnedNotes as note (note.id)}
-								<a
-									class="w-full flex items-center gap-2.5 rounded-xl px-2.5 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-900 transition group text-sm"
-									href={`/notes/${note.id}`}
-									on:click={() => {
-										itemClickHandler();
-									}}
-									draggable="false"
-								>
-									<div class="self-center">
-										<Note className="size-4" strokeWidth="2" />
-									</div>
-									<div class="flex-1 text-ellipsis line-clamp-1">
-										{note.title}
-									</div>
-									<button
-										class="invisible group-hover:visible self-center p-0.5 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-lg transition"
-										on:click|preventDefault|stopPropagation={async () => {
-											await toggleNotePinnedStatusById(localStorage.token, note.id);
-											const _pinnedNotes = await getPinnedNoteList(localStorage.token).catch(
-												() => []
-											);
-											pinnedNotes.set(_pinnedNotes);
-										}}
-										aria-label={$i18n.t('Unpin')}
-									>
-										<svg
-											xmlns="http://www.w3.org/2000/svg"
-											fill="none"
-											viewBox="0 0 24 24"
-											stroke-width="2"
-											stroke="currentColor"
-											class="size-3.5"
-										>
-											<path
-												stroke-linecap="round"
-												stroke-linejoin="round"
-												d="M6 18 18 6M6 6l12 12"
-											/>
-										</svg>
-									</button>
-								</a>
-							{/each}
-						</div>
 					</Folder>
 				{/if}
 
@@ -1593,47 +1442,21 @@
 					class=" sidebar-bg-gradient-to-t bg-linear-to-t from-gray-50 dark:from-gray-950 to-transparent from-50% pointer-events-none absolute inset-0 -z-10 -mt-6"
 				></div>
 				<div class="flex flex-col font-primary">
-					{#if $user !== undefined && $user !== null}
-						<UserMenu
-							role={$user?.role}
-							profile={$config?.features?.enable_user_status ?? true}
-							showActiveUsers={false}
-							className="w-[calc(var(--sidebar-width)-1rem)]"
-							on:show={(e) => {
-								if (e.detail === 'archived-chat') {
-									showArchivedChats.set(true);
-								}
-							}}
-						>
-							<button
-								type="button"
-								class=" flex items-center rounded-2xl py-2 px-1.5 w-full hover:bg-gray-100/50 dark:hover:bg-gray-900/50 transition"
-								aria-label={$i18n.t('User menu')}
-							>
-								<div class=" self-center mr-3 relative flex-shrink-0">
-									<img
-										src={`${WEBUI_API_BASE_URL}/users/${$user?.id}/profile/image`}
-										class=" size-7 object-cover rounded-full"
-										alt={$i18n.t('Open User Profile Menu')}
-										aria-label={$i18n.t('Open User Profile Menu')}
-									/>
-
-									{#if $config?.features?.enable_user_status}
-										<div class="absolute -bottom-0.5 -right-0.5">
-											<span class="relative flex size-2.5">
-												<span
-													class="relative inline-flex size-2.5 rounded-full {true
-														? 'bg-green-500'
-														: 'bg-gray-300 dark:bg-gray-700'} border-2 border-white dark:border-gray-900"
-												></span>
-											</span>
-										</div>
-									{/if}
-								</div>
-								<div class=" self-center font-medium truncate">{$user?.name}</div>
-							</button>
-						</UserMenu>
-					{/if}
+					<a
+						href="/"
+						class="flex items-center rounded-2xl py-2 px-1.5 w-full hover:bg-gray-100/50 dark:hover:bg-gray-900/50 transition no-drag-region"
+						draggable="false"
+					>
+						<div class="self-center mr-3">
+							<img
+								src="{WEBUI_BASE_URL}/static/favicon.png"
+								class="size-7 object-cover rounded-full"
+								alt=""
+								draggable="false"
+							/>
+						</div>
+						<div class="self-center font-medium">{$WEBUI_NAME}</div>
+					</a>
 				</div>
 			</div>
 		</div>

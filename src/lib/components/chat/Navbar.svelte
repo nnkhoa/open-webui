@@ -172,49 +172,6 @@
 						</Menu>
 					{/if}
 
-					{#if $user?.role === 'admin' || ($user?.permissions.chat?.controls ?? true)}
-						<Tooltip content={$i18n.t('Controls')}>
-							<button
-								class=" flex cursor-pointer px-2 py-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-850 transition"
-								on:click={async () => {
-									await showControls.set(!$showControls);
-								}}
-								aria-label="Controls"
-							>
-								<div class=" m-auto self-center">
-									<Knobs className=" size-5" strokeWidth="1" />
-								</div>
-							</button>
-						</Tooltip>
-					{/if}
-
-					{#if $user !== undefined && $user !== null}
-						<UserMenu
-							className="w-[240px]"
-							role={$user?.role}
-							help={true}
-							on:show={(e) => {
-								if (e.detail === 'archived-chat') {
-									showArchivedChats.set(true);
-								}
-							}}
-						>
-							<button
-								type="button"
-								class="select-none flex rounded-xl p-1.5 w-full hover:bg-gray-50 dark:hover:bg-gray-850 transition"
-								aria-label={$i18n.t('User menu')}
-							>
-								<div class=" self-center">
-									<img
-										src={`${WEBUI_API_BASE_URL}/users/${$user?.id}/profile/image`}
-										class="size-6 object-cover rounded-full"
-										alt=""
-										draggable="false"
-									/>
-								</div>
-							</button>
-						</UserMenu>
-					{/if}
 				</div>
 			</div>
 		</div>
