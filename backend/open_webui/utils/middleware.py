@@ -5117,11 +5117,12 @@ async def streaming_chat_response_handler(response, ctx):
                 # producing a final assistant message — emit one so the UI has
                 # content to render instead of an empty body.
                 if (
-                    tool_call_retries >= CHAT_RESPONSE_MAX_TOOL_CALL_RETRIES
+                    CHAT_RESPONSE_MAX_TOOL_CALL_ITERATIONS is not None
+                    and tool_call_iterations >= CHAT_RESPONSE_MAX_TOOL_CALL_ITERATIONS
                     and len(tool_calls) > 0
                 ):
                     cap_msg = (
-                        f'⚠️ Reached the limit of {CHAT_RESPONSE_MAX_TOOL_CALL_RETRIES} '
+                        f'⚠️ Reached the limit of {CHAT_RESPONSE_MAX_TOOL_CALL_ITERATIONS} '
                         f'tool calls for this request. The model cannot query further. '
                         f'Please ask a more specific question or narrow the scope.'
                     )
