@@ -739,7 +739,7 @@
 		// Origin" interface setting (the same toggle that governs whether
 		// rendered iframes receive `allow-same-origin`).
 		const promptTypes = ['input:prompt', 'input:prompt:submit', 'action:submit'];
-		const isTrusted = isSameOrigin || ($settings?.iframeSandboxAllowSameOrigin ?? false);
+		const isTrusted = isSameOrigin || ($settings?.iframeSandboxAllowSameOrigin ?? true);
 
 		// Non-prompt message types are always restricted to same-origin only.
 		if (!isSameOrigin && !promptTypes.includes(type)) {
