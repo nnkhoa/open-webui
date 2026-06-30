@@ -132,7 +132,9 @@ def _discover_dbhubs(request, user=None) -> list[dict]:
     return servers
 
 
-async def _mcp_call(url: str, tool: str, args: dict, timeout: float = 15.0) -> Optional[Any]:
+async def _mcp_call(
+    url: str, tool: str, args: dict, timeout: float = 15.0, token: Optional[str] = None
+) -> Optional[Any]:
     payload = {
         'jsonrpc': '2.0',
         'id': 1,
@@ -143,6 +145,10 @@ async def _mcp_call(url: str, tool: str, args: dict, timeout: float = 15.0) -> O
         'Content-Type': 'application/json',
         'Accept': 'application/json, text/event-stream',
     }
+    # AI4BI: forward per-user Keycloak token so RBAC-enforced MCP servers
+    # (dbhub-rbac) accept the schema-introspection calls (else HTTP 401).
+    if token:
+        headers['Authorization'] = f'Bearer {token}'
     try:
         async with aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=timeout), trust_env=True
@@ -250,7 +256,7 @@ def _qualified(schema: str, table: str) -> Optional[str]:
     return f'{schema}.{table}'
 
 
-async def _detect_connected_schemas(url: str) -> set[str]:
+async def _detect_connected_schemas(url: str, token: Optional[str] = None) -> set[str]:
     """Detect DBHub này đang kết nối tới schema/database NÀO.
 
     Chỉ những schema này mới được inject metadata — bỏ qua các DB khác
@@ -259,14 +265,14 @@ async def _detect_connected_schemas(url: str) -> set[str]:
     Trả về set rỗng nếu không detect được (caller fallback all).
     """
     # MySQL: SELECT DATABASE() trả tên DB hiện tại
-    resp = await _mcp_call(url, 'execute_sql', {'sql': 'SELECT DATABASE() AS db'})
+    resp = await _mcp_call(url, 'execute_sql', {'sql': 'SELECT DATABASE() AS db'}, token=token)
     for r in _extract_rows(resp):
         db = (r.get('db') or '').strip()
         if db:
             return {db}
 
     # Postgres: current_schema() trả schema mặc định (thường 'public')
-    resp = await _mcp_call(url, 'execute_sql', {'sql': 'SELECT current_schema() AS sch'})
+    resp = await _mcp_call(url, 'execute_sql', {'sql': 'SELECT current_schema() AS sch'}, token=token)
     for r in _extract_rows(resp):
         sch = (r.get('sch') or '').strip()
         if sch:
@@ -275,14 +281,14 @@ async def _detect_connected_schemas(url: str) -> set[str]:
     return set()
 
 
-async def _fetch_server(server: dict) -> Optional[dict]:
+async def _fetch_server(server: dict, token: Optional[str] = None) -> Optional[dict]:
     """Discover bảng metadata match pattern trong CHỈ schema mà DBHub kết nối tới.
 
     Returns: {name, url, schemas: { schema_name: { table_name: [row_dict, ...] } }}
     """
     url = server['url']
 
-    allowed_schemas = await _detect_connected_schemas(url)
+    allowed_schemas = await _detect_connected_schemas(url, token=token)
     if allowed_schemas:
         log.info('schema_context: %s kết nối tới: %s', url, ', '.join(allowed_schemas))
     else:
@@ -294,6 +300,7 @@ async def _fetch_server(server: dict) -> Optional[dict]:
     discovery = await _mcp_call(
         url, 'search_objects',
         {'object_type': 'table', 'pattern': METADATA_PATTERN, 'detail_level': 'names'},
+        token=token,
     )
     meta_tables = _extract_meta_tables(discovery)
     if not meta_tables:
@@ -309,7 +316,7 @@ async def _fetch_server(server: dict) -> Optional[dict]:
         if not qualified:
             continue
         resp = await _mcp_call(
-            url, 'execute_sql', {'sql': f'SELECT * FROM {qualified}'},
+            url, 'execute_sql', {'sql': f'SELECT * FROM {qualified}'}, token=token,
         )
         rows = _extract_rows(resp)
         if not rows:
@@ -402,8 +409,19 @@ async def get_schema_block(request=None, user=None) -> Optional[str]:
         if entry and time.time() - entry[0] < TTL_SECONDS:
             return entry[1]
 
+        # AI4BI: lấy access_token Keycloak của user để forward sang MCP (RBAC).
+        # Lazy import tránh circular (middleware import openai -> schema_context).
+        token = None
+        try:
+            from open_webui.utils.middleware import get_system_oauth_token
+            oauth_token = await get_system_oauth_token(request, user)
+            if oauth_token:
+                token = oauth_token.get('access_token')
+        except Exception as e:
+            log.debug('schema_context: cannot get oauth token: %s', e)
+
         fragments = await asyncio.gather(
-            *[_fetch_server(s) for s in servers],
+            *[_fetch_server(s, token) for s in servers],
             return_exceptions=True,
         )
         parts = [
