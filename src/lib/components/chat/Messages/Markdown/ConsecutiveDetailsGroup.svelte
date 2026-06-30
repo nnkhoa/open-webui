@@ -171,8 +171,8 @@
 					src={embedItem.embed}
 					args={embedItem.args}
 					allowScripts={true}
-					allowForms={$settings?.iframeSandboxAllowForms ?? false}
-					allowSameOrigin={$settings?.iframeSandboxAllowSameOrigin ?? false}
+					allowForms={$settings?.iframeSandboxAllowForms ?? true}
+					allowSameOrigin={$settings?.iframeSandboxAllowSameOrigin ?? true}
 					allowPopups={true}
 				/>
 			</div>

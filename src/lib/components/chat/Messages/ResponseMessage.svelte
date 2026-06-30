@@ -734,7 +734,7 @@
 											src={embed}
 											allowScripts={true}
 											allowForms={true}
-											allowSameOrigin={$settings?.iframeSandboxAllowSameOrigin ?? false}
+											allowSameOrigin={$settings?.iframeSandboxAllowSameOrigin ?? true}
 											allowPopups={true}
 										/>
 									</div>

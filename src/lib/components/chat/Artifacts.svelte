@@ -249,9 +249,9 @@
 									$config?.ui?.iframe_csp ?? ''
 								)}
 								class="w-full border-0 h-full rounded-none"
-								sandbox="allow-scripts allow-downloads{($settings?.iframeSandboxAllowForms ?? false)
+								sandbox="allow-scripts allow-downloads{($settings?.iframeSandboxAllowForms ?? true)
 									? ' allow-forms'
-									: ''}{($settings?.iframeSandboxAllowSameOrigin ?? false)
+									: ''}{($settings?.iframeSandboxAllowSameOrigin ?? true)
 									? ' allow-same-origin'
 									: ''}"
 								on:load={iframeLoadHandler}
