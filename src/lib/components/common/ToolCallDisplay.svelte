@@ -77,7 +77,9 @@
 	}
 
 	$: args = decode(attributes?.arguments ?? '');
-	$: result = decode(attributes?.result ?? '');
+	export let resultContent: string = '';
+
+	$: result = resultContent || decode(attributes?.result ?? '');
 	$: files = parseJSONString(decode(attributes?.files ?? ''));
 	$: embeds = parseJSONString(decode(attributes?.embeds ?? ''));
 	$: isDone = attributes?.done === 'true';
@@ -210,10 +212,10 @@
 								</div>
 							{:else}
 								<div class="tool-call-body w-full max-w-none!">
-									<Markdown
-										id={`${componentId}-tool-call-args`}
-										content={`\`\`\`json\n${formatJSONString(args)}\n\`\`\``}
-									/>
+									<pre
+										class="text-xs text-gray-600 dark:text-gray-300 whitespace-pre font-mono bg-gray-50 dark:bg-gray-900 rounded-lg p-2.5 overflow-x-auto">{formatJSONString(
+											args
+										)}</pre>
 								</div>
 							{/if}
 						</div>

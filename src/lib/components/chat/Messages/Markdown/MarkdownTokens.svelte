@@ -42,6 +42,7 @@
 	export let editCodeBlock = true;
 	export let topPadding = false;
 	export let hideCodeBlock = false; // New prop to hide code blocks for artifacts
+	export let allowEmbeds = true;
 
 	export let onSave: Function = () => {};
 	export let onUpdate: Function = () => {};
@@ -374,6 +375,7 @@
 			id={`${id}-${tokenIdx}-detail-group`}
 			tokens={token.items}
 			messageDone={done}
+			{allowEmbeds}
 		>
 			<div slot="content" class="space-y-1">
 				{#each token.items as detailToken, detailIdx}
@@ -383,8 +385,9 @@
 						<ToolCallDisplay
 							id={`${id}-${tokenIdx}-${detailIdx}-tc`}
 							attributes={detailToken.attributes}
+							resultContent={getDetailTextContent(detailToken)}
 							grouped={true}
-							open={false}
+							open={$settings?.expandDetails ?? false}
 							className="w-full space-y-1"
 						/>
 					{:else if textContent.length > 0}
@@ -431,7 +434,8 @@
 			<ToolCallDisplay
 				id={`${id}-${tokenIdx}-tc`}
 				attributes={token.attributes}
-				open={false}
+				resultContent={getDetailTextContent(token)}
+				open={$settings?.expandDetails ?? false}
 				className="w-full space-y-1"
 			/>
 		{:else if textContent.length > 0}
