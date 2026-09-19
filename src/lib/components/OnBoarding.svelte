@@ -10,32 +10,6 @@
 
 	export let show = true;
 	export let getStartedHandler = () => {};
-
-	function setLogoImage() {
-		const logo = document.getElementById('logo');
-
-		if (logo) {
-			const isDarkMode = document.documentElement.classList.contains('dark');
-
-			if (isDarkMode) {
-				const darkImage = new Image();
-				darkImage.src = `${WEBUI_BASE_URL}/static/favicon-dark.png`;
-
-				darkImage.onload = () => {
-					logo.src = `${WEBUI_BASE_URL}/static/favicon-dark.png`;
-					logo.style.filter = ''; // Ensure no inversion is applied if splash-dark.png exists
-				};
-
-				darkImage.onerror = () => {
-					logo.style.filter = 'invert(1)'; // Invert image if splash-dark.png is missing
-				};
-			}
-		}
-	}
-
-	$: if (show) {
-		setLogoImage();
-	}
 </script>
 
 {#if show}
@@ -43,12 +17,12 @@
 		<div class="fixed m-10 z-50">
 			<div class="flex space-x-2">
 				<div class=" self-center">
+					<!-- Always over a dark photo slideshow, so only the white mark is needed. -->
 					<img
-						id="logo"
-						crossorigin="anonymous"
-						src="{WEBUI_BASE_URL}/static/favicon.png"
-						class=" w-6 rounded-full"
-						alt="logo"
+						src="{WEBUI_BASE_URL}/static/fpt-digital.svg"
+						class="h-8 w-auto"
+						alt="FPT Digital"
+						draggable="false"
 					/>
 				</div>
 			</div>

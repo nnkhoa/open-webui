@@ -1063,13 +1063,26 @@
 					/>
 				</a>
 
-				<a href="/" class="flex flex-1 px-0.5" on:click={newChatHandler}>
-					<div
-						id="sidebar-webui-name"
-						class=" self-center font-medium text-gray-850 dark:text-white font-primary"
-					>
-						{$WEBUI_NAME}
-					</div>
+				<a
+					href="/"
+					class="flex flex-1 min-w-0 items-center px-0.5"
+					title={$WEBUI_NAME}
+					on:click={newChatHandler}
+				>
+					<img
+						src="{WEBUI_BASE_URL}/static/fpt-digital-dark.svg"
+						class="h-6 w-auto shrink-0 block dark:hidden"
+						alt={$WEBUI_NAME}
+						draggable="false"
+					/>
+					<img
+						src="{WEBUI_BASE_URL}/static/fpt-digital.svg"
+						class="h-6 w-auto shrink-0 hidden dark:block"
+						alt=""
+						aria-hidden="true"
+						draggable="false"
+					/>
+					<span id="sidebar-webui-name" class="sr-only">{$WEBUI_NAME}</span>
 				</a>
 				<Tooltip
 					content={$showSidebar ? $i18n.t('Close Sidebar') : $i18n.t('Open Sidebar')}

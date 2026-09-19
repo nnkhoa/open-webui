@@ -1,0 +1,11 @@
+/* FPT Digital branding overrides. */
+
+/* Brand the dark boot-splash field (app.html defaults it to #000). */
+html.dark #splash-screen {
+	background: #0a1b51;
+}
+
+/* The 'her' theme inverts the splash logo; on a navy wordmark that yields orange. */
+html.her #logo-her {
+	filter: none;
+}
