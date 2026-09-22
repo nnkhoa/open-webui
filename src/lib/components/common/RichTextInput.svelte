@@ -2,6 +2,7 @@
 	import { marked } from 'marked';
 	import DOMPurify from 'dompurify';
 	import equal from 'fast-deep-equal';
+	import { skills, terminalSkills } from '$lib/stores';
 
 	marked.use({
 		breaks: true,
@@ -94,6 +95,12 @@
 		}
 	});
 
+	// Registered after use(gfm) to override its checkbox rule; taskListItems owns the marker.
+	turndownService.addRule('taskItemCheckbox', {
+		filter: (node) => node.nodeName === 'INPUT' && node.getAttribute('type') === 'checkbox',
+		replacement: () => ''
+	});
+
 	turndownService.addRule('taskListItems', {
 		filter: (node) =>
 			node.nodeName === 'LI' &&
@@ -101,21 +108,27 @@
 				node.getAttribute('data-checked') === 'false'),
 		replacement: function (content, node) {
 			const checked = node.getAttribute('data-checked') === 'true';
-			content = content.replace(/^\s+/, '');
+			// Trim TipTap's block wrapper; 4-space continuation keeps sublists and fences nested.
+			content = content.trim().replace(/\n(?=.)/g, '\n    ');
 			return `- [${checked ? 'x' : ' '}] ${content}\n`;
 		}
 	});
 
-	// Convert TipTap mention spans -> <@id>
+	// Convert TipTap mention spans -> serialized mention tags.
 	turndownService.addRule('mentions', {
 		filter: (node) => node.nodeName === 'SPAN' && node.getAttribute('data-type') === 'mention',
 		replacement: (_content, node: HTMLElement) => {
 			const id = node.getAttribute('data-id') || '';
 			// TipTap stores the trigger char in data-mention-suggestion-char (usually "@")
 			const ch = node.getAttribute('data-mention-suggestion-char') || '@';
-			// Emit <@id> style, e.g. <@llama3.2:latest>
-			return `<${ch}${id}>`;
+			const mentionChar = ch === '/' ? '$' : ch;
+			return `<${mentionChar}${id}>`;
 		}
+	});
+
+	turndownService.addRule('underline', {
+		filter: 'u',
+		replacement: (content) => `<u>${content}</u>`
 	});
 
 	import { onMount, onDestroy, tick, getContext } from 'svelte';
@@ -149,6 +162,7 @@
 	import Typography from '@tiptap/extension-typography';
 	import Highlight from '@tiptap/extension-highlight';
 	import Code from '@tiptap/extension-code';
+	import Italic from '@tiptap/extension-italic';
 	import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 
 	// WORKAROUND: TipTap's default Code mark input rule regex captures the
@@ -165,6 +179,16 @@
 					type: this.type
 				})
 			];
+		}
+	});
+
+	// Prompt inputs need literal asterisks preserved, while toolbar-applied italic should still work.
+	const PromptItalic = Italic.extend({
+		addInputRules() {
+			return [];
+		},
+		addPasteRules() {
+			return [];
 		}
 	});
 
@@ -216,6 +240,7 @@
 	};
 
 	export let richText = true;
+	export let autoFormat = true;
 	export let dragHandle = false;
 	export let link = false;
 	export let image = false;
@@ -269,6 +294,14 @@
 		});
 	};
 
+	const getMentionText = ({ node, suggestion }) => {
+		const id = node.attrs.id ?? '';
+		const label = node.attrs.label ?? id;
+		const ch = node.attrs.mentionSuggestionChar ?? suggestion?.char ?? '@';
+		const char = ch === '/' ? '$' : ch;
+		return `${char}${label}`;
+	};
+
 	export let onSelectionUpdate = (e) => {};
 
 	export let id = '';
@@ -285,6 +318,28 @@
 	export let preserveBreaks = false;
 	export let generateAutoCompletion: Function = async () => null;
 	export let autocomplete = false;
+	export let followUpSuggestion = '';
+
+	$: if (editor && !editor.isDestroyed) {
+		const { doc } = editor.state;
+		const node = doc.firstChild;
+		if (node?.type.name === 'paragraph' && !node.attrs['data-prompt']) {
+			const suggestion = doc.childCount === 1 && node.content.size === 0 ? followUpSuggestion : '';
+			if ((node.attrs['data-suggestion'] ?? '') !== suggestion) {
+				editor.view.dispatch(
+					editor.state.tr
+						.setNodeMarkup(0, null, {
+							...node.attrs,
+							class: suggestion ? 'ai-autocompletion' : null,
+							'data-prompt': suggestion ? '' : null,
+							'data-suggestion': suggestion || null
+						})
+						.setMeta('addToHistory', false)
+				);
+			}
+		}
+	}
+
 	export let messageInput = false;
 	export let shiftEnter = false;
 	export let largeTextAsFile = false;
@@ -303,6 +358,7 @@
 	let element: Element | null = null;
 
 	let pendingUpdate = null;
+	let destroyed = false;
 
 	const options = {
 		throwOnError: false
@@ -454,9 +510,6 @@
 		if (text === '') {
 			editor.commands.clearContent();
 		} else {
-			// Regex to find serialized mention tags: <@id>, <#id>, <$id|label>
-			const mentionReG = /<([@#$])([\w.\-:/]+)(?:\|([^>]*))?>/g;
-
 			// Convert each line to a <p>, replacing mention tags with proper
 			// TipTap mention spans that the editor's DOMParser will recognise.
 			const lines = text.split('\n');
@@ -469,10 +522,22 @@
 					const escaped = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 					// Now replace the escaped mention patterns back into real spans
 					const withMentions = escaped.replace(
-						/&lt;([@#$])([\w.\-:/]+)(?:\|([^&]*?))?&gt;/g,
-						(_, ch, id, label) => {
-							const display = label?.length ? label : id;
-							return `<span class="mention" data-type="mention" data-id="${id}" data-label="${display}" data-mention-suggestion-char="${ch}">${ch}${display}</span>`;
+						/&lt;([@#$])([^|&\s]+)(?:\|([^&]*?))?&gt;|&lt;\/([\w.\-:/]+)\|([^&]*?)&gt;/g,
+						(match, ch, id, label, slashSkillId, slashSkillLabel) => {
+							const mentionChar = ch || '$';
+							const mentionId = id || slashSkillId;
+							if (
+								mentionChar === '$' &&
+								![...($skills ?? []), ...($terminalSkills ?? [])].some(
+									(skill) => skill.id === mentionId && skill.is_active
+								)
+							) {
+								return match;
+							}
+							const display = (label || slashSkillLabel)?.length
+								? label || slashSkillLabel
+								: mentionId;
+							return `<span class="mention" data-type="mention" data-id="${mentionId}" data-label="${display}" data-mention-suggestion-char="${mentionChar}">${mentionChar}${display}</span>`;
 						}
 					);
 					return `<p>${withMentions}</p>`;
@@ -556,7 +621,7 @@
 		}
 	};
 
-	export const focus = () => {
+	export const focus = (options: FocusOptions = {}) => {
 		if (editor && editor.view) {
 			// Check if the editor is destroyed
 			if (editor.isDestroyed) {
@@ -564,9 +629,13 @@
 			}
 
 			try {
-				editor.view.focus();
-				// Scroll to the current selection
-				editor.view.dispatch(editor.view.state.tr.scrollIntoView());
+				if (options.preventScroll && editor.view.dom instanceof HTMLElement) {
+					editor.view.dom.focus(options);
+				} else {
+					editor.view.focus();
+					// Scroll to the current selection
+					editor.view.dispatch(editor.view.state.tr.scrollIntoView());
+				}
 			} catch (e) {
 				// sometimes focusing throws an error, ignore
 				console.warn('Error focusing editor', e);
@@ -657,9 +726,9 @@
 					props: {
 						decorations: (state) => {
 							const { selection } = state;
-							const { focused } = this.editor;
+							const { isFocused } = this.editor;
 
-							if (focused || selection.empty) {
+							if (isFocused || selection.empty) {
 								return null;
 							}
 
@@ -729,16 +798,19 @@
 			}
 		}
 
-		if (collaboration && documentId && socket && user) {
+		if (collaboration && editable && documentId && socket && user) {
 			const { SocketIOCollaborationProvider } = await import('./RichTextInput/Collaboration');
+			if (destroyed) return;
 			provider = new SocketIOCollaborationProvider(documentId, socket, user, content);
 		}
+		if (destroyed) return;
 		editor = new Editor({
 			element: element,
 			extensions: [
 				StarterKit.configure({
-					link: link,
+					link: link ? { autolink: autoFormat, linkOnPaste: autoFormat } : false,
 					code: false, // Disabled in favor of FixedCode (see workaround above)
+					...(messageInput ? { italic: false } : {}),
 					// When rich text is on, ListKit + CodeBlockLowlight provide these.
 					// Disable StarterKit's equivalents to avoid duplicate extension names.
 					...(richText
@@ -757,9 +829,10 @@
 					...(richText ? {} : { strike: false })
 				}),
 				FixedCode,
+				...(messageInput ? [PromptItalic] : []),
 				...(dragHandle ? [ListItemDragHandle] : []),
 				Placeholder.configure({ placeholder: () => _placeholder, showOnlyWhenEditable: false }),
-				SelectionDecoration,
+				...(messageInput ? [] : [SelectionDecoration]),
 
 				...(richText
 					? [
@@ -781,6 +854,12 @@
 					? [
 							Mention.configure({
 								HTMLAttributes: { class: 'mention' },
+								renderText: getMentionText,
+								renderHTML: ({ options, node, suggestion }) => [
+									'span',
+									options.HTMLAttributes,
+									getMentionText({ node, suggestion })
+								],
 								suggestions: suggestions
 							})
 						]
@@ -796,11 +875,11 @@
 							})
 						]
 					: []),
-				...(autocomplete
+				...(autocomplete || messageInput
 					? [
 							AIAutocompletion.configure({
 								generateCompletion: async (text) => {
-									if (text.trim().length === 0) {
+									if (!autocomplete || text.trim().length === 0) {
 										return null;
 									}
 
@@ -865,7 +944,7 @@
 					: []),
 				...(collaboration && provider ? [provider.getEditorExtension()] : [])
 			],
-			content: collaboration ? undefined : content,
+			content: provider ? undefined : content,
 			autofocus: messageInput ? true : false,
 			onTransaction: () => {
 				if (!editor) return;
@@ -937,7 +1016,9 @@
 				}
 			},
 			editorProps: {
-				attributes: { id },
+				// the tiptap placeholder never becomes the field's accessible name;
+				// function form so a placeholder change is picked up after mount
+				attributes: () => ({ id, 'aria-label': _placeholder }),
 				handleDrop: (view, event) => {
 					// Intercept sidebar chat item drops to prevent ProseMirror
 					// from inserting the raw JSON as text. The actual handling
@@ -957,8 +1038,8 @@
 					return false;
 				},
 				handlePaste: (view, event) => {
-					// Force plain-text pasting when richText === false
-					if (!richText) {
+					// Paste literal text when automatic formatting is disabled.
+					if (!richText || !autoFormat) {
 						// swallow HTML completely
 						event.preventDefault();
 						const { state, dispatch } = view;
@@ -967,6 +1048,11 @@
 							/\r\n/g,
 							'\n'
 						);
+
+						if (state.selection.$from.parent.type.spec.code) {
+							dispatch(state.tr.insertText(plainText).scrollIntoView());
+							return true;
+						}
 
 						const lines = plainText.split('\n');
 						const nodes = [];
@@ -981,7 +1067,11 @@
 						});
 
 						const fragment = Fragment.fromArray(nodes);
-						dispatch(state.tr.replaceSelectionWith(fragment, false).scrollIntoView());
+						dispatch(
+							state.tr
+								.replaceWith(state.selection.from, state.selection.to, fragment)
+								.scrollIntoView()
+						);
 
 						return true; // handled
 					}
@@ -1233,8 +1323,8 @@
 					floatingMenuElement.style.opacity = '0';
 				}
 			},
-			enableInputRules: richText,
-			enablePasteRules: richText
+			enableInputRules: richText && autoFormat,
+			enablePasteRules: richText && autoFormat
 		});
 
 		provider?.setEditor(editor, () => ({ md: mdValue, html: htmlValue, json: jsonValue }));
@@ -1245,6 +1335,7 @@
 	});
 
 	onDestroy(() => {
+		destroyed = true;
 		if (pendingUpdate) {
 			cancelAnimationFrame(pendingUpdate);
 		}

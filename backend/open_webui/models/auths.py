@@ -9,9 +9,10 @@ from typing import Optional
 import bcrypt
 from open_webui.internal.db import Base, JSONField, get_async_db_context
 from open_webui.models.users import User, UserModel, UserProfileImageResponse, Users
-from open_webui.utils.validate import validate_profile_image_url
+from open_webui.utils.validate import validate_image_url
 from pydantic import BaseModel, field_validator
 from sqlalchemy import Boolean, Column, String, Text, delete, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 log = logging.getLogger(__name__)
@@ -86,7 +87,7 @@ class SignupForm(BaseModel):
     @classmethod
     def check_profile_image_url(cls, v: str | None) -> str | None:
         if v is not None:
-            return validate_profile_image_url(v)
+            return validate_image_url(v)
         return v
 
 
@@ -124,18 +125,20 @@ class AuthsTable:
             )
             session.add(credential)
 
-            created_user = await Users.insert_new_user(
-                new_id,
-                name,
-                email,
-                profile_image_url,
-                role,
-                oauth=oauth,
-                db=session,
-            )
-            # persist both records and reload generated defaults
-            await session.commit()
-            await session.refresh(credential)
+            try:
+                created_user = await Users.insert_new_user(
+                    new_id,
+                    name,
+                    email,
+                    profile_image_url,
+                    role,
+                    oauth=oauth,
+                    db=session,
+                )
+                await session.commit()
+            except IntegrityError:
+                await session.rollback()
+                raise
             return created_user if credential and created_user else None
 
     async def authenticate_user(

@@ -10,8 +10,8 @@ import aiohttp
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from open_webui.config import CACHE_DIR
 from open_webui.constants import ERROR_MESSAGES
-from open_webui.env import AIOHTTP_CLIENT_SESSION_SSL, AIOHTTP_CLIENT_TIMEOUT
-from open_webui.events import EVENTS, publish_event
+from open_webui.env import AIOHTTP_CLIENT_SESSION_SSL, AIOHTTP_CLIENT_TIMEOUT, ENABLE_PLUGINS
+from open_webui.events import EVENTS, build_event, dispatch_event_functions, publish_event, schedule_webhook_dispatch
 from open_webui.internal.db import get_async_session
 from open_webui.models.functions import (
     FunctionForm,
@@ -23,6 +23,7 @@ from open_webui.models.functions import (
 )
 from open_webui.utils.auth import get_admin_user, get_verified_user
 from open_webui.utils.plugin import (
+    get_function_contents_cache,
     get_functions_cache,
     get_function_module_from_cache,
     load_function_module_by_id,
@@ -46,11 +47,17 @@ router = APIRouter()
 
 @router.get('/', response_model=list[FunctionResponse])
 async def get_functions(user=Depends(get_verified_user), db: AsyncSession = Depends(get_async_session)):
+    if not ENABLE_PLUGINS:
+        return []
+
     return await Functions.get_functions(db=db)
 
 
 @router.get('/list', response_model=list[FunctionUserResponse])
 async def get_function_list(user=Depends(get_admin_user), db: AsyncSession = Depends(get_async_session)):
+    if not ENABLE_PLUGINS:
+        return []
+
     return await Functions.get_function_list(db=db)
 
 
@@ -65,6 +72,9 @@ async def get_functions(
     user=Depends(get_admin_user),
     db: AsyncSession = Depends(get_async_session),
 ):
+    if not ENABLE_PLUGINS:
+        return []
+
     return await Functions.get_functions(include_valves=include_valves, db=db)
 
 
@@ -284,6 +294,22 @@ async def toggle_function_by_id(
 ):
     function = await Functions.get_function_by_id(id, db=db)
     if function:
+        lifecycle_event = build_event(
+            request,
+            EVENTS.FUNCTION_DISABLE_STARTED if function.is_active else EVENTS.FUNCTION_ENABLE_STARTED,
+            actor=user,
+            subject_id=function.id,
+            subject_type='function',
+            data={'type': function.type, 'name': function.name},
+        )
+        await dispatch_event_functions(
+            request.app,
+            lifecycle_event,
+            request=request,
+            extra_function_ids=[function.id] if not function.is_active else None,
+        )
+        schedule_webhook_dispatch(request.app, lifecycle_event)
+
         function = await Functions.update_function_by_id(id, {'is_active': not function.is_active}, db=db)
 
         if function:
@@ -415,6 +441,8 @@ async def delete_function_by_id(
     if result:
         FUNCTIONS = get_functions_cache(request)
         FUNCTIONS.pop(id, None)
+        FUNCTION_CONTENTS = get_function_contents_cache(request)
+        FUNCTION_CONTENTS.pop(id, None)
         await publish_event(
             request,
             EVENTS.FUNCTION_DELETED,
@@ -568,6 +596,9 @@ async def get_function_user_valves_spec_by_id(
 ):
     function = await Functions.get_function_by_id(id, db=db)
     if function:
+        if not function.is_active:
+            return None
+
         function_module, function_type, frontmatter = await get_function_module_from_cache(request, id)
 
         if hasattr(function_module, 'UserValves'):
@@ -595,6 +626,12 @@ async def update_function_user_valves_by_id(
     function = await Functions.get_function_by_id(id, db=db)
 
     if function:
+        if not function.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail='Function is not active',
+            )
+
         function_module, function_type, frontmatter = await get_function_module_from_cache(request, id)
 
         if hasattr(function_module, 'UserValves'):

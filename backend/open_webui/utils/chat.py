@@ -1,5 +1,4 @@
 import asyncio
-import json
 import logging
 import random
 import sys
@@ -11,7 +10,6 @@ from aiocache import cached
 from fastapi import HTTPException, Request, status
 from open_webui.env import BYPASS_MODEL_ACCESS_CONTROL, GLOBAL_LOG_LEVEL
 from open_webui.functions import generate_function_chat_completion
-from open_webui.models.functions import Functions
 from open_webui.models.models import Models
 from open_webui.models.users import UserModel
 from open_webui.routers.ollama import (
@@ -25,14 +23,15 @@ from open_webui.routers.pipelines import (
     process_pipeline_outlet_filter,
 )
 from open_webui.socket.main import (
+    EVENT_QUEUES,
     get_event_call,
     get_event_emitter,
-    sio,
 )
 from open_webui.utils.filter import (
-    get_sorted_filter_ids,
+    get_filter_functions,
     process_filter_functions,
 )
+from open_webui.utils.json_codec import JSONCodec
 from open_webui.utils.models import check_model_access, get_all_models
 from open_webui.utils.payload import convert_payload_openai_to_ollama
 from open_webui.utils.response import (
@@ -69,66 +68,63 @@ async def generate_direct_chat_completion(
         )
 
     channel = f'{user_id}:{session_id}:{request_id}'
-    logging.info(f'WebSocket channel: {channel}')
+    logging.info('WebSocket channel: %s', channel)
 
     if form_data.get('stream'):
-        q = asyncio.Queue()
-
-        async def message_listener(sid, data):
-            """
-            Handle received socket messages and push them into the queue.
-            """
-            await q.put(data)
-
-        # Register the listener
-        sio.on(channel, message_listener)
+        queue = asyncio.Queue()
+        EVENT_QUEUES[channel] = queue
 
         # Start processing chat completion in background
-        res = await event_caller(
-            {
-                'type': 'request:chat:completion',
-                'data': {
-                    'form_data': form_data,
-                    'model': models[form_data['model']],
-                    'channel': channel,
-                    'session_id': session_id,
-                },
-            }
-        )
+        try:
+            res = await event_caller(
+                {
+                    'type': 'request:chat:completion',
+                    'data': {
+                        'form_data': form_data,
+                        'model': models[form_data['model']],
+                        'channel': channel,
+                        'session_id': session_id,
+                    },
+                }
+            )
 
-        log.info(f'res: {res}')
+            log.info('res: %s', res)
 
-        if res.get('status', False):
+            status = res.get('status', False)
+        except BaseException:
+            EVENT_QUEUES.pop(channel, None)
+            raise
+
+        if status:
             # Define a generator to stream responses
             async def event_generator():
-                nonlocal q
                 try:
                     while True:
-                        data = await q.get()  # Wait for new messages
+                        data = await queue.get()  # Wait for new messages
                         if isinstance(data, dict):
                             if 'done' in data and data['done']:
                                 break  # Stop streaming when 'done' is received
 
-                            yield f'data: {json.dumps(data)}\n\n'
+                            yield f'data: {JSONCodec.dumps(data)}\n\n'
                         elif isinstance(data, str):
                             if 'data:' in data:
                                 yield f'{data}\n\n'
                             else:
                                 yield f'data: {data}\n\n'
                 except Exception as e:
-                    log.debug(f'Error in event generator: {e}')
+                    log.debug('Error in event generator: %s', e)
                     pass
+                finally:
+                    EVENT_QUEUES.pop(channel, None)
 
             # Define a background task to run the event generator
             async def background():
-                try:
-                    del sio.handlers['/'][channel]
-                except Exception as e:
-                    pass
+                EVENT_QUEUES.pop(channel, None)
 
             # Return the streaming response
             return StreamingResponse(event_generator(), media_type='text/event-stream', background=background)
         else:
+            EVENT_QUEUES.pop(channel, None)
             raise Exception(str(res))
     else:
         res = await event_caller(
@@ -156,7 +152,7 @@ async def generate_chat_completion(
     bypass_filter: bool = False,
     bypass_system_prompt: bool = False,
 ):
-    log.debug(f'generate_chat_completion: {form_data}')
+    log.debug('generate_chat_completion: %s', form_data)
     if BYPASS_MODEL_ACCESS_CONTROL:
         bypass_filter = True
 
@@ -179,19 +175,22 @@ async def generate_chat_completion(
         # Merge the direct connection model into server models so that
         # task functions (title, tags, etc.) can resolve a server-side
         # task model while still having the direct model available.
+        # dict(...items()) is one HGETALL on a Redis-backed pool; ``{**pool}``
+        # would issue HKEYS plus one HGET per model.
         models = {
-            **request.app.state.MODELS,
+            **dict(request.app.state.MODELS.items()),
             request.state.model['id']: request.state.model,
         }
-        log.debug(f'direct connection to model: {request.state.model["id"]}')
+        log.debug('direct connection to model: %s', request.state.model['id'])
     else:
         models = request.app.state.MODELS
 
     model_id = form_data['model']
-    if model_id not in models:
+    # Single lookup — membership check plus getitem would be two Redis
+    # round trips on a Redis-backed model pool.
+    model = models.get(model_id)
+    if model is None:
         raise Exception('Model not found')
-
-    model = models[model_id]
 
     if getattr(request.state, 'direct', False) and model_id == getattr(request.state, 'model', {}).get('id'):
         return await generate_direct_chat_completion(request, form_data, user=user, models=models)
@@ -247,7 +246,7 @@ async def generate_chat_completion(
             if form_data.get('stream') == True:
 
                 async def stream_wrapper(stream):
-                    yield f'data: {json.dumps({"selected_model_id": selected_model_id})}\n\n'
+                    yield f'data: {JSONCodec.dumps({"selected_model_id": selected_model_id})}\n\n'
                     async for chunk in stream:
                         yield chunk
 
@@ -258,24 +257,25 @@ async def generate_chat_completion(
                     bypass_filter=True,
                     bypass_system_prompt=bypass_system_prompt,
                 )
+                # Upstream errors come back as a response object.
+                if not isinstance(response, StreamingResponse):
+                    return response
                 return StreamingResponse(
                     stream_wrapper(response.body_iterator),
                     media_type='text/event-stream',
                     background=response.background,
                 )
             else:
-                return {
-                    **(
-                        await generate_chat_completion(
-                            request,
-                            form_data,
-                            user,
-                            bypass_filter=True,
-                            bypass_system_prompt=bypass_system_prompt,
-                        )
-                    ),
-                    'selected_model_id': selected_model_id,
-                }
+                response = await generate_chat_completion(
+                    request,
+                    form_data,
+                    user,
+                    bypass_filter=True,
+                    bypass_system_prompt=bypass_system_prompt,
+                )
+                if not isinstance(response, dict):
+                    return response
+                return {**response, 'selected_model_id': selected_model_id}
 
         if model.get('pipe'):
             # Below does not require bypass_filter because this is the only route the uses this function and it is already bypassing the filter
@@ -314,7 +314,7 @@ async def chat_completed(request: Request, form_data: dict, user: Any):
 
     if getattr(request.state, 'direct', False) and hasattr(request.state, 'model'):
         models = {
-            **request.app.state.MODELS,
+            **dict(request.app.state.MODELS.items()),
             request.state.model['id']: request.state.model,
         }
     else:
@@ -359,11 +359,11 @@ async def chat_completed(request: Request, form_data: dict, user: Any):
     }
 
     try:
-        filter_ids = await get_sorted_filter_ids(request, model, metadata.get('filter_ids', []))
-        filter_functions = await Functions.get_functions_by_ids(filter_ids)
+        filter_functions = await get_filter_functions(request, model, metadata.get('filter_ids', []))
 
         result, _ = await process_filter_functions(
             request=request,
+            filter_context=None,
             filter_functions=filter_functions,
             filter_type='outlet',
             form_data=data,

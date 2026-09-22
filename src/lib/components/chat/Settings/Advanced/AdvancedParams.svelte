@@ -3,14 +3,17 @@
 	import Textarea from '$lib/components/common/Textarea.svelte';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
 	import Plus from '$lib/components/icons/Plus.svelte';
+	import type { i18n as i18nType } from 'i18next';
 	import { getContext } from 'svelte';
+	import type { Writable } from 'svelte/store';
 
-	const i18n = getContext('i18n');
+	const i18n = getContext<Writable<i18nType>>('i18n');
 
 	export let onChange: (params: any) => void = () => {};
 
 	export let admin = false;
 	export let custom = false;
+	export let layout: 'stack' | 'grid' = 'stack';
 
 	const defaultParams = {
 		// Advanced
@@ -47,25 +50,76 @@
 		num_thread: null,
 		num_gpu: null
 	};
+	type RangeParamKey = keyof typeof defaultParams;
 
-	export let params = defaultParams;
+	export let params: any = defaultParams;
 	$: if (params) {
 		onChange(params);
 	}
+
+	const setTopK = (event: Event) => {
+		const input = event.currentTarget as HTMLInputElement;
+		const rawValue = input.value;
+		const value = Number(rawValue);
+
+		if (!/^\d+$/.test(rawValue) || value < 0 || value > 1000) {
+			input.value = `${params.top_k ?? ''}`;
+			return;
+		}
+
+		params.top_k = value;
+	};
 </script>
 
-<div class=" space-y-1 text-xs pb-safe-bottom">
+{#snippet rangeParam(
+	key: RangeParamKey,
+	label: string,
+	min: number,
+	max: number,
+	rangeStep: number | string,
+	numberStep: number | string = 'any',
+	numberMax: number | undefined = max
+)}
+	<div class="flex mt-0.5 space-x-2">
+		<div class=" flex-1">
+			<input
+				type="range"
+				aria-label={label}
+				{min}
+				{max}
+				step={rangeStep}
+				bind:value={params[key]}
+				class="w-full h-2 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
+			/>
+		</div>
+		<div>
+			<input
+				bind:value={params[key]}
+				type="number"
+				aria-label={label}
+				class=" bg-transparent text-center w-14"
+				{min}
+				max={numberMax}
+				step={numberStep}
+			/>
+		</div>
+	</div>
+{/snippet}
+
+<div
+	class={layout === 'grid'
+		? 'grid grid-cols-1 gap-x-5 gap-y-1 pb-safe-bottom text-xs text-gray-600 dark:text-gray-400 sm:grid-cols-2 lg:grid-cols-3'
+		: 'space-y-1 pb-safe-bottom text-xs text-gray-600 dark:text-gray-400'}
+>
 	<div>
 		<Tooltip
-			content={$i18n.t(
-				'When enabled, the model will respond to each chat message in real-time, generating a response as soon as the user sends a message. This mode is useful for live chat applications, but may impact performance on slower hardware.'
-			)}
+			content={$i18n.t('settings.personal.general.parameters.streamChatResponse.description')}
 			placement="top-start"
 			className="inline-tooltip"
 		>
 			<div class=" py-0.5 flex w-full justify-between">
 				<div class=" self-center text-xs">
-					{$i18n.t('Stream Chat Response')}
+					{$i18n.t('settings.personal.general.parameters.streamChatResponse.label')}
 				</div>
 				<button
 					class="p-1 px-3 text-xs flex rounded-sm transition"
@@ -94,15 +148,13 @@
 	{#if admin}
 		<div>
 			<Tooltip
-				content={$i18n.t(
-					'The stream delta chunk size for the model. Increasing the chunk size will make the model respond with larger pieces of text at once.'
-				)}
+				content={$i18n.t('settings.personal.general.parameters.streamDeltaChunkSize.description')}
 				placement="top-start"
 				className="inline-tooltip"
 			>
 				<div class="flex w-full justify-between">
 					<div class=" self-center text-xs">
-						{$i18n.t('Stream Delta Chunk Size')}
+						{$i18n.t('settings.personal.general.parameters.streamDeltaChunkSize.label')}
 					</div>
 					<button
 						class="p-1 px-3 text-xs flex rounded-sm transition shrink-0 outline-hidden"
@@ -122,42 +174,29 @@
 			</Tooltip>
 
 			{#if (params?.stream_delta_chunk_size ?? null) !== null}
-				<div class="flex mt-0.5 space-x-2">
-					<div class=" flex-1">
-						<input
-							id="steps-range"
-							type="range"
-							min="1"
-							max="128"
-							step="1"
-							bind:value={params.stream_delta_chunk_size}
-							class="w-full h-2 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
-						/>
-					</div>
-					<div>
-						<input
-							bind:value={params.stream_delta_chunk_size}
-							type="number"
-							class=" bg-transparent text-center w-14"
-							min="1"
-							step="any"
-						/>
-					</div>
-				</div>
+				{@render rangeParam(
+					'stream_delta_chunk_size',
+					$i18n.t('settings.personal.general.parameters.streamDeltaChunkSize.label'),
+					1,
+					128,
+					1,
+					'any',
+					undefined
+				)}
 			{/if}
 		</div>
 
 		<div>
 			<Tooltip
 				content={$i18n.t(
-					'Lower the context compaction token threshold for this model. The global context compaction threshold remains the maximum.'
+					'settings.personal.general.parameters.contextCompactionThreshold.description'
 				)}
 				placement="top-start"
 				className="inline-tooltip"
 			>
 				<div class="flex w-full justify-between">
 					<div class=" self-center text-xs">
-						{$i18n.t('Context Compaction Threshold')}
+						{$i18n.t('settings.personal.general.parameters.contextCompactionThreshold.label')}
 					</div>
 					<button
 						class="p-1 px-3 text-xs flex rounded-sm transition shrink-0 outline-hidden"
@@ -182,6 +221,9 @@
 						<input
 							class="text-sm w-full bg-transparent outline-hidden outline-none"
 							type="number"
+							aria-label={$i18n.t(
+								'settings.personal.general.parameters.contextCompactionThreshold.label'
+							)}
 							placeholder={$i18n.t('Enter token threshold')}
 							bind:value={params.compact_token_threshold}
 							autocomplete="off"
@@ -196,15 +238,13 @@
 
 	<div>
 		<Tooltip
-			content={$i18n.t(
-				"Native mode (default) leverages the model's built-in tool-calling capabilities. Legacy mode works with a wider range of models by calling tools once before execution via prompt injection."
-			)}
+			content={$i18n.t('settings.personal.general.parameters.functionCalling.description')}
 			placement="top-start"
 			className="inline-tooltip"
 		>
 			<div class=" py-0.5 flex w-full justify-between">
 				<div class=" self-center text-xs">
-					{$i18n.t('Function Calling')}
+					{$i18n.t('settings.personal.general.parameters.functionCalling.label')}
 				</div>
 				<button
 					class="p-1 px-3 text-xs flex rounded-sm transition"
@@ -233,15 +273,13 @@
 
 	<div class=" py-0.5 w-full justify-between">
 		<Tooltip
-			content={$i18n.t(
-				'Enable, disable, or customize the reasoning tags used by the model. "Enabled" uses default tags, "Disabled" turns off reasoning tags, and "Custom" lets you specify your own start and end tags.'
-			)}
+			content={$i18n.t('settings.personal.general.parameters.reasoningTags.description')}
 			placement="top-start"
 			className="inline-tooltip"
 		>
 			<div class="flex w-full justify-between">
 				<div class=" self-center text-xs">
-					{$i18n.t('Reasoning Tags')}
+					{$i18n.t('settings.personal.general.parameters.reasoningTags.label')}
 				</div>
 				<button
 					class="p-1 px-3 text-xs flex rounded-sm transition shrink-0 outline-hidden"
@@ -277,6 +315,7 @@
 					<input
 						class="text-sm w-full bg-transparent outline-hidden outline-none"
 						type="text"
+						aria-label={$i18n.t('Start Tag')}
 						placeholder={$i18n.t('Start Tag')}
 						bind:value={params.reasoning_tags[0]}
 						autocomplete="off"
@@ -287,6 +326,7 @@
 					<input
 						class="text-sm w-full bg-transparent outline-hidden outline-none"
 						type="text"
+						aria-label={$i18n.t('End Tag')}
 						placeholder={$i18n.t('End Tag')}
 						bind:value={params.reasoning_tags[1]}
 						autocomplete="off"
@@ -298,15 +338,13 @@
 
 	<div class=" py-0.5 w-full justify-between">
 		<Tooltip
-			content={$i18n.t(
-				'Sets the random number seed to use for generation. Setting this to a specific number will make the model generate the same text for the same prompt.'
-			)}
+			content={$i18n.t('settings.personal.general.parameters.seed.description')}
 			placement="top-start"
 			className="inline-tooltip"
 		>
 			<div class="flex w-full justify-between">
 				<div class=" self-center text-xs">
-					{$i18n.t('Seed')}
+					{$i18n.t('settings.personal.general.parameters.seed.label')}
 				</div>
 
 				<button
@@ -331,6 +369,7 @@
 					<input
 						class="text-sm w-full bg-transparent outline-hidden outline-none"
 						type="number"
+						aria-label={$i18n.t('settings.personal.general.parameters.seed.label')}
 						placeholder={$i18n.t('Enter Seed')}
 						bind:value={params.seed}
 						autocomplete="off"
@@ -343,15 +382,13 @@
 
 	<div class=" py-0.5 w-full justify-between">
 		<Tooltip
-			content={$i18n.t(
-				'Sets the stop sequences to use. When this pattern is encountered, the LLM will stop generating text and return. Multiple stop patterns may be set by specifying multiple separate stop parameters in a modelfile.'
-			)}
+			content={$i18n.t('settings.personal.general.parameters.stopSequence.description')}
 			placement="top-start"
 			className="inline-tooltip"
 		>
 			<div class="flex w-full justify-between">
 				<div class=" self-center text-xs">
-					{$i18n.t('Stop Sequence')}
+					{$i18n.t('settings.personal.general.parameters.stopSequence.label')}
 				</div>
 
 				<button
@@ -376,6 +413,7 @@
 					<input
 						class="text-sm w-full bg-transparent outline-hidden outline-none"
 						type="text"
+						aria-label={$i18n.t('settings.personal.general.parameters.stopSequence.label')}
 						placeholder={$i18n.t('Enter stop sequence')}
 						bind:value={params.stop}
 						autocomplete="off"
@@ -387,15 +425,13 @@
 
 	<div class=" py-0.5 w-full justify-between">
 		<Tooltip
-			content={$i18n.t(
-				'The temperature of the model. Increasing the temperature will make the model answer more creatively.'
-			)}
+			content={$i18n.t('settings.personal.general.parameters.temperature.description')}
 			placement="top-start"
 			className="inline-tooltip"
 		>
 			<div class="flex w-full justify-between">
 				<div class=" self-center text-xs">
-					{$i18n.t('Temperature')}
+					{$i18n.t('settings.personal.general.parameters.temperature.label')}
 				</div>
 				<button
 					class="p-1 px-3 text-xs flex rounded-sm transition shrink-0 outline-hidden"
@@ -414,43 +450,25 @@
 		</Tooltip>
 
 		{#if (params?.temperature ?? null) !== null}
-			<div class="flex mt-0.5 space-x-2">
-				<div class=" flex-1">
-					<input
-						id="steps-range"
-						type="range"
-						min="0"
-						max="2"
-						step="0.05"
-						bind:value={params.temperature}
-						class="w-full h-2 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
-					/>
-				</div>
-				<div>
-					<input
-						bind:value={params.temperature}
-						type="number"
-						class=" bg-transparent text-center w-14"
-						min="0"
-						max="2"
-						step="any"
-					/>
-				</div>
-			</div>
+			{@render rangeParam(
+				'temperature',
+				$i18n.t('settings.personal.general.parameters.temperature.label'),
+				0,
+				2,
+				0.05
+			)}
 		{/if}
 	</div>
 
 	<div class=" py-0.5 w-full justify-between">
 		<Tooltip
-			content={$i18n.t(
-				'Constrains effort on reasoning for reasoning models. Only applicable to reasoning models from specific providers that support reasoning effort.'
-			)}
+			content={$i18n.t('settings.personal.general.parameters.reasoningEffort.description')}
 			placement="top-start"
 			className="inline-tooltip"
 		>
 			<div class="flex w-full justify-between">
 				<div class=" self-center text-xs">
-					{$i18n.t('Reasoning Effort')}
+					{$i18n.t('settings.personal.general.parameters.reasoningEffort.label')}
 				</div>
 				<button
 					class="p-1 px-3 text-xs flex rounded-sm transition shrink-0 outline-hidden"
@@ -474,6 +492,7 @@
 					<input
 						class="text-sm w-full bg-transparent outline-hidden outline-none"
 						type="text"
+						aria-label={$i18n.t('settings.personal.general.parameters.reasoningEffort.label')}
 						placeholder={$i18n.t('Enter reasoning effort')}
 						bind:value={params.reasoning_effort}
 						autocomplete="off"
@@ -493,7 +512,7 @@
 		>
 			<div class="flex w-full justify-between">
 				<div class=" self-center text-xs">
-					{'logit_bias'}
+					{$i18n.t('settings.personal.general.parameters.logitBias.label')}
 				</div>
 				<button
 					class="p-1 px-3 text-xs flex rounded-sm transition shrink-0 outline-hidden"
@@ -517,6 +536,7 @@
 					<input
 						class="text-sm w-full bg-transparent outline-hidden outline-none"
 						type="text"
+						aria-label={$i18n.t('settings.personal.general.parameters.logitBias.label')}
 						placeholder={$i18n.t(
 							'Enter comma-separated "token:bias_value" pairs (example: 5432:100, 413:-100)'
 						)}
@@ -538,7 +558,7 @@
 		>
 			<div class="flex w-full justify-between">
 				<div class=" self-center text-xs">
-					{'max_tokens'}
+					{$i18n.t('settings.personal.general.parameters.maxTokens.label')}
 				</div>
 
 				<button
@@ -558,28 +578,15 @@
 		</Tooltip>
 
 		{#if (params?.max_tokens ?? null) !== null}
-			<div class="flex mt-0.5 space-x-2">
-				<div class=" flex-1">
-					<input
-						id="steps-range"
-						type="range"
-						min="-2"
-						max="131072"
-						step="1"
-						bind:value={params.max_tokens}
-						class="w-full h-2 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
-					/>
-				</div>
-				<div>
-					<input
-						bind:value={params.max_tokens}
-						type="number"
-						class=" bg-transparent text-center w-14"
-						min="-2"
-						step="1"
-					/>
-				</div>
-			</div>
+			{@render rangeParam(
+				'max_tokens',
+				$i18n.t('settings.personal.general.parameters.maxTokens.label'),
+				-2,
+				131072,
+				1,
+				1,
+				undefined
+			)}
 		{/if}
 	</div>
 
@@ -593,7 +600,7 @@
 		>
 			<div class="flex w-full justify-between">
 				<div class=" self-center text-xs">
-					{'top_k'}
+					{$i18n.t('settings.personal.general.parameters.topK.label')}
 				</div>
 				<button
 					class="p-1 px-3 text-xs flex rounded-sm transition shrink-0 outline-hidden"
@@ -615,23 +622,26 @@
 			<div class="flex mt-0.5 space-x-2">
 				<div class=" flex-1">
 					<input
-						id="steps-range"
 						type="range"
+						aria-label={$i18n.t('settings.personal.general.parameters.topK.label')}
 						min="0"
 						max="1000"
-						step="0.5"
-						bind:value={params.top_k}
+						step="1"
+						value={params.top_k}
+						on:input={setTopK}
 						class="w-full h-2 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
 					/>
 				</div>
 				<div>
 					<input
-						bind:value={params.top_k}
+						value={params.top_k}
 						type="number"
+						aria-label={$i18n.t('settings.personal.general.parameters.topK.label')}
 						class=" bg-transparent text-center w-14"
 						min="0"
-						max="100"
-						step="any"
+						max="1000"
+						step="1"
+						on:input={setTopK}
 					/>
 				</div>
 			</div>
@@ -648,7 +658,7 @@
 		>
 			<div class="flex w-full justify-between">
 				<div class=" self-center text-xs">
-					{'top_p'}
+					{$i18n.t('settings.personal.general.parameters.topP.label')}
 				</div>
 
 				<button
@@ -668,29 +678,13 @@
 		</Tooltip>
 
 		{#if (params?.top_p ?? null) !== null}
-			<div class="flex mt-0.5 space-x-2">
-				<div class=" flex-1">
-					<input
-						id="steps-range"
-						type="range"
-						min="0"
-						max="1"
-						step="0.05"
-						bind:value={params.top_p}
-						class="w-full h-2 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
-					/>
-				</div>
-				<div>
-					<input
-						bind:value={params.top_p}
-						type="number"
-						class=" bg-transparent text-center w-14"
-						min="0"
-						max="1"
-						step="any"
-					/>
-				</div>
-			</div>
+			{@render rangeParam(
+				'top_p',
+				$i18n.t('settings.personal.general.parameters.topP.label'),
+				0,
+				1,
+				0.05
+			)}
 		{/if}
 	</div>
 
@@ -704,7 +698,7 @@
 		>
 			<div class="flex w-full justify-between">
 				<div class=" self-center text-xs">
-					{'min_p'}
+					{$i18n.t('settings.personal.general.parameters.minP.label')}
 				</div>
 				<button
 					class="p-1 px-3 text-xs flex rounded-sm transition shrink-0 outline-hidden"
@@ -723,29 +717,13 @@
 		</Tooltip>
 
 		{#if (params?.min_p ?? null) !== null}
-			<div class="flex mt-0.5 space-x-2">
-				<div class=" flex-1">
-					<input
-						id="steps-range"
-						type="range"
-						min="0"
-						max="1"
-						step="0.05"
-						bind:value={params.min_p}
-						class="w-full h-2 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
-					/>
-				</div>
-				<div>
-					<input
-						bind:value={params.min_p}
-						type="number"
-						class=" bg-transparent text-center w-14"
-						min="0"
-						max="1"
-						step="any"
-					/>
-				</div>
-			</div>
+			{@render rangeParam(
+				'min_p',
+				$i18n.t('settings.personal.general.parameters.minP.label'),
+				0,
+				1,
+				0.05
+			)}
 		{/if}
 	</div>
 
@@ -759,7 +737,7 @@
 		>
 			<div class="flex w-full justify-between">
 				<div class=" self-center text-xs">
-					{'frequency_penalty'}
+					{$i18n.t('settings.personal.general.parameters.frequencyPenalty.label')}
 				</div>
 
 				<button
@@ -779,29 +757,13 @@
 		</Tooltip>
 
 		{#if (params?.frequency_penalty ?? null) !== null}
-			<div class="flex mt-0.5 space-x-2">
-				<div class=" flex-1">
-					<input
-						id="steps-range"
-						type="range"
-						min="-2"
-						max="2"
-						step="0.05"
-						bind:value={params.frequency_penalty}
-						class="w-full h-2 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
-					/>
-				</div>
-				<div>
-					<input
-						bind:value={params.frequency_penalty}
-						type="number"
-						class=" bg-transparent text-center w-14"
-						min="-2"
-						max="2"
-						step="any"
-					/>
-				</div>
-			</div>
+			{@render rangeParam(
+				'frequency_penalty',
+				$i18n.t('settings.personal.general.parameters.frequencyPenalty.label'),
+				-2,
+				2,
+				0.05
+			)}
 		{/if}
 	</div>
 
@@ -815,7 +777,7 @@
 		>
 			<div class="flex w-full justify-between">
 				<div class=" self-center text-xs">
-					{'presence_penalty'}
+					{$i18n.t('settings.personal.general.parameters.presencePenalty.label')}
 				</div>
 
 				<button
@@ -835,29 +797,13 @@
 		</Tooltip>
 
 		{#if (params?.presence_penalty ?? null) !== null}
-			<div class="flex mt-0.5 space-x-2">
-				<div class=" flex-1">
-					<input
-						id="steps-range"
-						type="range"
-						min="-2"
-						max="2"
-						step="0.05"
-						bind:value={params.presence_penalty}
-						class="w-full h-2 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
-					/>
-				</div>
-				<div>
-					<input
-						bind:value={params.presence_penalty}
-						type="number"
-						class=" bg-transparent text-center w-14"
-						min="-2"
-						max="2"
-						step="any"
-					/>
-				</div>
-			</div>
+			{@render rangeParam(
+				'presence_penalty',
+				$i18n.t('settings.personal.general.parameters.presencePenalty.label'),
+				-2,
+				2,
+				0.05
+			)}
 		{/if}
 	</div>
 
@@ -869,7 +815,7 @@
 		>
 			<div class="flex w-full justify-between">
 				<div class=" self-center text-xs">
-					{'mirostat'}
+					{$i18n.t('settings.personal.general.parameters.mirostat.label')}
 				</div>
 				<button
 					class="p-1 px-3 text-xs flex rounded-sm transition shrink-0 outline-hidden"
@@ -888,29 +834,14 @@
 		</Tooltip>
 
 		{#if (params?.mirostat ?? null) !== null}
-			<div class="flex mt-0.5 space-x-2">
-				<div class=" flex-1">
-					<input
-						id="steps-range"
-						type="range"
-						min="0"
-						max="2"
-						step="1"
-						bind:value={params.mirostat}
-						class="w-full h-2 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
-					/>
-				</div>
-				<div>
-					<input
-						bind:value={params.mirostat}
-						type="number"
-						class=" bg-transparent text-center w-14"
-						min="0"
-						max="2"
-						step="1"
-					/>
-				</div>
-			</div>
+			{@render rangeParam(
+				'mirostat',
+				$i18n.t('settings.personal.general.parameters.mirostat.label'),
+				0,
+				2,
+				1,
+				1
+			)}
 		{/if}
 	</div>
 
@@ -924,7 +855,7 @@
 		>
 			<div class="flex w-full justify-between">
 				<div class=" self-center text-xs">
-					{'mirostat_eta'}
+					{$i18n.t('settings.personal.general.parameters.mirostatEta.label')}
 				</div>
 				<button
 					class="p-1 px-3 text-xs flex rounded-sm transition shrink-0 outline-hidden"
@@ -943,29 +874,13 @@
 		</Tooltip>
 
 		{#if (params?.mirostat_eta ?? null) !== null}
-			<div class="flex mt-0.5 space-x-2">
-				<div class=" flex-1">
-					<input
-						id="steps-range"
-						type="range"
-						min="0"
-						max="1"
-						step="0.05"
-						bind:value={params.mirostat_eta}
-						class="w-full h-2 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
-					/>
-				</div>
-				<div>
-					<input
-						bind:value={params.mirostat_eta}
-						type="number"
-						class=" bg-transparent text-center w-14"
-						min="0"
-						max="1"
-						step="any"
-					/>
-				</div>
-			</div>
+			{@render rangeParam(
+				'mirostat_eta',
+				$i18n.t('settings.personal.general.parameters.mirostatEta.label'),
+				0,
+				1,
+				0.05
+			)}
 		{/if}
 	</div>
 
@@ -979,7 +894,7 @@
 		>
 			<div class="flex w-full justify-between">
 				<div class=" self-center text-xs">
-					{'mirostat_tau'}
+					{$i18n.t('settings.personal.general.parameters.mirostatTau.label')}
 				</div>
 
 				<button
@@ -999,29 +914,13 @@
 		</Tooltip>
 
 		{#if (params?.mirostat_tau ?? null) !== null}
-			<div class="flex mt-0.5 space-x-2">
-				<div class=" flex-1">
-					<input
-						id="steps-range"
-						type="range"
-						min="0"
-						max="10"
-						step="0.5"
-						bind:value={params.mirostat_tau}
-						class="w-full h-2 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
-					/>
-				</div>
-				<div>
-					<input
-						bind:value={params.mirostat_tau}
-						type="number"
-						class=" bg-transparent text-center w-14"
-						min="0"
-						max="10"
-						step="any"
-					/>
-				</div>
-			</div>
+			{@render rangeParam(
+				'mirostat_tau',
+				$i18n.t('settings.personal.general.parameters.mirostatTau.label'),
+				0,
+				10,
+				0.5
+			)}
 		{/if}
 	</div>
 
@@ -1033,7 +932,7 @@
 		>
 			<div class="flex w-full justify-between">
 				<div class=" self-center text-xs">
-					{'repeat_last_n'}
+					{$i18n.t('settings.personal.general.parameters.repeatLastN.label')}
 				</div>
 
 				<button
@@ -1053,29 +952,14 @@
 		</Tooltip>
 
 		{#if (params?.repeat_last_n ?? null) !== null}
-			<div class="flex mt-0.5 space-x-2">
-				<div class=" flex-1">
-					<input
-						id="steps-range"
-						type="range"
-						min="-1"
-						max="128"
-						step="1"
-						bind:value={params.repeat_last_n}
-						class="w-full h-2 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
-					/>
-				</div>
-				<div>
-					<input
-						bind:value={params.repeat_last_n}
-						type="number"
-						class=" bg-transparent text-center w-14"
-						min="-1"
-						max="128"
-						step="1"
-					/>
-				</div>
-			</div>
+			{@render rangeParam(
+				'repeat_last_n',
+				$i18n.t('settings.personal.general.parameters.repeatLastN.label'),
+				-1,
+				128,
+				1,
+				1
+			)}
 		{/if}
 	</div>
 
@@ -1089,7 +973,7 @@
 		>
 			<div class="flex w-full justify-between">
 				<div class=" self-center text-xs">
-					{'tfs_z'}
+					{$i18n.t('settings.personal.general.parameters.tfsZ.label')}
 				</div>
 
 				<button
@@ -1109,29 +993,13 @@
 		</Tooltip>
 
 		{#if (params?.tfs_z ?? null) !== null}
-			<div class="flex mt-0.5 space-x-2">
-				<div class=" flex-1">
-					<input
-						id="steps-range"
-						type="range"
-						min="0"
-						max="2"
-						step="0.05"
-						bind:value={params.tfs_z}
-						class="w-full h-2 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
-					/>
-				</div>
-				<div>
-					<input
-						bind:value={params.tfs_z}
-						type="number"
-						class=" bg-transparent text-center w-14"
-						min="0"
-						max="2"
-						step="any"
-					/>
-				</div>
-			</div>
+			{@render rangeParam(
+				'tfs_z',
+				$i18n.t('settings.personal.general.parameters.tfsZ.label'),
+				0,
+				2,
+				0.05
+			)}
 		{/if}
 	</div>
 
@@ -1145,7 +1013,7 @@
 		>
 			<div class="flex w-full justify-between">
 				<div class=" self-center text-xs">
-					{'repeat_penalty'}
+					{$i18n.t('settings.personal.general.parameters.repeatPenalty.label')}
 				</div>
 
 				<button
@@ -1165,29 +1033,13 @@
 		</Tooltip>
 
 		{#if (params?.repeat_penalty ?? null) !== null}
-			<div class="flex mt-0.5 space-x-2">
-				<div class=" flex-1">
-					<input
-						id="steps-range"
-						type="range"
-						min="-2"
-						max="2"
-						step="0.05"
-						bind:value={params.repeat_penalty}
-						class="w-full h-2 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
-					/>
-				</div>
-				<div>
-					<input
-						bind:value={params.repeat_penalty}
-						type="number"
-						class=" bg-transparent text-center w-14"
-						min="-2"
-						max="2"
-						step="any"
-					/>
-				</div>
-			</div>
+			{@render rangeParam(
+				'repeat_penalty',
+				$i18n.t('settings.personal.general.parameters.repeatPenalty.label'),
+				-2,
+				2,
+				0.05
+			)}
 		{/if}
 	</div>
 
@@ -1202,7 +1054,7 @@
 			>
 				<div class="flex w-full justify-between">
 					<div class=" self-center text-xs">
-						{'use_mmap'}
+						{$i18n.t('settings.personal.general.parameters.useMmap.label')}
 					</div>
 					<button
 						class="p-1 px-3 text-xs flex rounded-sm transition shrink-0 outline-hidden"
@@ -1226,7 +1078,10 @@
 						{params.use_mmap ? $i18n.t('Enabled') : $i18n.t('Disabled')}
 					</div>
 					<div class=" pr-2">
-						<Switch bind:state={params.use_mmap} />
+						<Switch
+							bind:state={params.use_mmap}
+							ariaLabel={$i18n.t('settings.personal.general.parameters.useMmap.label')}
+						/>
 					</div>
 				</div>
 			{/if}
@@ -1242,7 +1097,7 @@
 			>
 				<div class="flex w-full justify-between">
 					<div class=" self-center text-xs">
-						{'use_mlock'}
+						{$i18n.t('settings.personal.general.parameters.useMlock.label')}
 					</div>
 
 					<button
@@ -1268,7 +1123,10 @@
 					</div>
 
 					<div class=" pr-2">
-						<Switch bind:state={params.use_mlock} />
+						<Switch
+							bind:state={params.use_mlock}
+							ariaLabel={$i18n.t('settings.personal.general.parameters.useMlock.label')}
+						/>
 					</div>
 				</div>
 			{/if}
@@ -1277,15 +1135,15 @@
 
 	<div class=" py-0.5 w-full justify-between">
 		<Tooltip
-			content={$i18n.t(
-				'This option enables or disables the use of the reasoning feature in Ollama, which allows the model to think before generating a response. When enabled, the model can take a moment to process the conversation context and generate a more thoughtful response.'
-			)}
+			content={$i18n.t('settings.personal.general.parameters.ollama.description')}
 			placement="top-start"
 			className="inline-tooltip"
 		>
 			<div class=" py-0.5 flex w-full justify-between">
 				<div class=" self-center text-xs">
-					{'think'} ({$i18n.t('Ollama')})
+					{$i18n.t('settings.personal.general.parameters.think.label')} ({$i18n.t(
+						'settings.personal.general.parameters.ollama.label'
+					)})
 				</div>
 				<button
 					class="p-1 px-3 text-xs flex rounded-sm transition"
@@ -1321,6 +1179,7 @@
 					<input
 						class="text-sm w-full bg-transparent outline-hidden outline-none"
 						type="text"
+						aria-label={`${$i18n.t('settings.personal.general.parameters.think.label')} (${$i18n.t('settings.personal.general.parameters.ollama.label')})`}
 						placeholder={$i18n.t("e.g. 'low', 'medium', 'high'")}
 						bind:value={params.think}
 						autocomplete="off"
@@ -1338,7 +1197,9 @@
 		>
 			<div class=" py-0.5 flex w-full justify-between">
 				<div class=" self-center text-xs">
-					{'format'} ({$i18n.t('Ollama')})
+					{$i18n.t('settings.personal.general.parameters.format.label')} ({$i18n.t(
+						'settings.personal.general.parameters.ollama.label'
+					)})
 				</div>
 				<button
 					class="p-1 px-3 text-xs flex rounded-sm transition"
@@ -1360,6 +1221,7 @@
 			<div class="flex mt-0.5 space-x-2">
 				<Textarea
 					className="w-full  text-sm bg-transparent outline-hidden"
+					ariaLabel={`${$i18n.t('settings.personal.general.parameters.format.label')} (${$i18n.t('settings.personal.general.parameters.ollama.label')})`}
 					placeholder={$i18n.t('e.g. "json" or a JSON schema')}
 					bind:value={params.format}
 				/>
@@ -1377,7 +1239,9 @@
 		>
 			<div class="flex w-full justify-between">
 				<div class=" self-center text-xs">
-					{'num_keep'} ({$i18n.t('Ollama')})
+					{$i18n.t('settings.personal.general.parameters.numKeep.label')} ({$i18n.t(
+						'settings.personal.general.parameters.ollama.label'
+					)})
 				</div>
 
 				<button
@@ -1397,28 +1261,15 @@
 		</Tooltip>
 
 		{#if (params?.num_keep ?? null) !== null}
-			<div class="flex mt-0.5 space-x-2">
-				<div class=" flex-1">
-					<input
-						id="steps-range"
-						type="range"
-						min="-1"
-						max="10240000"
-						step="1"
-						bind:value={params.num_keep}
-						class="w-full h-2 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
-					/>
-				</div>
-				<div class="">
-					<input
-						bind:value={params.num_keep}
-						type="number"
-						class=" bg-transparent text-center w-14"
-						min="-1"
-						step="1"
-					/>
-				</div>
-			</div>
+			{@render rangeParam(
+				'num_keep',
+				`${$i18n.t('settings.personal.general.parameters.numKeep.label')} (${$i18n.t('settings.personal.general.parameters.ollama.label')})`,
+				-1,
+				10240000,
+				1,
+				1,
+				undefined
+			)}
 		{/if}
 	</div>
 
@@ -1430,7 +1281,9 @@
 		>
 			<div class="flex w-full justify-between">
 				<div class=" self-center text-xs">
-					{'num_ctx'} ({$i18n.t('Ollama')})
+					{$i18n.t('settings.personal.general.parameters.numCtx.label')} ({$i18n.t(
+						'settings.personal.general.parameters.ollama.label'
+					)})
 				</div>
 
 				<button
@@ -1450,28 +1303,15 @@
 		</Tooltip>
 
 		{#if (params?.num_ctx ?? null) !== null}
-			<div class="flex mt-0.5 space-x-2">
-				<div class=" flex-1">
-					<input
-						id="steps-range"
-						type="range"
-						min="-1"
-						max="10240000"
-						step="1"
-						bind:value={params.num_ctx}
-						class="w-full h-2 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
-					/>
-				</div>
-				<div class="">
-					<input
-						bind:value={params.num_ctx}
-						type="number"
-						class=" bg-transparent text-center w-14"
-						min="-1"
-						step="1"
-					/>
-				</div>
-			</div>
+			{@render rangeParam(
+				'num_ctx',
+				`${$i18n.t('settings.personal.general.parameters.numCtx.label')} (${$i18n.t('settings.personal.general.parameters.ollama.label')})`,
+				-1,
+				10240000,
+				1,
+				1,
+				undefined
+			)}
 		{/if}
 	</div>
 
@@ -1485,7 +1325,9 @@
 		>
 			<div class="flex w-full justify-between">
 				<div class=" self-center text-xs">
-					{'num_batch'} ({$i18n.t('Ollama')})
+					{$i18n.t('settings.personal.general.parameters.numBatch.label')} ({$i18n.t(
+						'settings.personal.general.parameters.ollama.label'
+					)})
 				</div>
 
 				<button
@@ -1505,28 +1347,15 @@
 		</Tooltip>
 
 		{#if (params?.num_batch ?? null) !== null}
-			<div class="flex mt-0.5 space-x-2">
-				<div class=" flex-1">
-					<input
-						id="steps-range"
-						type="range"
-						min="256"
-						max="8192"
-						step="256"
-						bind:value={params.num_batch}
-						class="w-full h-2 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
-					/>
-				</div>
-				<div>
-					<input
-						bind:value={params.num_batch}
-						type="number"
-						class=" bg-transparent text-center w-14"
-						min="256"
-						step="256"
-					/>
-				</div>
-			</div>
+			{@render rangeParam(
+				'num_batch',
+				`${$i18n.t('settings.personal.general.parameters.numBatch.label')} (${$i18n.t('settings.personal.general.parameters.ollama.label')})`,
+				256,
+				8192,
+				256,
+				256,
+				undefined
+			)}
 		{/if}
 	</div>
 
@@ -1541,7 +1370,9 @@
 			>
 				<div class="flex w-full justify-between">
 					<div class=" self-center text-xs">
-						{'num_thread'} ({$i18n.t('Ollama')})
+						{$i18n.t('settings.personal.general.parameters.numThread.label')} ({$i18n.t(
+							'settings.personal.general.parameters.ollama.label'
+						)})
 					</div>
 
 					<button
@@ -1561,29 +1392,14 @@
 			</Tooltip>
 
 			{#if (params?.num_thread ?? null) !== null}
-				<div class="flex mt-0.5 space-x-2">
-					<div class=" flex-1">
-						<input
-							id="steps-range"
-							type="range"
-							min="1"
-							max="256"
-							step="1"
-							bind:value={params.num_thread}
-							class="w-full h-2 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
-						/>
-					</div>
-					<div class="">
-						<input
-							bind:value={params.num_thread}
-							type="number"
-							class=" bg-transparent text-center w-14"
-							min="1"
-							max="256"
-							step="1"
-						/>
-					</div>
-				</div>
+				{@render rangeParam(
+					'num_thread',
+					`${$i18n.t('settings.personal.general.parameters.numThread.label')} (${$i18n.t('settings.personal.general.parameters.ollama.label')})`,
+					1,
+					256,
+					1,
+					1
+				)}
 			{/if}
 		</div>
 
@@ -1597,7 +1413,9 @@
 			>
 				<div class="flex w-full justify-between">
 					<div class=" self-center text-xs">
-						{'num_gpu'} ({$i18n.t('Ollama')})
+						{$i18n.t('settings.personal.general.parameters.numGpu.label')} ({$i18n.t(
+							'settings.personal.general.parameters.ollama.label'
+						)})
 					</div>
 
 					<button
@@ -1617,29 +1435,14 @@
 			</Tooltip>
 
 			{#if (params?.num_gpu ?? null) !== null}
-				<div class="flex mt-0.5 space-x-2">
-					<div class=" flex-1">
-						<input
-							id="steps-range"
-							type="range"
-							min="0"
-							max="256"
-							step="1"
-							bind:value={params.num_gpu}
-							class="w-full h-2 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
-						/>
-					</div>
-					<div class="">
-						<input
-							bind:value={params.num_gpu}
-							type="number"
-							class=" bg-transparent text-center w-14"
-							min="0"
-							max="256"
-							step="1"
-						/>
-					</div>
-				</div>
+				{@render rangeParam(
+					'num_gpu',
+					`${$i18n.t('settings.personal.general.parameters.numGpu.label')} (${$i18n.t('settings.personal.general.parameters.ollama.label')})`,
+					0,
+					256,
+					1,
+					1
+				)}
 			{/if}
 		</div>
 
@@ -1653,7 +1456,9 @@
 			>
 				<div class=" py-0.5 flex w-full justify-between">
 					<div class=" self-center text-xs">
-						{'keep_alive'} ({$i18n.t('Ollama')})
+						{$i18n.t('settings.personal.general.parameters.keepAlive.label')} ({$i18n.t(
+							'settings.personal.general.parameters.ollama.label'
+						)})
 					</div>
 					<button
 						class="p-1 px-3 text-xs flex rounded-sm transition"
@@ -1676,6 +1481,7 @@
 					<input
 						class="w-full text-sm bg-transparent outline-hidden"
 						type="text"
+						aria-label={`${$i18n.t('settings.personal.general.parameters.keepAlive.label')} (${$i18n.t('settings.personal.general.parameters.ollama.label')})`}
 						placeholder={$i18n.t("e.g. '30s','10m'. Valid time units are 's', 'm', 'h'.")}
 						bind:value={params.keep_alive}
 					/>
@@ -1692,10 +1498,11 @@
 								<input
 									type="text"
 									class=" text-xs w-full bg-transparent outline-none"
+									aria-label={$i18n.t('Custom Parameter Name')}
 									placeholder={$i18n.t('Custom Parameter Name')}
 									value={key}
 									on:change={(e) => {
-										const newKey = e.target.value.trim();
+										const newKey = e.currentTarget.value.trim();
 										if (newKey && newKey !== key) {
 											params.custom_params[newKey] = params.custom_params[key];
 											delete params.custom_params[key];
@@ -1727,6 +1534,7 @@
 									bind:value={params.custom_params[key]}
 									type="text"
 									class="text-sm w-full bg-transparent outline-hidden outline-none"
+									aria-label={$i18n.t('Custom Parameter Value')}
 									placeholder={$i18n.t('Custom Parameter Value')}
 								/>
 							</div>

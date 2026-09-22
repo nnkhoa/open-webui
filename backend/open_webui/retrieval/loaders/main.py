@@ -1,33 +1,37 @@
 import asyncio
-import json
+import csv
 import logging
+import os
 import sys
+import zipfile
 
 import ftfy
 import requests
+from fastapi import HTTPException
 from azure.identity import DefaultAzureCredential
-from langchain_community.document_loaders import (
-    AzureAIDocumentIntelligenceLoader,
-    BSHTMLLoader,
-    CSVLoader,
-    Docx2txtLoader,
-    OutlookMessageLoader,
-    PyPDFLoader,
-    TextLoader,
-    YoutubeLoader,
-)
 from langchain_core.documents import Document
 from open_webui.env import (
     AIOHTTP_CLIENT_SESSION_SSL,
     GLOBAL_LOG_LEVEL,
+    USE_SLIM,
     MINERU_MAX_MARKDOWN_BYTES,
     REQUESTS_VERIFY,
 )
 from open_webui.retrieval.loaders.datalab_marker import DatalabMarkerLoader
 from open_webui.retrieval.loaders.external_document import ExternalDocumentLoader
+from open_webui.retrieval.loaders.local import (
+    DocumentIntelligenceLoader,
+    DocxLoader,
+    HTMLLoader,
+    TextLoader,
+    UnstructuredLoader,
+)
 from open_webui.retrieval.loaders.mineru import MinerULoader
 from open_webui.retrieval.loaders.mistral import MistralLoader
-from open_webui.retrieval.loaders.paddleocr_vl import PaddleOCRVLLoader
+from open_webui.retrieval.loaders.paddleocr_vl import PADDLEOCR_VL_SUPPORTED_EXTENSIONS, PaddleOCRVLLoader
+from open_webui.retrieval.loaders.pdf import PDFLoader
+from open_webui.utils.headers import get_user_groups_for_custom_headers
+from open_webui.utils.json_codec import JSONCodec
 
 logging.basicConfig(stream=sys.stdout, level=GLOBAL_LOG_LEVEL)
 log = logging.getLogger(__name__)
@@ -48,6 +52,7 @@ known_source_ext = [
     'h',
     'c',
     'cs',
+    'ino',
     'sql',
     'log',
     'ini',
@@ -86,7 +91,17 @@ known_source_ext = [
     'yaml',
     'yml',
     'toml',
+    'svg',
 ]
+
+known_archive_ext = {'docx', 'epub', 'odt', 'pptx', 'xlsx'}
+known_archive_content_types = {
+    'application/epub+zip',
+    'application/vnd.oasis.opendocument.text',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+}
 
 
 class ExcelLoader:
@@ -109,6 +124,66 @@ class ExcelLoader:
                 metadata={'source': self.file_path},
             )
         ]
+
+
+def get_csv_summary(filename: str, file_path: str, encoding: str) -> str | None:
+    try:
+        with open(file_path, newline='', encoding=encoding) as f:
+            sample = f.read(4096)
+            f.seek(0)
+            try:
+                dialect = csv.Sniffer().sniff(sample)
+            except csv.Error:
+                dialect = csv.excel
+
+            total_rows = 0
+            max_columns = 0
+            headers = []
+            for row in csv.reader(f, dialect):
+                total_rows += 1
+                max_columns = max(max_columns, len(row))
+                if total_rows == 1:
+                    headers = [header.lstrip('\ufeff') for header in row]
+    except Exception:
+        return None
+
+    if total_rows == 0:
+        return None
+
+    return (
+        f'Table: {total_rows} rows incl. header; '
+        f'{max(total_rows - 1, 0)} data rows; '
+        f'{max_columns} columns: {", ".join(headers)}.'
+    )
+
+
+class CSVLoaderWithSummary:
+    def __init__(self, file_path: str, filename: str, encoding: str):
+        self.file_path = file_path
+        self.filename = filename
+        self.encoding = encoding
+
+    def load(self) -> list[Document]:
+        docs = []
+        try:
+            with open(self.file_path, newline='', encoding=self.encoding) as file:
+                for index, row in enumerate(csv.DictReader(file)):
+                    fields = []
+                    for key, value in row.items():
+                        if isinstance(value, str):
+                            value = value.strip()
+                        elif isinstance(value, list):
+                            value = ','.join(v.strip() for v in value)
+                        fields.append(f'{key.strip() if key is not None else key}: {value}')
+                    content = '\n'.join(fields)
+                    docs.append(Document(page_content=content, metadata={'source': self.file_path, 'row': index}))
+        except Exception as e:
+            raise RuntimeError(f'Error loading {self.file_path}') from e
+        if os.getenv('ENABLE_RAG_CSV_SUMMARY', 'False').lower() == 'true':
+            summary = get_csv_summary(self.filename, self.file_path, self.encoding)
+            if summary:
+                docs.insert(0, Document(page_content=summary, metadata={'source': self.file_path, 'row': -1}))
+        return docs
 
 
 class PptxLoader:
@@ -138,10 +213,11 @@ class PptxLoader:
 
 
 class TikaLoader:
-    def __init__(self, url, file_path, mime_type=None, extract_images=None):
+    def __init__(self, url, file_path, mime_type=None, extract_images=None, server_version='3'):
         self.url = url
         self.file_path = file_path
         self.mime_type = mime_type
+        self.server_version = str(server_version or '3')
 
         self.extract_images = extract_images
 
@@ -157,16 +233,15 @@ class TikaLoader:
         if self.extract_images == True:
             headers['X-Tika-PDFextractInlineImages'] = 'true'
 
-        endpoint = self.url
-        if not endpoint.endswith('/'):
-            endpoint += '/'
-        endpoint += 'tika/text'
+        endpoint_path = 'tika/json/md' if self.server_version == '4' else 'tika/text'
+        content_key = 'tk:content' if self.server_version == '4' else 'X-TIKA:content'
+        endpoint = f'{self.url.rstrip("/")}/{endpoint_path}'
 
         r = requests.put(endpoint, data=data, headers=headers, verify=REQUESTS_VERIFY)
 
         if r.ok:
             raw_metadata = r.json()
-            text = raw_metadata.get('X-TIKA:content', '<No text content found>').strip()
+            text = raw_metadata.get(content_key, '<No text content found>').strip()
 
             if 'Content-Type' in raw_metadata:
                 headers['Content-Type'] = raw_metadata['Content-Type']
@@ -206,6 +281,9 @@ class DoclingLoader:
                 data={
                     'image_export_mode': 'placeholder',
                     'md_page_break_placeholder': page_break_marker,
+                    # Keep Docling params as user-provided form values. Encoding nested
+                    # values here would make Open WebUI responsible for Docling's API
+                    # quirks and could break when Docling changes its form contract.
                     **self.params,
                 },
                 headers=headers,
@@ -213,8 +291,17 @@ class DoclingLoader:
             )
         if r.ok:
             result = r.json()
+            # Docling reports failed and skipped conversions inside HTTP 200 responses.
+            conversion_status = result.get('status')
+            if conversion_status in ['failure', 'skipped']:
+                error_details = (
+                    '; '.join(filter(None, (error.get('error_message') for error in result.get('errors', []))))
+                    or 'no error message provided'
+                )
+                raise Exception(f'Error calling Docling: conversion status {conversion_status} - {error_details}')
+
             document_data = result.get('document', {})
-            md_content = document_data.get('md_content', '')
+            md_content = document_data.get('md_content') or ''
             text = md_content or '<No text content found>'
 
             metadata = {'Content-Type': self.mime_type} if self.mime_type else {}
@@ -246,13 +333,18 @@ class Loader:
     def __init__(self, engine: str = '', **kwargs):
         self.engine = engine
         self.user = kwargs.get('user', None)
+        self.user_groups = kwargs.get('user_groups', None)
         self.metadata = kwargs.get('metadata', {})
         self.kwargs = kwargs
 
     def load(self, filename: str, file_content_type: str, file_path: str) -> list[Document]:
         loader = self._get_loader(filename, file_content_type, file_path)
         docs = loader.load()
-        return [Document(page_content=ftfy.fix_text(doc.page_content), metadata=doc.metadata) for doc in docs]
+        # ftfy's auto mode unescapes entities on every line before the first literal '<', rewriting the document.
+        return [
+            Document(page_content=ftfy.fix_text(doc.page_content, unescape_html=False), metadata=doc.metadata)
+            for doc in docs
+        ]
 
     async def aload(self, filename: str, file_content_type: str, file_path: str) -> list[Document]:
         """
@@ -264,6 +356,13 @@ class Loader:
         loop for the entire parse — minutes for large PDFs. This offloads
         the work to a worker thread so the loop stays responsive.
         """
+        # Group lookup is async-only, so it must happen before `load`
+        # is offloaded to a thread without a running event loop.
+        if self.engine == 'external' and self.user_groups is None:
+            self.user_groups = await get_user_groups_for_custom_headers(
+                self.kwargs.get('EXTERNAL_DOCUMENT_LOADER_HEADERS'), self.user
+            )
+
         return await asyncio.to_thread(self.load, filename, file_content_type, file_path)
 
     def _is_text_file(self, file_ext: str, file_content_type: str) -> bool:
@@ -303,13 +402,20 @@ class Loader:
         try:
             raw.decode('utf-8')
             return 'utf-8'
-        except UnicodeDecodeError:
-            pass
+        except UnicodeDecodeError as e:
+            first_non_utf8 = e.start
 
         # Use chardet as a hint, not as ground truth
         import chardet
 
-        detected = chardet.detect(raw)
+        # chardet is pure Python (~1.3s/MB), so sample around the first bad byte
+        window = 256 * 1024
+        sample_start = max(0, first_non_utf8 - window // 2)
+        sample = raw[sample_start : sample_start + window]
+        detected = chardet.detect(sample)
+        # A stray byte can sit far from the real payload, leaving the sample with nothing to read
+        if len(sample.translate(None, delete=bytes(range(128)))) < 64 and len(sample) < len(raw):
+            detected = chardet.detect(raw)
         detected_enc = (detected.get('encoding') or '').lower().replace('-', '').replace('_', '')
 
         # Map chardet's detected encoding to the correct superset codec.
@@ -411,6 +517,27 @@ class Loader:
     def _get_loader(self, filename: str, file_content_type: str, file_path: str):
         file_ext = filename.split('.')[-1].lower()
 
+        if file_ext in known_archive_ext or file_content_type in known_archive_content_types:
+            max_file_size = self.kwargs.get('FILE_MAX_SIZE')
+            try:
+                max_file_size_bytes = int(max_file_size) * 1024 * 1024 if max_file_size else 100 * 1024 * 1024
+            except (TypeError, ValueError):
+                max_file_size_bytes = 100 * 1024 * 1024
+
+            if max_file_size_bytes > 0:
+                try:
+                    with zipfile.ZipFile(file_path) as archive:
+                        uncompressed_size = sum(entry.file_size for entry in archive.infolist())
+                except (zipfile.BadZipFile, OSError):
+                    pass
+                else:
+                    max_bytes = min(
+                        max(10 * 1024 * 1024, os.path.getsize(file_path) * 100),
+                        max_file_size_bytes,
+                    )
+                    if uncompressed_size > max_bytes:
+                        raise ValueError('Document archive is too large after decompression')
+
         if (
             self.engine == 'external'
             and self.kwargs.get('EXTERNAL_DOCUMENT_LOADER_URL')
@@ -422,6 +549,7 @@ class Loader:
                 api_key=self.kwargs.get('EXTERNAL_DOCUMENT_LOADER_API_KEY'),
                 mime_type=file_content_type,
                 user=self.user,
+                user_groups=self.user_groups,
                 headers=self.kwargs.get('EXTERNAL_DOCUMENT_LOADER_HEADERS'),
                 metadata={
                     **self.metadata,
@@ -436,6 +564,7 @@ class Loader:
                 loader = TikaLoader(
                     url=self.kwargs.get('TIKA_SERVER_URL'),
                     file_path=file_path,
+                    server_version=self.kwargs.get('TIKA_SERVER_VERSION'),
                     extract_images=self.kwargs.get('PDF_EXTRACT_IMAGES'),
                 )
         elif (
@@ -489,8 +618,8 @@ class Loader:
                 params = self.kwargs.get('DOCLING_PARAMS', {})
                 if not isinstance(params, dict):
                     try:
-                        params = json.loads(params)
-                    except json.JSONDecodeError:
+                        params = JSONCodec.loads(params)
+                    except JSONCodec.JSONDecodeError:
                         log.error('Invalid DOCLING_PARAMS format, expected JSON object')
                         params = {}
 
@@ -515,14 +644,14 @@ class Loader:
             )
         ):
             if self.kwargs.get('DOCUMENT_INTELLIGENCE_KEY') != '':
-                loader = AzureAIDocumentIntelligenceLoader(
+                loader = DocumentIntelligenceLoader(
                     file_path=file_path,
                     api_endpoint=self.kwargs.get('DOCUMENT_INTELLIGENCE_ENDPOINT'),
                     api_key=self.kwargs.get('DOCUMENT_INTELLIGENCE_KEY'),
                     api_model=self.kwargs.get('DOCUMENT_INTELLIGENCE_MODEL'),
                 )
             else:
-                loader = AzureAIDocumentIntelligenceLoader(
+                loader = DocumentIntelligenceLoader(
                     file_path=file_path,
                     api_endpoint=self.kwargs.get('DOCUMENT_INTELLIGENCE_ENDPOINT'),
                     azure_credential=DefaultAzureCredential(),
@@ -554,27 +683,48 @@ class Loader:
                 api_key=self.kwargs.get('MISTRAL_OCR_API_KEY'),
                 file_path=file_path,
                 use_base64=self.kwargs.get('MISTRAL_OCR_USE_BASE64', False),
+                user=self.user,
             )
-        elif self.engine == 'paddleocr_vl' and self.kwargs.get('PADDLEOCR_VL_TOKEN') != '':
+        elif (
+            self.engine == 'paddleocr_vl'
+            and self.kwargs.get('PADDLEOCR_VL_BASE_URL')
+            and self.kwargs.get('PADDLEOCR_VL_TOKEN')
+            and file_ext in PADDLEOCR_VL_SUPPORTED_EXTENSIONS
+        ):
             loader = PaddleOCRVLLoader(
                 api_url=self.kwargs.get('PADDLEOCR_VL_BASE_URL'),
                 token=self.kwargs.get('PADDLEOCR_VL_TOKEN'),
                 file_path=file_path,
             )
         else:
+            if USE_SLIM:
+                if file_ext == 'csv':
+                    return CSVLoaderWithSummary(file_path, filename, self._detect_text_encoding(file_path))
+                if file_ext in ['htm', 'html']:
+                    return HTMLLoader(file_path, encoding=self._detect_text_encoding(file_path))
+                if file_ext in ['txt', 'md', 'markdown', 'rst', 'xml'] or self._is_text_file(
+                    file_ext, file_content_type
+                ):
+                    return TextLoader(file_path, encoding=self._detect_text_encoding(file_path))
+                raise HTTPException(
+                    503,
+                    'This file type requires an external document extractor in slim. Configure one that supports it.',
+                )
             if file_ext == 'pdf':
-                loader = PyPDFLoader(
+                loader = PDFLoader(
                     file_path,
                     extract_images=self.kwargs.get('PDF_EXTRACT_IMAGES'),
                     mode=self.kwargs.get('PDF_LOADER_MODE', 'page'),
                 )
             elif file_ext == 'csv':
-                loader = CSVLoader(file_path, encoding=self._detect_text_encoding(file_path))
+                loader = CSVLoaderWithSummary(
+                    file_path,
+                    filename,
+                    self._detect_text_encoding(file_path),
+                )
             elif file_ext == 'rst':
                 try:
-                    from langchain_community.document_loaders import UnstructuredRSTLoader
-
-                    loader = UnstructuredRSTLoader(file_path, mode='elements')
+                    loader = UnstructuredLoader(file_path, 'rst', mode='elements')
                 except ImportError:
                     log.warning(
                         "The 'unstructured' package is not installed. "
@@ -584,9 +734,7 @@ class Loader:
                     loader = TextLoader(file_path, encoding=self._detect_text_encoding(file_path))
             elif file_ext == 'xml':
                 try:
-                    from langchain_community.document_loaders import UnstructuredXMLLoader
-
-                    loader = UnstructuredXMLLoader(file_path)
+                    loader = UnstructuredLoader(file_path, 'xml')
                 except ImportError:
                     log.warning(
                         "The 'unstructured' package is not installed. "
@@ -595,14 +743,12 @@ class Loader:
                     )
                     loader = TextLoader(file_path, encoding=self._detect_text_encoding(file_path))
             elif file_ext in ['htm', 'html']:
-                loader = BSHTMLLoader(file_path, open_encoding='unicode_escape')
+                loader = HTMLLoader(file_path, encoding='unicode_escape')
             elif file_ext == 'md':
                 loader = TextLoader(file_path, encoding=self._detect_text_encoding(file_path))
             elif file_content_type == 'application/epub+zip':
                 try:
-                    from langchain_community.document_loaders import UnstructuredEPubLoader
-
-                    loader = UnstructuredEPubLoader(file_path)
+                    loader = UnstructuredLoader(file_path, 'epub')
                 except ImportError:
                     raise ValueError(
                         "Processing .epub files requires the 'unstructured' package. "
@@ -612,12 +758,10 @@ class Loader:
                 file_content_type == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
                 or file_ext == 'docx'
             ):
-                loader = Docx2txtLoader(file_path)
+                loader = DocxLoader(file_path)
             elif file_ext == 'doc' or file_content_type == 'application/msword':
                 try:
-                    from langchain_community.document_loaders import UnstructuredWordDocumentLoader
-
-                    loader = UnstructuredWordDocumentLoader(file_path)
+                    loader = UnstructuredLoader(file_path, 'doc')
                 except ImportError:
                     raise ValueError(
                         "Processing .doc files requires the 'unstructured' package. "
@@ -628,9 +772,7 @@ class Loader:
                 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             ] or file_ext in ['xls', 'xlsx']:
                 try:
-                    from langchain_community.document_loaders import UnstructuredExcelLoader
-
-                    loader = UnstructuredExcelLoader(file_path)
+                    loader = UnstructuredLoader(file_path, 'xlsx')
                 except ImportError:
                     log.warning(
                         "The 'unstructured' package is not installed. "
@@ -643,9 +785,7 @@ class Loader:
                 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
             ] or file_ext in ['ppt', 'pptx']:
                 try:
-                    from langchain_community.document_loaders import UnstructuredPowerPointLoader
-
-                    loader = UnstructuredPowerPointLoader(file_path)
+                    loader = UnstructuredLoader(file_path, 'ppt' if file_ext == 'ppt' else 'pptx')
                 except ImportError:
                     log.warning(
                         "The 'unstructured' package is not installed. "
@@ -654,12 +794,17 @@ class Loader:
                     )
                     loader = PptxLoader(file_path)
             elif file_ext == 'msg':
-                loader = OutlookMessageLoader(file_path)
+                try:
+                    # unstructured parses .msg via python-oxmsg; avoids extract_msg's beautifulsoup4<4.14 conflict
+                    loader = UnstructuredLoader(file_path, 'msg', process_attachments=False)
+                except ImportError:
+                    raise ValueError(
+                        "Processing .msg files requires the 'unstructured' package. "
+                        'Install it with: pip install unstructured'
+                    )
             elif file_ext == 'odt':
                 try:
-                    from langchain_community.document_loaders import UnstructuredODTLoader
-
-                    loader = UnstructuredODTLoader(file_path)
+                    loader = UnstructuredLoader(file_path, 'odt')
                 except ImportError:
                     raise ValueError(
                         "Processing .odt files requires the 'unstructured' package. "

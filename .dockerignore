@@ -18,7 +18,8 @@ uploads
 **/*.db
 _test
 backend/data/*
+
 .venv
-**/.venv
 .git
+**/.venv
 .gitignore
