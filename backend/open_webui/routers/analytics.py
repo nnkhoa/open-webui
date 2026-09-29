@@ -3,14 +3,15 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from open_webui.config import ENABLE_ADMIN_CHAT_ACCESS
 from open_webui.internal.db import get_async_session
 from open_webui.models.chat_messages import ChatMessageModel, ChatMessages
 from open_webui.models.chats import Chats
 from open_webui.models.feedbacks import Feedbacks
 from open_webui.models.groups import Groups
 from open_webui.models.users import Users
-from open_webui.utils.auth import get_admin_user
+from open_webui.utils.auth import get_admin_user, get_verified_user
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -48,6 +49,45 @@ class UserAnalyticsEntry(BaseModel):
 
 class UserAnalyticsResponse(BaseModel):
     users: list[UserAnalyticsEntry]
+
+
+class ChatMessageUsage(BaseModel):
+    message_id: str
+    role: str
+    model_id: Optional[str] = None
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    created_at: int
+
+
+class ChatUsageByModelEntry(BaseModel):
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+    message_count: int
+
+
+class ChatUsageResponse(BaseModel):
+    chat_id: str
+    total_input_tokens: int
+    total_output_tokens: int
+    total_tokens: int
+    message_count: int
+    by_model: dict[str, ChatUsageByModelEntry]
+    messages: list[ChatMessageUsage]
+
+
+class ModelTotalsResponse(BaseModel):
+    model_id: str
+    total_input_tokens: int
+    total_output_tokens: int
+    total_tokens: int
+    total_messages: int
+    total_chats: int
+    total_users: int
+    first_used_at: Optional[int] = None
+    last_used_at: Optional[int] = None
 
 
 ####################
@@ -419,3 +459,34 @@ async def get_model_overview(
     tags = [TagEntry(tag=tag, count=count) for tag, count in sorted(tag_counts.items(), key=lambda x: -x[1])[:10]]
 
     return ModelOverviewResponse(history=history, tags=tags)
+
+
+@router.get('/chats/{chat_id}/usage', response_model=ChatUsageResponse)
+async def get_chat_usage(
+    chat_id: str,
+    user=Depends(get_verified_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    """Token usage breakdown for one chat. The caller must own it, or be an
+    admin while admin chat access is enabled."""
+    chat = await Chats.get_chat_by_id_and_user_id(chat_id, user.id, db=db)
+    if not chat and user.role == 'admin' and ENABLE_ADMIN_CHAT_ACCESS:
+        chat = await Chats.get_chat_by_id(chat_id, db=db)
+
+    if not chat:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Chat not found')
+
+    data = await ChatMessages.get_chat_usage_aggregate(chat_id, db=db)
+    return ChatUsageResponse(**data)
+
+
+@router.get('/models/{model_id:path}/totals', response_model=ModelTotalsResponse)
+async def get_model_totals(
+    model_id: str,
+    user=Depends(get_admin_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    """All-time totals for one model, with no date filter — unlike /tokens,
+    which is bounded by a date range."""
+    data = await ChatMessages.get_model_totals(model_id, db=db)
+    return ModelTotalsResponse(**data)

@@ -730,5 +730,102 @@ class ChatMessageTable:
 
             return hourly_counts
 
+    async def get_chat_usage_aggregate(self, chat_id: str, db: Optional[AsyncSession] = None) -> dict:
+        """Token usage for one chat: totals, a per-model split, and every message."""
+        async with get_async_db_context(db) as db:
+            result = await db.execute(
+                select(ChatMessage)
+                .filter(ChatMessage.chat_id == chat_id, ChatMessage.role == 'assistant')
+                .order_by(ChatMessage.created_at.asc())
+            )
+            messages = result.scalars().all()
+
+            by_model: dict[str, dict] = {}
+            message_breakdown: list[dict] = []
+            total_input = 0
+            total_output = 0
+
+            for m in messages:
+                usage = m.usage or {}
+                # Same fallback as _token_columns: normalized keys first, then
+                # the raw OpenAI ones for rows written before normalization.
+                inp = int(usage.get('input_tokens') or usage.get('prompt_tokens') or 0)
+                out = int(usage.get('output_tokens') or usage.get('completion_tokens') or 0)
+
+                total_input += inp
+                total_output += out
+
+                model_id = m.model_id or 'unknown'
+                model_totals = by_model.setdefault(
+                    model_id,
+                    {
+                        'input_tokens': 0,
+                        'output_tokens': 0,
+                        'total_tokens': 0,
+                        'message_count': 0,
+                    },
+                )
+                model_totals['input_tokens'] += inp
+                model_totals['output_tokens'] += out
+                model_totals['total_tokens'] += inp + out
+                model_totals['message_count'] += 1
+
+                message_breakdown.append(
+                    {
+                        'message_id': m.id,
+                        'role': m.role,
+                        'model_id': m.model_id,
+                        'input_tokens': inp,
+                        'output_tokens': out,
+                        'total_tokens': inp + out,
+                        'created_at': m.created_at,
+                    }
+                )
+
+            return {
+                'chat_id': chat_id,
+                'total_input_tokens': total_input,
+                'total_output_tokens': total_output,
+                'total_tokens': total_input + total_output,
+                'message_count': len(messages),
+                'by_model': by_model,
+                'messages': message_breakdown,
+            }
+
+    async def get_model_totals(self, model_id: str, db: Optional[AsyncSession] = None) -> dict:
+        """All-time totals for one model: tokens, chat/user counts, first and last use."""
+        async with get_async_db_context(db) as db:
+            bind = await db.connection()
+            input_tokens, output_tokens = _token_columns(bind.dialect.name)
+
+            result = await db.execute(
+                select(
+                    func.coalesce(func.sum(input_tokens), 0).label('input_tokens'),
+                    func.coalesce(func.sum(output_tokens), 0).label('output_tokens'),
+                    func.count(ChatMessage.id).label('message_count'),
+                    func.count(func.distinct(ChatMessage.chat_id)).label('chat_count'),
+                    func.count(func.distinct(ChatMessage.user_id)).label('user_count'),
+                    func.min(ChatMessage.created_at).label('first_used'),
+                    func.max(ChatMessage.created_at).label('last_used'),
+                ).filter(
+                    ChatMessage.model_id == model_id,
+                    ChatMessage.role == 'assistant',
+                    ~ChatMessage.user_id.like('shared-%'),
+                )
+            )
+            row = result.one()
+
+            return {
+                'model_id': model_id,
+                'total_input_tokens': int(row.input_tokens or 0),
+                'total_output_tokens': int(row.output_tokens or 0),
+                'total_tokens': int((row.input_tokens or 0) + (row.output_tokens or 0)),
+                'total_messages': int(row.message_count or 0),
+                'total_chats': int(row.chat_count or 0),
+                'total_users': int(row.user_count or 0),
+                'first_used_at': int(row.first_used) if row.first_used else None,
+                'last_used_at': int(row.last_used) if row.last_used else None,
+            }
+
 
 ChatMessages = ChatMessageTable()

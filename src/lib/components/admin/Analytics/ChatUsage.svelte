@@ -101,7 +101,9 @@
 
 <div class="mt-4 min-h-[100px] relative">
 	{#if loadingUsage}
-		<div class="absolute inset-0 flex items-center justify-center z-10 bg-white/50 dark:bg-gray-900/50">
+		<div
+			class="absolute inset-0 flex items-center justify-center z-10 bg-white/50 dark:bg-gray-900/50"
+		>
 			<Spinner className="size-5" />
 		</div>
 	{/if}
