@@ -2443,13 +2443,10 @@ async def get_manifest_json():
         return {
             'name': app.state.WEBUI_NAME,
             'short_name': app.state.WEBUI_NAME,
-            'description': f'{app.state.WEBUI_NAME} — FPT Digital AI workspace for business intelligence.',
+            'description': f'{app.state.WEBUI_NAME} is an open, extensible, user-friendly interface for AI that adapts to your workflow.',
             'start_url': '/',
             'display': 'standalone',
-            # White, not navy: the icon is a navy tile and would vanish into a
-            # navy field. theme_color carries the brand into the PWA title bar.
-            'background_color': '#FFFFFF',
-            'theme_color': '#0A1B51',
+            'background_color': '#343541',
             'icons': [
                 {
                     'src': '/static/logo.png',
@@ -2461,18 +2458,6 @@ async def get_manifest_json():
                     'src': '/static/logo.png',
                     'type': 'image/png',
                     'sizes': '500x500',
-                    'purpose': 'maskable',
-                },
-                {
-                    'src': '/static/web-app-manifest-192x192.png',
-                    'type': 'image/png',
-                    'sizes': '192x192',
-                    'purpose': 'maskable',
-                },
-                {
-                    'src': '/static/web-app-manifest-512x512.png',
-                    'type': 'image/png',
-                    'sizes': '512x512',
                     'purpose': 'maskable',
                 },
             ],

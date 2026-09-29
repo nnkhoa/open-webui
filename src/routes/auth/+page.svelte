@@ -4,7 +4,7 @@
 
 	import { toast } from 'svelte-sonner';
 
-	import { onMount, getContext } from 'svelte';
+	import { onMount, getContext, tick } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 
@@ -142,6 +142,29 @@
 
 	let onboarding = false;
 
+	async function setLogoImage() {
+		await tick();
+		const logo = document.getElementById('logo');
+
+		if (logo) {
+			const isDarkMode = document.documentElement.classList.contains('dark');
+
+			if (isDarkMode) {
+				const darkImage = new Image();
+				darkImage.src = `${WEBUI_BASE_URL}/static/favicon-dark.png`;
+
+				darkImage.onload = () => {
+					logo.src = `${WEBUI_BASE_URL}/static/favicon-dark.png`;
+					logo.style.filter = ''; // Ensure no inversion is applied if favicon-dark.png exists
+				};
+
+				darkImage.onerror = () => {
+					logo.style.filter = 'invert(1)'; // Invert image if favicon-dark.png is missing
+				};
+			}
+		}
+	}
+
 	onMount(async () => {
 		const redirectPath = $page.url.searchParams.get('redirect');
 		if ($user !== undefined) {
@@ -182,6 +205,7 @@
 		}
 
 		loaded = true;
+		setLogoImage();
 
 		if (($config?.features?.auth_trusted_header ?? false) || $config?.features?.auth === false) {
 			await signInHandler();
@@ -236,17 +260,11 @@
 							{#if $config?.metadata?.auth_logo_position === 'center'}
 								<div class="flex justify-center mb-6">
 									<img
-										src="{WEBUI_BASE_URL}/static/fpt-digital-dark.svg"
-										class="h-12 w-auto block dark:hidden"
+										id="logo"
+										crossorigin="anonymous"
+										src="{WEBUI_BASE_URL}/static/favicon.png"
+										class="size-24 rounded-full"
 										alt="{$WEBUI_NAME} logo"
-										draggable="false"
-									/>
-									<img
-										src="{WEBUI_BASE_URL}/static/fpt-digital.svg"
-										class="h-12 w-auto hidden dark:block"
-										alt=""
-										aria-hidden="true"
-										draggable="false"
 									/>
 								</div>
 							{/if}
@@ -594,17 +612,11 @@
 				<div class="flex space-x-2">
 					<div class=" self-center">
 						<img
-							src="{WEBUI_BASE_URL}/static/fpt-digital-dark.svg"
-							class="h-8 w-auto block dark:hidden"
-							alt={$WEBUI_NAME}
-							draggable="false"
-						/>
-						<img
-							src="{WEBUI_BASE_URL}/static/fpt-digital.svg"
-							class="h-8 w-auto hidden dark:block"
+							id="logo"
+							crossorigin="anonymous"
+							src="{WEBUI_BASE_URL}/static/favicon.png"
+							class=" w-6 rounded-full"
 							alt=""
-							aria-hidden="true"
-							draggable="false"
 						/>
 					</div>
 				</div>
