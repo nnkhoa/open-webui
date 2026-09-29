@@ -1979,6 +1979,8 @@ USER_PERMISSIONS = DEFAULT_USER_PERMISSIONS
 
 ENABLE_FOLDERS = os.getenv('ENABLE_FOLDERS', 'True').lower() == 'true'
 
+ENABLE_NEW_CHAT_ON_MODEL_CHANGE = os.getenv('ENABLE_NEW_CHAT_ON_MODEL_CHANGE', 'True').lower() == 'true'
+
 FOLDER_MAX_FILE_COUNT = os.getenv('FOLDER_MAX_FILE_COUNT', '')
 
 ENABLE_CHANNELS = os.getenv('ENABLE_CHANNELS', 'False').lower() == 'true'
@@ -2108,6 +2110,27 @@ except Exception as e:
     banners = []
 
 WEBUI_BANNERS = banners
+
+
+####################################
+# AI4BI Project Config
+####################################
+
+AIBI_PROJECT_LOGO = os.getenv('AIBI_PROJECT_LOGO', '')
+
+try:
+    AIBI_MODEL_DISPLAY_NAMES = json.loads(os.getenv('AIBI_MODEL_DISPLAY_NAMES', '{}'))
+except Exception as e:
+    log.exception(f'Error loading AIBI_MODEL_DISPLAY_NAMES: {e}')
+    AIBI_MODEL_DISPLAY_NAMES = {}
+
+AIBI_BRAND_COLOR = os.getenv('AIBI_BRAND_COLOR', '')
+
+AIBI_ORG_NAME = os.getenv('AIBI_ORG_NAME', '')
+
+AIBI_ORG_SUBTITLE = os.getenv('AIBI_ORG_SUBTITLE', '')
+
+AIBI_APP_NAME = os.getenv('AIBI_APP_NAME', '')
 
 
 SHOW_ADMIN_DETAILS = os.getenv('SHOW_ADMIN_DETAILS', 'true').lower() == 'true'
@@ -3013,6 +3036,13 @@ DEFAULT_CONFIG = {
     'user.permissions': USER_PERMISSIONS,
     'folders.enable': ENABLE_FOLDERS,
     'folders.max_file_count': FOLDER_MAX_FILE_COUNT,
+    'ui.enable_new_chat_on_model_change': ENABLE_NEW_CHAT_ON_MODEL_CHANGE,
+    'aibi.project.logo_url': AIBI_PROJECT_LOGO,
+    'aibi.project.model_display_names': AIBI_MODEL_DISPLAY_NAMES,
+    'aibi.project.brand_color': AIBI_BRAND_COLOR,
+    'aibi.project.org_name': AIBI_ORG_NAME,
+    'aibi.project.org_subtitle': AIBI_ORG_SUBTITLE,
+    'aibi.project.app_name': AIBI_APP_NAME,
     'channels.enable': ENABLE_CHANNELS,
     'calendar.enable': ENABLE_CALENDAR,
     'automations.enable': ENABLE_AUTOMATIONS,

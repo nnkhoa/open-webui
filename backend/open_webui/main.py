@@ -157,6 +157,7 @@ from open_webui.routers import (
     ollama,
     openai,
     pipelines,
+    project_config,
     prompts,
     retrieval,
     scim,
@@ -167,6 +168,7 @@ from open_webui.routers import (
     users,
     utils,
 )
+from open_webui.routers.project_config import resolve_logo_path
 from open_webui.routers.retrieval import (
     get_ef,
     get_embedding_function,
@@ -731,6 +733,8 @@ app.mount('/ws', socket_app)
 app.include_router(ollama.router, prefix='/ollama', tags=['ollama'])
 app.include_router(openai.router, prefix='/openai', tags=['openai'])
 
+app.include_router(project_config.router, prefix='/api/v1/configs', tags=['project'])
+
 
 app.include_router(pipelines.router, prefix='/api/v1/pipelines', tags=['pipelines'])
 app.include_router(tasks.router, prefix='/api/v1/tasks', tags=['tasks'])
@@ -840,6 +844,13 @@ async def get_models(request: Request, refresh: bool = False, user=Depends(get_v
         )
 
     models = await get_filtered_models(models, user)
+
+    # AI4BI: apply the admin-configured model display names
+    display_names = await Config.get('aibi.project.model_display_names') or {}
+    if display_names:
+        for model in models:
+            if model.get('id') in display_names:
+                model['name'] = display_names[model['id']]
 
     log.debug(
         f'/api/models returned filtered models accessible to the user: {json.dumps([model.get("id") for model in models])}'
@@ -1861,6 +1872,12 @@ async def get_app_config(request: Request):
         'direct.enable',
         'folders.enable',
         'folders.max_file_count',
+        'ui.enable_new_chat_on_model_change',
+        'aibi.project.logo_url',
+        'aibi.project.brand_color',
+        'aibi.project.org_name',
+        'aibi.project.org_subtitle',
+        'aibi.project.app_name',
         'channels.enable',
         'calendar.enable',
         'automations.enable',
@@ -1928,6 +1945,7 @@ async def get_app_config(request: Request):
                     'enable_easter_eggs': ENABLE_EASTER_EGGS,
                     'enable_direct_connections': config.get('direct.enable'),
                     'enable_folders': config.get('folders.enable'),
+                    'enable_new_chat_on_model_change': config.get('ui.enable_new_chat_on_model_change'),
                     'folder_max_file_count': config.get('folders.max_file_count'),
                     'enable_channels': config.get('channels.enable'),
                     'enable_calendar': config.get('calendar.enable'),
@@ -1962,6 +1980,14 @@ async def get_app_config(request: Request):
                 if user is not None
                 else {}
             ),
+        },
+        # AI4BI: branding, read pre-auth by the login page and the header
+        'aibi': {
+            'logo_url': config.get('aibi.project.logo_url'),
+            'brand_color': config.get('aibi.project.brand_color'),
+            'org_name': config.get('aibi.project.org_name'),
+            'org_subtitle': config.get('aibi.project.org_subtitle'),
+            'app_name': config.get('aibi.project.app_name'),
         },
         **(
             {
@@ -2565,6 +2591,15 @@ async def check_db_health():
 # --- static assets & files ---
 # Serve build-time static assets (CSS, JS, images, favicon, etc.)
 app.mount('/static', StaticFiles(directory=STATIC_DIR), name='static')
+
+
+@app.get('/api/v1/files/project_logo/{filename}')
+async def serve_project_logo(filename: str):
+    """Serve the project logo. Unauthenticated on purpose: the login page shows it."""
+    file_path = resolve_logo_path(filename)
+    if file_path is None or not file_path.exists():
+        raise HTTPException(status_code=404, detail='Project logo not found')
+    return FileResponse(file_path)
 
 
 @app.get('/cache/{path:path}')
