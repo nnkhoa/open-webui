@@ -96,6 +96,20 @@
 
 	$: parsedArgs = parseArguments(args);
 	$: parsedResult = parseJSONString(result);
+	// A finished tool with an empty result should say so rather than render
+	// nothing: the Output section stays, with a note instead of a blank area.
+	$: hasVisibleResult = (() => {
+		if (typeof parsedResult === 'string') {
+			return parsedResult.trim().length > 0;
+		}
+		if (Array.isArray(parsedResult)) {
+			return parsedResult.length > 0;
+		}
+		if (parsedResult && typeof parsedResult === 'object') {
+			return Object.keys(parsedResult).length > 0;
+		}
+		return !!parsedResult;
+	})();
 </script>
 
 <div {id} class={className}>
@@ -219,7 +233,7 @@
 					{/if}
 
 					<!-- Output -->
-					{#if isDone && result}
+					{#if isDone}
 						<div>
 							<div
 								class="text-[10px] uppercase tracking-wider font-medium text-gray-400 dark:text-gray-500 mb-1.5 px-1"
@@ -227,32 +241,39 @@
 								{$i18n.t('Output')}
 							</div>
 							<div class="w-full max-w-none!">
-								{#if typeof parsedResult === 'object' && parsedResult !== null}
-									<pre
-										class="text-xs text-gray-600 dark:text-gray-300 whitespace-pre font-mono bg-gray-50 dark:bg-gray-900 rounded-lg p-2.5 overflow-x-auto">{JSON.stringify(
-											parsedResult,
-											null,
-											2
-										)}</pre>
-								{:else}
-									{@const resultStr = String(parsedResult)}
-									{@const isTruncated = resultStr.length > RESULT_PREVIEW_LIMIT && !expandedResult}
-									<pre
-										class="text-xs text-gray-600 dark:text-gray-300 whitespace-pre-wrap break-words font-mono">{isTruncated
-											? resultStr.slice(0, RESULT_PREVIEW_LIMIT)
-											: resultStr}</pre>
-									{#if isTruncated}
-										<button
-											class="mt-1 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition"
-											on:click|stopPropagation={() => {
-												expandedResult = true;
-											}}
-										>
-											{$i18n.t('Show all ({{COUNT}} characters)', {
-												COUNT: resultStr.length.toLocaleString()
-											})}
-										</button>
+								{#if hasVisibleResult}
+									{#if typeof parsedResult === 'object' && parsedResult !== null}
+										<pre
+											class="text-xs text-gray-600 dark:text-gray-300 whitespace-pre font-mono bg-gray-50 dark:bg-gray-900 rounded-lg p-2.5 overflow-x-auto">{JSON.stringify(
+												parsedResult,
+												null,
+												2
+											)}</pre>
+									{:else}
+										{@const resultStr = String(parsedResult)}
+										{@const isTruncated =
+											resultStr.length > RESULT_PREVIEW_LIMIT && !expandedResult}
+										<pre
+											class="text-xs text-gray-600 dark:text-gray-300 whitespace-pre-wrap break-words font-mono">{isTruncated
+												? resultStr.slice(0, RESULT_PREVIEW_LIMIT)
+												: resultStr}</pre>
+										{#if isTruncated}
+											<button
+												class="mt-1 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition"
+												on:click|stopPropagation={() => {
+													expandedResult = true;
+												}}
+											>
+												{$i18n.t('Show all ({{COUNT}} characters)', {
+													COUNT: resultStr.length.toLocaleString()
+												})}
+											</button>
+										{/if}
 									{/if}
+								{:else}
+									<div class="px-1 text-xs text-gray-500 dark:text-gray-400 italic">
+										{$i18n.t('Tool completed but returned no visible output.')}
+									</div>
 								{/if}
 							</div>
 						</div>

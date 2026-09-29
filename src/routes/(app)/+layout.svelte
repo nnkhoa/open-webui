@@ -43,6 +43,7 @@
 	} from '$lib/stores';
 
 	import Sidebar from '$lib/components/layout/Sidebar.svelte';
+	import NovaHeader from '$lib/components/layout/NovaHeader.svelte';
 	import SettingsModal from '$lib/components/chat/SettingsModal.svelte';
 	import ChangelogModal from '$lib/components/ChangelogModal.svelte';
 	import AccountPending from '$lib/components/layout/Overlay/AccountPending.svelte';
@@ -395,87 +396,111 @@
 {/if}
 
 {#if $user}
-	<div class="app relative">
+	<div class="app relative" style="--topbar-height: 56px; --banner-height: 56px;">
+		<NovaHeader
+			on:user={() => {
+				showSettings.set(true);
+			}}
+		/>
 		<div
-			class=" text-gray-700 dark:text-gray-100 bg-white dark:bg-gray-900 h-screen max-h-[100dvh] overflow-auto flex flex-row justify-end"
+			class=" text-gray-700 dark:text-gray-100 bg-white dark:bg-gray-900 h-screen max-h-[100dvh] overflow-hidden flex flex-col"
+			style="padding-top: var(--topbar-height);"
 		>
-			{#if !['user', 'admin'].includes($user?.role)}
-				<AccountPending />
-			{:else}
-				{#if localDBChats.length > 0}
-					<div class="fixed w-full h-full flex z-50">
-						<div
-							class="absolute w-full h-full backdrop-blur-md bg-white/20 dark:bg-gray-900/50 flex justify-center"
-						>
-							<div class="m-auto pb-44 flex flex-col justify-center">
-								<div class="max-w-md">
-									<div class="text-center dark:text-white text-2xl font-medium z-50">
-										{$i18n.t('Important Update')}<br />
-										{$i18n.t('Action Required for Chat Log Storage')}
-									</div>
+			<div class="flex-1 min-h-0 overflow-hidden flex flex-row justify-end">
+				{#if !['user', 'admin'].includes($user?.role)}
+					<AccountPending />
+				{:else}
+					{#if localDBChats.length > 0}
+						<div class="fixed w-full h-full flex z-50">
+							<div
+								class="absolute w-full h-full backdrop-blur-md bg-white/20 dark:bg-gray-900/50 flex justify-center"
+							>
+								<div class="m-auto pb-44 flex flex-col justify-center">
+									<div class="max-w-md">
+										<div class="text-center dark:text-white text-2xl font-medium z-50">
+											{$i18n.t('Important Update')}<br />
+											{$i18n.t('Action Required for Chat Log Storage')}
+										</div>
 
-									<div class=" mt-4 text-center text-sm dark:text-gray-200 w-full">
-										{$i18n.t(
-											"Saving chat logs directly to your browser's storage is no longer supported. Please take a moment to download and delete your chat logs by clicking the button below. Don't worry, you can easily re-import your chat logs to the backend through"
-										)}
-										<span class="font-medium dark:text-white"
-											>{$i18n.t('Settings')} > {$i18n.t('Chats')} > {$i18n.t('Import Chats')}</span
-										>. {$i18n.t(
-											'This ensures that your valuable conversations are securely saved to your backend database. Thank you!'
-										)}
-									</div>
+										<div class=" mt-4 text-center text-sm dark:text-gray-200 w-full">
+											{$i18n.t(
+												"Saving chat logs directly to your browser's storage is no longer supported. Please take a moment to download and delete your chat logs by clicking the button below. Don't worry, you can easily re-import your chat logs to the backend through"
+											)}
+											<span class="font-medium dark:text-white"
+												>{$i18n.t('Settings')} > {$i18n.t('Chats')} > {$i18n.t(
+													'Import Chats'
+												)}</span
+											>. {$i18n.t(
+												'This ensures that your valuable conversations are securely saved to your backend database. Thank you!'
+											)}
+										</div>
 
-									<div class=" mt-6 mx-auto relative group w-fit">
-										<button
-											class="relative z-20 flex px-5 py-2 rounded-full bg-white border border-gray-100 dark:border-none hover:bg-gray-100 transition font-medium text-sm"
-											on:click={async () => {
-												let blob = new Blob([JSON.stringify(localDBChats)], {
-													type: 'application/json'
-												});
-												saveAs(blob, `chat-export-${Date.now()}.json`);
+										<div class=" mt-6 mx-auto relative group w-fit">
+											<button
+												class="relative z-20 flex px-5 py-2 rounded-full bg-white border border-gray-100 dark:border-none hover:bg-gray-100 transition font-medium text-sm"
+												on:click={async () => {
+													let blob = new Blob([JSON.stringify(localDBChats)], {
+														type: 'application/json'
+													});
+													saveAs(blob, `chat-export-${Date.now()}.json`);
 
-												const tx = DB.transaction('chats', 'readwrite');
-												await Promise.all([tx.store.clear(), tx.done]);
-												await deleteDB('Chats');
+													const tx = DB.transaction('chats', 'readwrite');
+													await Promise.all([tx.store.clear(), tx.done]);
+													await deleteDB('Chats');
 
-												localDBChats = [];
-											}}
-										>
-											{$i18n.t('Download & Delete')}
-										</button>
+													localDBChats = [];
+												}}
+											>
+												{$i18n.t('Download & Delete')}
+											</button>
 
-										<button
-											class="text-xs text-center w-full mt-2 text-gray-400 underline"
-											on:click={async () => {
-												localDBChats = [];
-											}}>{$i18n.t('Close')}</button
-										>
+											<button
+												class="text-xs text-center w-full mt-2 text-gray-400 underline"
+												on:click={async () => {
+													localDBChats = [];
+												}}>{$i18n.t('Close')}</button
+											>
+										</div>
 									</div>
 								</div>
 							</div>
 						</div>
-					</div>
-				{/if}
+					{/if}
 
-				<Sidebar />
+					<Sidebar />
 
-				{#if loaded}
-					<slot />
-				{:else}
-					<div
-						class="w-full flex-1 h-full flex items-center justify-center {$showSidebar
-							? '  md:max-w-[calc(100%-var(--sidebar-width))]'
-							: ' '}"
-					>
-						<Spinner className="size-5" />
-					</div>
+					{#if loaded}
+						<slot />
+					{:else}
+						<div
+							class="w-full flex-1 h-full flex items-center justify-center {$showSidebar
+								? '  md:max-w-[calc(100%-var(--sidebar-width))]'
+								: ' '}"
+						>
+							<Spinner className="size-5" />
+						</div>
+					{/if}
 				{/if}
-			{/if}
+			</div>
 		</div>
 	</div>
 {/if}
 
 <style>
+	/* The sidebar is fixed-positioned, so it has to be pushed below the topbar
+	   on its own rather than by the flex layout above. */
+	:global(#sidebar) {
+		top: var(--banner-height, 0px) !important;
+		height: calc(100vh - var(--banner-height, 0px)) !important;
+		max-height: calc(100dvh - var(--banner-height, 0px)) !important;
+		min-height: calc(100vh - var(--banner-height, 0px)) !important;
+	}
+
+	:global(#sidebar > div:first-child) {
+		height: calc(100vh - var(--banner-height, 0px)) !important;
+		max-height: calc(100dvh - var(--banner-height, 0px)) !important;
+	}
+
 	.loading {
 		display: inline-block;
 		clip-path: inset(0 1ch 0 0);

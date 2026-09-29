@@ -48,7 +48,7 @@
 	<AutomationEditor {automation} />
 {:else}
 	<div
-		class="w-full h-screen max-h-[100dvh] flex justify-center items-center transition-width duration-200 ease-in-out {$showSidebar
+		class="w-full h-full max-h-full flex justify-center items-center transition-width duration-200 ease-in-out {$showSidebar
 			? 'md:max-w-[calc(100%-var(--sidebar-width))]'
 			: ''}"
 	>

@@ -28,7 +28,7 @@
 
 {#if loaded}
 	<div
-		class=" flex flex-col h-screen max-h-[100dvh] flex-1 transition-width duration-200 ease-in-out {$showSidebar
+		class=" flex flex-col h-full max-h-full flex-1 transition-width duration-200 ease-in-out {$showSidebar
 			? 'md:max-w-[calc(100%-var(--sidebar-width))]'
 			: ' md:max-w-[calc(100%-49px)]'}  w-full max-w-full"
 	>
@@ -91,6 +91,14 @@
 								? ''
 								: 'text-gray-300 dark:text-gray-600 hover:text-gray-700 dark:hover:text-white'} transition select-none"
 							href="/admin/functions">{$i18n.t('Functions')}</a
+						>
+
+						<a
+							draggable="false"
+							class="min-w-fit p-1.5 {$page.url.pathname.includes('/admin/project')
+								? ''
+								: 'text-gray-300 dark:text-gray-600 hover:text-gray-700 dark:hover:text-white'} transition select-none"
+							href="/admin/project">{$i18n.t('Project Config')}</a
 						>
 
 						<a

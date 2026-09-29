@@ -19,6 +19,7 @@
 
 	import { WEBUI_API_BASE_URL, WEBUI_BASE_URL } from '$lib/constants';
 	import { WEBUI_NAME, config, user, socket } from '$lib/stores';
+	import { projectConfig } from '$lib/stores/projectConfig';
 
 	import { generateInitialsImage, canvasPixelTest, getUserTimezone } from '$lib/utils';
 
@@ -217,7 +218,7 @@
 
 <svelte:head>
 	<title>
-		{`${$WEBUI_NAME}`}
+		{`${$projectConfig.app_name || $WEBUI_NAME}`}
 	</title>
 </svelte:head>
 
@@ -246,7 +247,9 @@
 							class="flex items-center justify-center gap-3 text-xl sm:text-2xl text-center font-medium dark:text-gray-200"
 						>
 							<div>
-								{$i18n.t('Signing in to {{WEBUI_NAME}}', { WEBUI_NAME: $WEBUI_NAME })}
+								{$i18n.t('Signing in to {{WEBUI_NAME}}', {
+									WEBUI_NAME: $projectConfig.app_name || $WEBUI_NAME
+								})}
 							</div>
 
 							<div>
@@ -262,7 +265,9 @@
 									<img
 										id="logo"
 										crossorigin="anonymous"
-										src="{WEBUI_BASE_URL}/static/favicon.png"
+										src={$projectConfig.logo_url
+											? `${WEBUI_BASE_URL}${$projectConfig.logo_url}`
+											: `${WEBUI_BASE_URL}/static/favicon.png`}
 										class="size-24 rounded-full"
 										alt="{$WEBUI_NAME} logo"
 									/>
@@ -278,19 +283,27 @@
 								<div class="mb-1">
 									<div class=" text-2xl font-medium">
 										{#if $config?.onboarding ?? false}
-											{$i18n.t(`Get started with {{WEBUI_NAME}}`, { WEBUI_NAME: $WEBUI_NAME })}
+											{$i18n.t(`Get started with {{WEBUI_NAME}}`, {
+												WEBUI_NAME: $projectConfig.app_name || $WEBUI_NAME
+											})}
 										{:else if mode === 'ldap'}
-											{$i18n.t(`Sign in to {{WEBUI_NAME}} with LDAP`, { WEBUI_NAME: $WEBUI_NAME })}
+											{$i18n.t(`Sign in to {{WEBUI_NAME}} with LDAP`, {
+												WEBUI_NAME: $projectConfig.app_name || $WEBUI_NAME
+											})}
 										{:else if mode === 'signin'}
-											{$i18n.t(`Sign in to {{WEBUI_NAME}}`, { WEBUI_NAME: $WEBUI_NAME })}
+											{$i18n.t(`Sign in to {{WEBUI_NAME}}`, {
+												WEBUI_NAME: $projectConfig.app_name || $WEBUI_NAME
+											})}
 										{:else}
-											{$i18n.t(`Sign up to {{WEBUI_NAME}}`, { WEBUI_NAME: $WEBUI_NAME })}
+											{$i18n.t(`Sign up to {{WEBUI_NAME}}`, {
+												WEBUI_NAME: $projectConfig.app_name || $WEBUI_NAME
+											})}
 										{/if}
 									</div>
 
 									{#if $config?.onboarding ?? false}
 										<div class="mt-1 text-xs font-medium text-gray-600 dark:text-gray-500">
-											ⓘ {$WEBUI_NAME}
+											ⓘ {$projectConfig.app_name || $WEBUI_NAME}
 											{$i18n.t(
 												'does not make any external connections, and your data stays securely on your locally hosted server.'
 											)}
@@ -608,14 +621,16 @@
 		</div>
 
 		{#if !$config?.metadata?.auth_logo_position}
-			<div class="fixed m-10 z-50">
+			<div class="fixed mt-2 ml-6 z-50">
 				<div class="flex space-x-2">
 					<div class=" self-center">
 						<img
 							id="logo"
 							crossorigin="anonymous"
-							src="{WEBUI_BASE_URL}/static/favicon.png"
-							class=" w-6 rounded-full"
+							src={$projectConfig.logo_url
+								? `${WEBUI_BASE_URL}${$projectConfig.logo_url}`
+								: `${WEBUI_BASE_URL}/static/favicon.png`}
+							class=" w-14 rounded-full"
 							alt=""
 						/>
 					</div>

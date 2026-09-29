@@ -2307,6 +2307,7 @@
 	"Tool Name": "Tên Tool",
 	"Tool Servers": "Máy chủ Tool",
 	"Tool updated successfully": "Tool đã được cập nhật thành công",
+	"Tool completed but returned no visible output.": "Công cụ đã chạy xong nhưng không trả về nội dung hiển thị.",
 	"Tools": "Tools",
 	"Tools Access": "Truy cập Tools",
 	"Tools are a function calling system with arbitrary code execution": "Tools là một hệ thống gọi function với việc thực thi mã tùy ý",

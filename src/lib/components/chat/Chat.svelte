@@ -376,6 +376,76 @@
 		oldSelectedModelIds = structuredClone(selectedModelIds);
 	};
 
+	// AI4BI: when the admin enables it, switching model inside an existing chat
+	// starts a fresh chat with that model instead of continuing the current one.
+	let oldSelectedModels = [''];
+	let newChatOnModelChangeInFlight = false;
+	$: if (selectedModels) {
+		onSelectedModelsChange();
+	}
+
+	const onSelectedModelsChange = async () => {
+		if (JSON.stringify(selectedModels) === JSON.stringify(oldSelectedModels)) {
+			return;
+		}
+
+		const previousValid = oldSelectedModels.length > 0 && oldSelectedModels.some((id) => id !== '');
+		const currentValid = selectedModels.length > 0 && selectedModels.some((id) => id !== '');
+
+		const shouldStartNewChat =
+			($config?.features?.enable_new_chat_on_model_change ?? false) &&
+			chatIdProp !== '' &&
+			previousValid &&
+			currentValid &&
+			!newChatOnModelChangeInFlight;
+
+		oldSelectedModels = structuredClone(selectedModels);
+
+		if (shouldStartNewChat) {
+			newChatOnModelChangeInFlight = true;
+			try {
+				await createNewChatOnModelChange();
+			} finally {
+				newChatOnModelChangeInFlight = false;
+			}
+		}
+	};
+
+	const createNewChatOnModelChange = async () => {
+		// Temporary chat: don't persist anything, just navigate to a fresh page.
+		if ($temporaryChatEnabled) {
+			await goto('/');
+			return;
+		}
+
+		const newId = uuidv4();
+		const created = await createNewChat(
+			localStorage.token,
+			{
+				id: newId,
+				title: $i18n.t('New Chat'),
+				models: selectedModels,
+				history: { messages: {}, currentId: null },
+				messages: [],
+				tags: [],
+				timestamp: Date.now()
+			},
+			$selectedFolder?.id ?? null
+		).catch((err) => {
+			console.error('Failed to create new chat on model change:', err);
+			return null;
+		});
+
+		if (created?.id) {
+			// Refresh the sidebar list so the new chat appears immediately.
+			currentChatPage.set(1);
+			chats.set(await getChatList(localStorage.token, 1));
+			await goto(`/c/${created.id}`);
+		} else {
+			await goto('/');
+		}
+	};
+
 	const resetInput = async () => {
 		selectedToolIds = [];
 		selectedSkillIds = [];
@@ -1616,6 +1686,7 @@
 				}
 
 				oldSelectedModelIds = structuredClone(selectedModels);
+				oldSelectedModels = structuredClone(selectedModels);
 
 				history =
 					(chatContent?.history ?? undefined) !== undefined
@@ -3144,7 +3215,7 @@
 />
 
 <div
-	class="h-screen max-h-[100dvh] transition-width duration-200 ease-in-out {$showSidebar
+	class="h-full max-h-full transition-width duration-200 ease-in-out {$showSidebar
 		? '  md:max-w-[calc(100%-var(--sidebar-width))]'
 		: ' '} w-full max-w-full flex flex-col"
 	id="chat-container"

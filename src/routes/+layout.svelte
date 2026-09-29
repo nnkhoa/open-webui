@@ -39,6 +39,7 @@
 		pyodideWorker,
 		desktopEvent
 	} from '$lib/stores';
+	import { projectConfig } from '$lib/stores/projectConfig';
 	import { getFileContentById } from '$lib/apis/files';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
@@ -1125,6 +1126,20 @@
 			await config.set(backendConfig);
 			await WEBUI_NAME.set(backendConfig.name);
 
+			// AI4BI: hydrate the project branding served by /api/config
+			if (backendConfig.aibi) {
+				await projectConfig.set({
+					logo_url: backendConfig.aibi.logo_url || null,
+					model_display_names: {},
+					brand_color: backendConfig.aibi.brand_color || null,
+					org_name: backendConfig.aibi.org_name || '',
+					org_subtitle: backendConfig.aibi.org_subtitle || '',
+					app_name: backendConfig.aibi.app_name || '',
+					enable_new_chat_on_model_change:
+						backendConfig.features?.enable_new_chat_on_model_change ?? true
+				});
+			}
+
 			if ($config) {
 				await setupSocket($config.features?.enable_websocket ?? true);
 
@@ -1237,7 +1252,20 @@
 
 <svelte:head>
 	<title>{$WEBUI_NAME}</title>
-	<link crossorigin="anonymous" rel="icon" href="{WEBUI_BASE_URL}/static/favicon.png" />
+	<link
+		crossorigin="anonymous"
+		rel="icon"
+		href={$projectConfig.logo_url
+			? `${WEBUI_BASE_URL}${$projectConfig.logo_url}?t=${Date.now()}`
+			: `${WEBUI_BASE_URL}/static/favicon.png`}
+	/>
+	{#if $projectConfig.brand_color}
+		<style>
+			:root {
+				--aibi-brand-color: {$projectConfig.brand_color};
+			}
+		</style>
+	{/if}
 
 	<meta name="apple-mobile-web-app-title" content={$WEBUI_NAME} />
 	<meta name="description" content={$WEBUI_NAME} />
