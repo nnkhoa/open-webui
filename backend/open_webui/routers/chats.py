@@ -39,6 +39,7 @@ from open_webui.utils.auth import get_admin_user, get_verified_user
 from open_webui.utils.context_compaction import compact_chat_branch
 from open_webui.utils.misc import get_message_list
 from open_webui.utils.models import get_all_models
+from open_webui.utils.schema_context import warm_schema_cache
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -657,6 +658,10 @@ async def create_new_chat(
 
     try:
         chat = await Chats.insert_new_chat(str(uuid4()), user.id, form_data, db=db)
+        # AI4BI: warm cache schema metadata ngay khi user tạo chat mới,
+        # để message đầu tiên đã có sẵn metadata trong system prompt.
+        # Truyền user để filter DBHub theo access_grants.
+        asyncio.create_task(warm_schema_cache(request, user))
         await publish_event(
             request,
             EVENTS.CHAT_CREATED,

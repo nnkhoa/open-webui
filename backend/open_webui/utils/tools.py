@@ -251,6 +251,45 @@ async def get_updated_tool_function(function: Callable, extra_params: dict):
     return function
 
 
+def resolve_function_name_filter_list(
+    connection_config: dict,
+    user: UserModel,
+    user_group_ids: set[str] | list[str] | None = None,
+) -> list[str]:
+    """Which tool names of a server this user may see.
+
+    Per-group filter, on tool_server_connection.config:
+        "function_name_filters_by_group": {"<group_id>": "name1,name2" | ["name1", "name2"]}
+    A user in several listed groups gets the union. Falls back to the
+    server-wide function_name_filter_list when no group entry matches, and an
+    empty list means no filtering at all.
+    """
+    connection_config = connection_config or {}
+    filter_list = connection_config.get('function_name_filter_list', '')
+    if isinstance(filter_list, str):
+        filter_list = filter_list.split(',')
+
+    per_group_filter_map = connection_config.get('function_name_filters_by_group') or {}
+    if per_group_filter_map and user_group_ids:
+        matching_entries = [
+            per_group_filter_map.get(gid) for gid in user_group_ids if per_group_filter_map.get(gid) is not None
+        ]
+        if matching_entries:
+            merged: list[str] = []
+            for entry in matching_entries:
+                if isinstance(entry, list):
+                    merged.extend(str(e) for e in entry)
+                else:
+                    merged.extend(str(entry).split(','))
+            filter_list = [item.strip() for item in merged if item and str(item).strip()]
+
+    # Admin bypass: skip filtering when admin has BYPASS_ADMIN_ACCESS_CONTROL.
+    if user.role == 'admin' and BYPASS_ADMIN_ACCESS_CONTROL:
+        return []
+
+    return [item for item in filter_list if item]
+
+
 async def get_tools(request: Request, tool_ids: list[str], user: UserModel, extra_params: dict) -> dict[str, dict]:
     """Load tools for the given tool_ids, checking access control."""
     if not tool_ids:
@@ -395,18 +434,15 @@ async def get_tools(request: Request, tool_ids: list[str], user: UserModel, extr
                         continue
 
                     specs = tool_server_data.get('specs', [])
-                    function_name_filter_list = tool_server_connection.get('config', {}).get(
-                        'function_name_filter_list', ''
+                    effective_filter_list = resolve_function_name_filter_list(
+                        tool_server_connection.get('config', {}), user, user_group_ids
                     )
-
-                    if isinstance(function_name_filter_list, str):
-                        function_name_filter_list = function_name_filter_list.split(',')
 
                     for spec in specs:
                         function_name = spec['name']
-                        if function_name_filter_list:
-                            if not is_string_allowed(function_name, function_name_filter_list):
-                                # Skip this function
+                        if effective_filter_list:
+                            if not is_string_allowed(function_name, effective_filter_list):
+                                # Skip this function — user's group is not allowed to use it
                                 continue
 
                         metadata = extra_params.get('__metadata__', {})

@@ -39,10 +39,18 @@ async def apply_system_prompt_to_body(
     metadata: Optional[dict] = None,
     user=None,
     replace: bool = False,
+    schema_block: Optional[str] = None,
 ) -> dict:
     system = await resolve_system_prompt(system, metadata, user)
-    if not system:
+    if not system and not schema_block:
         return form_data
+
+    # AI4BI: schema metadata đứng trước model system prompt để LLM "hiểu" DB
+    # ngay từ message đầu tiên. Block này là kết quả preload từ DBHub MCP.
+    if schema_block and system:
+        system = f'{schema_block}\n\n{system}'
+    elif schema_block:
+        system = schema_block
 
     if replace:
         form_data['messages'] = replace_system_message_content(system, form_data.get('messages', []))

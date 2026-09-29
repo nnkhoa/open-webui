@@ -76,6 +76,7 @@ if WEBSOCKET_MANAGER == 'redis':
         ping_interval=WEBSOCKET_SERVER_PING_INTERVAL,
         ping_timeout=WEBSOCKET_SERVER_PING_TIMEOUT,
         engineio_logger=WEBSOCKET_SERVER_ENGINEIO_LOGGING,
+        max_http_buffer_size=10_000_000,  # 10MB — prevent silent drop on large tool results
     )
 else:
     sio = socketio.AsyncServer(
@@ -88,6 +89,7 @@ else:
         ping_interval=WEBSOCKET_SERVER_PING_INTERVAL,
         ping_timeout=WEBSOCKET_SERVER_PING_TIMEOUT,
         engineio_logger=WEBSOCKET_SERVER_ENGINEIO_LOGGING,
+        max_http_buffer_size=10_000_000,  # 10MB — prevent silent drop on large tool results
     )
 
 
@@ -926,15 +928,18 @@ async def get_event_emitter(request_info, update_db=True):
         chat_id = request_info['chat_id']
         message_id = request_info['message_id']
 
-        await sio.emit(
-            'events',
-            {
-                'chat_id': chat_id,
-                'message_id': message_id,
-                'data': event_data,
-            },
-            room=f'user:{user_id}',
-        )
+        try:
+            await sio.emit(
+                'events',
+                {
+                    'chat_id': chat_id,
+                    'message_id': message_id,
+                    'data': event_data,
+                },
+                room=f'user:{user_id}',
+            )
+        except Exception as e:
+            log.error(f'Socket emit failed for user:{user_id} chat:{chat_id}: {e}')
 
         if update_db and message_id and not (request_info.get('chat_id') or '').startswith('local:'):
             event_type = event_data.get('type')

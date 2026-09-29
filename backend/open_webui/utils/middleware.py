@@ -43,6 +43,7 @@ from open_webui.models.chats import Chats
 from open_webui.models.config import Config
 from open_webui.models.folders import Folders
 from open_webui.models.functions import Functions
+from open_webui.models.groups import Groups
 from open_webui.models.models import Models
 from open_webui.models.oauth_sessions import OAuthSessions
 from open_webui.models.users import UserModel, Users
@@ -125,6 +126,7 @@ from open_webui.utils.tools import (
     get_terminal_tools,
     get_tools,
     get_updated_tool_function,
+    resolve_function_name_filter_list,
 )
 from open_webui.utils.webhook import post_webhook
 from starlette.responses import JSONResponse, Response, StreamingResponse
@@ -2149,9 +2151,12 @@ async def connect_mcp_server(
         headers=headers if headers else None,
     )
 
-    function_name_filter_list = mcp_server_connection.get('config', {}).get('function_name_filter_list', '')
-    if isinstance(function_name_filter_list, str):
-        function_name_filter_list = function_name_filter_list.split(',')
+    # Same per-group filtering as the OpenAPI tool servers in get_tools: an
+    # MCP server (DBHub) must not hand a user tools their group cannot use.
+    user_group_ids = {group.id for group in await Groups.get_groups_by_member_id(user.id)}
+    function_name_filter_list = resolve_function_name_filter_list(
+        mcp_server_connection.get('config', {}), user, user_group_ids
+    )
 
     tool_specs = await client.list_tool_specs()
     if function_name_filter_list:

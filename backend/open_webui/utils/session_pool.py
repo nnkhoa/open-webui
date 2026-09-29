@@ -23,7 +23,9 @@ needs cleanup.  The session is closed once during application shutdown
 via ``close_session()``.
 """
 
+import asyncio
 import logging
+import os
 from typing import Optional
 
 import aiohttp
@@ -109,10 +111,47 @@ async def stream_wrapper(response, session=None, content_handler=None):
 
     This is more reliable than BackgroundTask which may not run if the client
     disconnects.  When using the shared pool, ``session`` should be ``None``.
+
+    Emits SSE comment ':keepalive' lines when the upstream is idle for longer
+    than STREAM_KEEPALIVE_INTERVAL seconds (default 15), so reverse proxies
+    (Cloudflare, nginx) don't drop the connection during slow LLM responses.
+    SSE comments are ignored by EventSource parsers, so message content is
+    unaffected. The pending read is kept across keepalives rather than being
+    cancelled and restarted, which would risk losing a chunk mid-read.
     """
     try:
+        keepalive_interval = int(os.environ.get('STREAM_KEEPALIVE_INTERVAL', '15') or '15')
+    except ValueError:
+        keepalive_interval = 15
+
+    pending = None
+    try:
         stream = content_handler(response.content) if content_handler else response.content
-        async for chunk in stream:
-            yield chunk
+
+        if keepalive_interval <= 0:
+            async for chunk in stream:
+                yield chunk
+        else:
+            stream_iter = stream.__aiter__()
+            while True:
+                if pending is None:
+                    pending = asyncio.ensure_future(stream_iter.__anext__())
+
+                done, _ = await asyncio.wait({pending}, timeout=keepalive_interval)
+                if not done:
+                    # Idle window: keep the connection warm and keep waiting on
+                    # the same read.
+                    yield b': keepalive\n\n'
+                    continue
+
+                finished, pending = pending, None
+                try:
+                    chunk = finished.result()
+                except StopAsyncIteration:
+                    break
+
+                yield chunk
     finally:
+        if pending is not None:
+            pending.cancel()
         await cleanup_response(response, session)

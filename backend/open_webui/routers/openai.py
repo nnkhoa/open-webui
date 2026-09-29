@@ -51,6 +51,7 @@ from open_webui.utils.payload import (
     apply_model_params_to_body_openai,
     apply_system_prompt_to_body,
 )
+from open_webui.utils.schema_context import get_schema_block
 from open_webui.utils.session_pool import (
     cleanup_response,
     get_session,
@@ -1126,6 +1127,11 @@ async def generate_chat_completion(
     payload = {**form_data}
     metadata = payload.pop('metadata', None)
 
+    # AI4BI: ask for usage on streaming responses, otherwise the analytics
+    # tables never see token counts for streamed chats.
+    if payload.get('stream') is True:
+        payload.setdefault('stream_options', {})['include_usage'] = True
+
     model_id = form_data.get('model')
     model_info = await Models.get_model_by_id(model_id)
 
@@ -1140,12 +1146,22 @@ async def generate_chat_completion(
 
         params = model_info.params.model_dump()
 
+        system = None
         if params:
             system = params.pop('system', None)
 
             payload = apply_model_params_to_body_openai(params, payload)
-            if not bypass_system_prompt:
-                payload = await apply_system_prompt_to_body(system, payload, metadata, user)
+
+        if not bypass_system_prompt:
+            # AI4BI: preload DB schema metadata vào system prompt ngay từ
+            # request đầu tiên của chat. Lần đầu fetch DBHub MCP; các lần
+            # sau hit cache (TTL theo env AI4BI_SCHEMA_TTL). Filter DBHub
+            # theo access_grants của user.
+            schema_block = await get_schema_block(request, user)
+            if system or schema_block:
+                payload = await apply_system_prompt_to_body(
+                    system, payload, metadata, user, schema_block=schema_block
+                )
 
         await check_model_access(user, model_info, bypass_filter)
     else:
