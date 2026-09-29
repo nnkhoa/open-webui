@@ -595,6 +595,103 @@ def get_citation_source_from_tool_result(
 RESPONSE_COMPLETION_RESPONSE_FIELDS = ('error', 'id', 'output', 'usage')
 
 
+PERMISSION_ERROR_KEYWORDS = (
+    'permission denied',
+    'access denied',
+    'forbidden',
+    'unauthorized',
+    'not authorized',
+)
+
+
+def extract_tool_error_text(tool_result) -> str:
+    """The error a tool reported, or '' if it reported none.
+
+    Only error fields are read. Scanning the whole payload would misread a
+    perfectly good query result that happens to contain a word like
+    "forbidden" in its data.
+    """
+    parsed = tool_result
+
+    if isinstance(tool_result, str):
+        stripped = tool_result.strip()
+        if not stripped:
+            return ''
+        if stripped.startswith('Error:'):
+            return stripped
+        try:
+            parsed = json.loads(stripped)
+        except Exception:
+            return ''
+
+    if not isinstance(parsed, dict):
+        return ''
+
+    error = parsed.get('error')
+    if isinstance(error, dict):
+        return str(error.get('message') or error.get('content') or error)
+    if error:
+        return str(error)
+
+    # MCP-style: {"isError": true, "message": "..."}
+    if parsed.get('isError'):
+        return str(parsed.get('message') or parsed.get('content') or '')
+
+    return ''
+
+
+def is_permission_error(text: str) -> bool:
+    lowered = (text or '').lower()
+    return any(keyword in lowered for keyword in PERMISSION_ERROR_KEYWORDS)
+
+
+def build_tool_result_fallback_message(results: list) -> str:
+    """A user-visible line for a turn whose tools produced nothing to say."""
+    had_tool_result_error = False
+    had_empty_tool_result = False
+    fallback_tool_error_messages = []
+
+    for result in results:
+        result_content = result.get('content', '')
+
+        if not isinstance(result_content, str):
+            continue
+
+        stripped_result_content = result_content.strip()
+        if not stripped_result_content:
+            continue
+
+        try:
+            parsed_tool_result = json.loads(stripped_result_content)
+        except Exception:
+            continue
+
+        if isinstance(parsed_tool_result, list) and len(parsed_tool_result) == 0:
+            had_empty_tool_result = True
+        elif isinstance(parsed_tool_result, dict):
+            tool_error_message = parsed_tool_result.get('error') or parsed_tool_result.get('message')
+            if parsed_tool_result.get('error'):
+                had_tool_result_error = True
+            if tool_error_message:
+                fallback_tool_error_messages.append(str(tool_error_message))
+
+    if had_tool_result_error:
+        unique_messages = []
+        for message in fallback_tool_error_messages:
+            if message and message not in unique_messages:
+                unique_messages.append(message)
+
+        primary_message = unique_messages[0] if unique_messages else ''
+        if primary_message:
+            return f"I couldn't get a final result from the data tool. Details: {primary_message}"
+        return "I couldn't get a final result from the data tool. Please verify the data source or try again."
+
+    if had_empty_tool_result:
+        return 'I ran the data tool but did not receive any matching records to answer this question.'
+
+    return ''
+
+
 def get_response_completion_event_data(event: dict) -> dict:
     """Build the data payload for response:completion events."""
     response = event.get('response')
@@ -4623,6 +4720,12 @@ async def streaming_chat_response_handler(response, ctx):
                             },
                         )
 
+                # Tracks whether the most recently streamed response produced
+                # any user-visible text. Declared in the enclosing scope so the
+                # outer tool-call loop can read it after stream_body_handler
+                # returns; mutated via `nonlocal` inside the handler each run.
+                streamed_response_has_visible_text = False
+
                 async def stream_body_handler(response, form_data):
                     nonlocal usage
                     nonlocal finish_reason
@@ -4630,6 +4733,7 @@ async def streaming_chat_response_handler(response, ctx):
                     nonlocal prior_output
                     nonlocal last_response_id
                     nonlocal stream_size
+                    nonlocal streamed_response_has_visible_text
 
                     response_tool_calls = []
                     response_usage = {}
@@ -4639,6 +4743,7 @@ async def streaming_chat_response_handler(response, ctx):
                         CHAT_RESPONSE_STREAM_DELTA_CHUNK_SIZE,
                         int(metadata.get('params', {}).get('stream_delta_chunk_size') or 1),
                     )
+
                     last_delta_data = None
                     last_delta_type = None
                     last_delta_key = None
@@ -5455,6 +5560,17 @@ async def streaming_chat_response_handler(response, ctx):
                                 await save_current_response_stream()
                     await flush_pending_delta_data()
 
+                    streamed_response_has_visible_text = False
+                    for item in output:
+                        if item.get('type') != 'message':
+                            continue
+                        for content_part in item.get('content', []):
+                            if content_part.get('type') == 'output_text' and content_part.get('text', '').strip():
+                                streamed_response_has_visible_text = True
+                                break
+                        if streamed_response_has_visible_text:
+                            break
+
                     if output:
                         # Clean up the last message item
                         if output[-1].get('type') == 'message' and not continuing:
@@ -5702,6 +5818,10 @@ async def streaming_chat_response_handler(response, ctx):
                     await emit_output()
 
                     results = []
+                    # Track permission errors so the loop can stop early instead of
+                    # letting the model retry denied resources and burn tokens.
+                    permission_error = False
+                    permission_error_tool = ''
 
                     delegate_calls = [
                         tool_call
@@ -5751,6 +5871,16 @@ async def streaming_chat_response_handler(response, ctx):
                         )
                         if terminal_file_result:
                             tool_result = terminal_file_result
+
+                        # MCP/HTTP tool servers often report a permission error as a
+                        # successful result payload instead of raising, so check the
+                        # error field of the result too.
+                        if not permission_error and (
+                            is_permission_error(extract_tool_error_text(tool_result))
+                            or (isinstance(tool_result, str) and tool_result.startswith('Error') and is_permission_error(tool_result))
+                        ):
+                            permission_error = True
+                            permission_error_tool = tool_function_name
 
                         tool_result, tool_result_files, tool_result_embeds = await process_tool_result(
                             request,
@@ -5832,6 +5962,40 @@ async def streaming_chat_response_handler(response, ctx):
                                 item['arguments'] = tc.get('function', {}).get('arguments', '{}')
                                 break
 
+                    # AI4BI: stop the agentic tool-call loop immediately on permission errors.
+                    # Prevents the model from retrying denied resources, looping until
+                    # the iteration cap is hit, or answering without real data.
+                    if permission_error:
+                        refusal_text = (
+                            f"This request requires access to a resource you don't "
+                            f'have permission for (tool: `{permission_error_tool}`). '
+                            f'Please ask within your permission scope or contact your '
+                            f'administrator to request access.'
+                        )
+                        await event_emitter(
+                            {
+                                'type': 'notification',
+                                'data': {
+                                    'type': 'error',
+                                    'content': (
+                                        f"You don't have permission to access the "
+                                        f'resource that tool `{permission_error_tool}` needs.'
+                                    ),
+                                },
+                            }
+                        )
+                        output.append(
+                            {
+                                'type': 'message',
+                                'id': output_id('msg'),
+                                'status': 'completed',
+                                'role': 'assistant',
+                                'content': [{'type': 'output_text', 'text': refusal_text}],
+                            }
+                        )
+                        await emit_output()
+                        break
+
                     # Emit citation sources to the frontend for display
                     if citations_enabled:
                         for source in tool_call_sources:
@@ -5889,6 +6053,25 @@ async def streaming_chat_response_handler(response, ctx):
                                         append=False,
                                     )
                         tool_call_sources.clear()
+
+                    # AI4BI: a turn that only ran tools and streamed no visible text leaves
+                    # an empty assistant bubble; fill it with what the tools reported.
+                    if not streamed_response_has_visible_text:
+                        fallback_message = build_tool_result_fallback_message(results)
+                        if fallback_message:
+                            if output and output[-1].get('type') == 'message':
+                                output[-1]['status'] = 'completed'
+                                output[-1]['content'] = [{'type': 'output_text', 'text': fallback_message}]
+                            else:
+                                output.append(
+                                    {
+                                        'type': 'message',
+                                        'id': output_id('msg'),
+                                        'status': 'completed',
+                                        'role': 'assistant',
+                                        'content': [{'type': 'output_text', 'text': fallback_message}],
+                                    }
+                                )
 
                     await emit_output()
 
