@@ -15,7 +15,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 .nvmrc
-CLAUDE.md
+# CLAUDE.md — kept in the repo on this fork, see Claude.md
 # C extensions
 *.so
 
