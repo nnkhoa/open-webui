@@ -8,7 +8,8 @@ carrying the AI4BI customizations.
 
 | Branch | Upstream base | What it is |
 |---|---|---|
-| `merge/v0.10.2` | `v0.10.2` | Current work: upstream v0.10.2 + the AI4BI customizations |
+| `nbc/v0.10.2` | `v0.10.2` | May Nhà Bè (NBC): `merge/v0.10.2` + Data Portal, NBC branding |
+| `merge/v0.10.2` | `v0.10.2` | Upstream v0.10.2 + the AI4BI customizations |
 | `merge/v0.11.4` | `v0.11.4` | Upstream bump only, no customizations yet |
 | `stable_0.8.5` | `v0.8.12` | The previous production branch; the customizations came from here |
 
@@ -43,12 +44,35 @@ names, and the "new chat on model change" switch.
 - Served to the frontend pre-auth in the `aibi` block of `/api/config`
 - `src/lib/stores/projectConfig.ts`, `src/lib/components/admin/ProjectConfig.svelte`,
   `src/routes/(app)/admin/project/+page.svelte`
-- `src/lib/components/layout/NovaHeader.svelte` — the fixed 56px topbar with the
-  customer logo and the user menu
+- `static/static/nbc-logo.png` — the NBC logo at the top of the sidebar
 
 Env seeds (config wins once set in the admin page): `AIBI_PROJECT_LOGO`,
 `AIBI_BRAND_COLOR`, `AIBI_ORG_NAME`, `AIBI_ORG_SUBTITLE`, `AIBI_APP_NAME`,
 `AIBI_MODEL_DISPLAY_NAMES` (JSON), `ENABLE_NEW_CHAT_ON_MODEL_CHANGE`.
+
+### Data Portal (`backend/open_webui/data_portal`)
+
+Excel upload for NBC: check the file, write bronze → silver → gold in Postgres,
+reconcile, roll back, browse data. The spec is
+`DacTa_GiaoDien_DataPortal_OpenWebUI.md`; the API contract is
+`data_portal/api/README_API.md`.
+
+- Backend: a FastAPI sub-app mounted at `/api/v1/data-portal` in `main.py`,
+  sharing `app.state`. Callers are the signed-in Open WebUI user
+  (`get_verified_user`); roles `admin` and `data_uploader` only.
+- Started in `lifespan` on a worker thread (opens the SQLite notebook, syncs
+  the form registry, connects to the warehouse, applies migrations).
+- Storage: `{DATA_DIR}/data_portal/so-tay.db` and `uploads/`; the warehouse
+  address lives in the notebook, seeded once from `DATA_PORTAL_DATABASE_URL`.
+- Forms and groups: `data_portal/khai_bao/`; migrations:
+  `data_portal/migrations/`. After editing a form run
+  `python -m open_webui.data_portal.manage makemigration` from `backend/`.
+- Frontend: `src/routes/(app)/data-portal/`, `src/lib/components/data-portal/`,
+  `src/lib/apis/data-portal/`, `src/lib/stores/dataPortal.ts`; sidebar group in
+  `Sidebar.svelte`. Role `data_uploader` ("Data Loader") is accepted wherever
+  `user` is.
+- Tests: `python -m pytest open_webui/test/data_portal` from `backend/` (needs a
+  Postgres test database, `DATA_PORTAL_TEST_DATABASE_URL`).
 
 ### Token usage analytics
 
@@ -82,7 +106,7 @@ in `middleware.connect_mcp_server`.
   default 15s) so proxies don't drop slow responses.
 - `max_http_buffer_size=10MB` on the socket.io server for large tool results.
 - Navbar has no temporary-chat, Controls or user-avatar buttons; settings are
-  reached through the gear icon in NovaHeader.
+  reached through the user menu at the bottom of the sidebar.
 - BuildKit cache mounts in the `Dockerfile` for npm, pip and uv.
 
 ## Config in v0.10.2 — read this before touching settings

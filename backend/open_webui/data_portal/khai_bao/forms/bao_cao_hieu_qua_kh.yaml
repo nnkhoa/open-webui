@@ -1,0 +1,249 @@
+# =============================================================================
+#  Bộ bảng BAO_CAO_HQKH — hiệu quả kinh doanh theo nhóm và khách hàng
+#
+#  Tệp đầu vào là báo cáo "FORM MAU - HIEU QUA TUNG KHACH HANG". Bộ đọc
+#  `sources/bao_cao_kh.py` tách báo cáo thành bốn bảng có đúng các cột của tệp
+#  Biểu mẫu nhập liệu; tệp này khai kiểu, khoá và ý nghĩa của từng cột. Lớp gốc
+#  giữ y nguyên, lớp chuẩn hoá ép kiểu và bỏ dòng trùng y hệt ở bảng danh mục,
+#  lớp phân tích chép lớp chuẩn hoá. Nhóm thông tin nào dùng bộ bảng này khai ở
+#  `registry/domains.yaml`.
+#
+#  Tên cột phải trùng `BANG_PHANG` ở `sources/bao_cao_kh_mau.py`.
+#
+#  Ý nghĩa cột lấy từ phiếu khảo sát 20260915_NBC-QTTM_Bieu_mau_du_lieu_va_Khao_sat
+#  sheet "2. Ket qua kinh doanh" và "3. Chi phi"; `purpose` của bảng lấy ở dòng
+#  "Phục vụ" của hai sheet đó, và cột "Nhóm câu hỏi được phục vụ" của sheet
+#  "1. Tong quan cac bang" với hai danh mục.
+#
+#  v4: bảng số liệu có thêm cột `nam` (lấy từ ô Năm dữ liệu chọn lúc nạp, không
+#  có trong tệp — `lay_tu: nam_du_lieu`), là cột đầu của khoá nghiệp vụ. Nạp lại
+#  ghi đè theo tháng **trong năm đã chọn** (QT-02, QT-09).
+# =============================================================================
+
+form:
+  code: BAO_CAO_HQKH
+  version: 4
+  label: Báo cáo hiệu quả từng khách hàng
+  description: >
+    Doanh thu, giá vốn, lợi nhuận và chi phí theo khách hàng, nhóm kinh doanh
+    và tháng.
+  source:
+    kind: bao_cao_hieu_qua_kh
+
+tables:
+  # --------------------------------- DANH MỤC ---------------------------------
+  - name: dim_khach_hang
+    kind: dim
+    sheet: DM_KHACH_HANG
+    label: Danh mục khách hàng
+    card_label: Khách hàng
+    description: Mã và tên khách hàng, lấy từ sheet DANH SACH KHACH HANG THEO HDX.
+    grain: Một dòng cho mỗi cặp mã – tên khác nhau của sheet.
+    purpose: Xếp hạng và phân tích theo khách hàng.
+    business_key: [ma_khach]
+    merge: upsert
+    order: [ma_khach]
+    display_order: 3
+    columns:
+      - name: ma_khach
+        type: text
+        label: Mã Trung Tâm Phí
+        meaning: Mã khách hàng dùng thống nhất trong toàn bộ dữ liệu.
+        example: EO-00050
+      - name: ten_khach
+        type: text
+        label: Trung Tâm Phí
+        display_width: 320
+        meaning: Tên đầy đủ của khách hàng.
+        example: APG & CO., PTY LTD.
+
+  - name: dim_khoan_cp
+    kind: dim
+    sheet: DM_KHOAN_CP
+    label: Danh mục chi phí
+    card_label: Danh mục chi phí
+    description: Mã khoản mục, khoản mục và nhóm chi phí, lấy từ sheet DANH MỤC CHI PHÍ.
+    grain: Một dòng cho mỗi dòng của sheet.
+    purpose: Bóc tách khoảng chênh giữa lợi nhuận gộp và lợi nhuận ròng.
+    business_key: [ma_khoan_cp]
+    merge: upsert
+    order: [ma_khoan_cp]
+    display_order: 4
+    columns:
+      - name: ma_khoan_cp
+        type: text
+        label: MÃ KHOẢN MỤC
+        meaning: Mã khoản mục.
+        example: CG02
+      - name: ten_khoan
+        type: text
+        label: KHOẢN MỤC
+        display_width: 220
+        meaning: Tên khoản mục (cột KHOẢN MỤC).
+        example: Chi phí giao hàng (XNK)
+      - name: nhom_chi_phi
+        type: text
+        label: Nhóm chi phí
+        display_width: 220
+        meaning: Nhóm của khoản mục, ghi ở dòng trên cùng sheet TỔNG HỢP. Trống với mã không phải cột chi phí.
+        example: Chi phí trực tiếp khách hàng
+
+  # --------------------------------- SỐ LIỆU ----------------------------------
+  - name: fact_ket_qua_kd
+    kind: fact
+    sheet: KET_QUA_KD
+    label: Kết quả kinh doanh
+    card_label: Kết quả kinh doanh
+    description: Doanh thu, giá vốn và lợi nhuận theo tháng, khách hàng và nhóm kinh doanh.
+    grain: Một dòng cho mỗi dòng khách hàng của sheet TỔNG HỢP.
+    purpose: >
+      Toàn bộ nhóm câu hỏi về hiệu quả kinh doanh theo nhóm kinh doanh và theo
+      khách hàng. Cung cấp doanh thu, lợi nhuận gộp và lợi nhuận ròng; cho phép
+      phân tích theo thời gian, nhóm kinh doanh và khách hàng.
+    business_key: [nam, ky_thang, ma_khach, ma_nhom_kd]
+    merge: replace_partition
+    partition_by: [ky_thang]
+    order: [nam, ky_thang, ma_khach, ma_nhom_kd]
+    display_order: 1
+    columns:
+      - name: nam
+        type: int
+        lay_tu: nam_du_lieu
+        label: Không có trong tệp — lấy từ ô Năm dữ liệu chọn lúc nạp
+        meaning: Năm của số liệu, chọn ở ô Năm dữ liệu lúc nạp. Tháng 1/2026 và tháng 1/2027 là hai kỳ khác nhau.
+        example: "2026"
+      - name: ky_thang
+        type: int
+        label: THÁNG
+        meaning: Tháng của dòng số liệu, lấy ở cột THÁNG của sheet TỔNG HỢP.
+        example: "1"
+      - name: ma_khach
+        type: text
+        label: MÃ KHÁCH HÀNG
+        meaning: Mã khách hàng. Trống ở khách hàng đang phát triển, chưa có đơn hàng nên chưa tạo mã (NBC xác nhận) — nhận diện bằng tên khách.
+        example: EO-00050
+      - name: ten_khach
+        type: text
+        label: Khách hàng
+        display_width: 280
+        meaning: Tên khách hàng ghi ở chính dòng này của sheet TỔNG HỢP.
+        example: APG & CO., PTY LTD.
+      - name: ma_nhom_kd
+        type: text
+        label: NHÓM KINH DOANH
+        meaning: Nhóm kinh doanh phụ trách khách hàng này trong tháng.
+        example: SALE 1
+      - name: doanh_thu
+        type: money
+        role: measure
+        label: Doanh Thu Bán Hàng
+        meaning: Doanh thu ghi nhận trong tháng cho khách hàng này.
+        example: "1031204925"
+      - name: gia_von
+        type: money
+        role: measure
+        label: Giá vốn hàng bán
+        meaning: Giá vốn hàng bán tương ứng với phần doanh thu trên.
+        example: "717740937"
+      - name: thu_nhap_khac
+        type: money
+        role: measure
+        label: Thu nhập khác- từ DBN
+        meaning: Thu nhập khác (mã DA02). LỢI NHUẬN NET của báo cáo cộng khoản này.
+        example: "0"
+      - name: lai_rong
+        type: money
+        role: measure
+        label: LỢI NHUẬN NET
+        meaning: Lợi nhuận ròng theo công thức quản trị NBC đang áp dụng.
+        example: "31068546.33"
+      - name: lai_gop
+        type: money
+        role: measure
+        label: "Lợi Nhuận Gộp (doanh thu-giá vốn)"
+        meaning: "Lợi nhuận gộp: doanh thu trừ giá vốn."
+      - name: ty_le_lai_gop
+        type: ratio
+        role: measure
+        label: "Tỷ lệ (LN Gộp/Doanh Thu)"
+        meaning: "Tỷ lệ lãi gộp: lợi nhuận gộp chia doanh thu Doanh thu bằng 0 (tệp ghi #DIV/0!) thì bằng 0, theo NBC."
+      - name: ty_le_lai_rong_dt
+        type: ratio
+        role: measure
+        label: Tỷ lệ lãi/DT
+        meaning: "Tỷ lệ lãi ròng trên doanh thu: lợi nhuận ròng chia doanh thu Doanh thu bằng 0 (tệp ghi #DIV/0!) thì bằng 0, theo NBC."
+      - name: ty_le_lai_tren_von
+        type: ratio
+        role: measure
+        label: Tỷ lệ lãi trên vốn
+        meaning: "Tỷ lệ lãi trên vốn: lợi nhuận ròng chia giá vốn Giá vốn bằng 0 (tệp ghi #DIV/0!) thì bằng 0, theo NBC."
+      - name: ty_trong_dt
+        type: ratio
+        role: measure
+        label: Tỷ trọng đóng góp doanh thu
+        meaning: Doanh thu của khách hàng chia tổng doanh thu.
+      - name: ty_trong_lai_rong
+        type: ratio
+        role: measure
+        label: Tỷ trọng đóng góp lợi nhuận ròng
+        meaning: Lợi nhuận ròng của khách hàng chia tổng lợi nhuận ròng.
+      - name: chenh_gop_rong
+        type: money
+        role: measure
+        label: Mức chênh lệch giữa lợi nhuận gộp và lợi nhuận ròng
+        meaning: Lợi nhuận gộp trừ lợi nhuận ròng.
+
+  - name: fact_chi_phi
+    kind: fact
+    sheet: CHI_PHI
+    label: Chi phí
+    card_label: Chi phí
+    description: Chi phí giữa lợi nhuận gộp và lợi nhuận ròng, mỗi khoản một dòng.
+    grain: Một dòng cho mỗi dòng khách hàng × cột chi phí của sheet TỔNG HỢP.
+    purpose: >
+      Hai câu hỏi cần bóc tách khoảng chênh giữa lợi nhuận gộp và lợi nhuận ròng:
+      nhóm kinh doanh nào có khoảng chênh lớn, và khách hàng nào có khoảng chênh
+      lớn nhất.
+    business_key: [nam, ky_thang, ma_khoan_cp, ma_khach, ma_nhom_kd]
+    merge: replace_partition
+    partition_by: [ky_thang]
+    order: [nam, ky_thang, ma_khoan_cp, ma_khach, ma_nhom_kd]
+    display_order: 2
+    columns:
+      - name: nam
+        type: int
+        lay_tu: nam_du_lieu
+        label: Không có trong tệp — lấy từ ô Năm dữ liệu chọn lúc nạp
+        meaning: Năm của số liệu, chọn ở ô Năm dữ liệu lúc nạp. Tháng 1/2026 và tháng 1/2027 là hai kỳ khác nhau.
+        example: "2026"
+      - name: ky_thang
+        type: int
+        label: THÁNG
+        meaning: Tháng của khoản mục, lấy ở cột THÁNG của sheet TỔNG HỢP.
+        example: "1"
+      - name: ma_khoan_cp
+        type: text
+        label: MÃ KHOẢN MỤC
+        meaning: Mã khoản mục, ghi ở dòng mã ngay trên tên cột. Trống ở hai cột trích chưa có mã.
+        example: CG02
+      - name: cap_phan_bo
+        type: text
+        label: Cấp phân bổ
+        meaning: Khoản này được phân bổ tới đâu. Theo phiếu khảo sát, mọi khoản được phân bổ tới từng khách hàng.
+        example: khách hàng
+      - name: ma_khach
+        type: text
+        label: MÃ KHÁCH HÀNG
+        meaning: Khách hàng được phân bổ khoản mục này.
+        example: EO-00050
+      - name: ma_nhom_kd
+        type: text
+        label: NHÓM KINH DOANH
+        meaning: Nhóm kinh doanh của khách hàng.
+        example: SALE 1
+      - name: so_tien
+        type: money
+        role: measure
+        label: Số tiền
+        meaning: Số tiền của khoản mục trong tháng.
+        example: "104912541.32"

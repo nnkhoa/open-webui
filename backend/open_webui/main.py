@@ -149,6 +149,11 @@ from open_webui.models.messages import Messages
 from open_webui.models.models import Models, normalize_model_tags
 from open_webui.models.groups import Groups, resolve_group_default_models
 from open_webui.models.users import Users
+from open_webui.data_portal.api.app import (
+    dung_lai as dung_data_portal,
+    khoi_dong as khoi_dong_data_portal,
+    tao_api as tao_data_portal_api,
+)
 from open_webui.routers import (
     apps,
     analytics,
@@ -159,7 +164,6 @@ from open_webui.routers import (
     channels,
     chats,
     configs,
-    data_portal,
     evaluations,
     files,
     folders,
@@ -495,6 +499,11 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             log.warning(f'Failed to initialize terminal servers at startup: {e}')
 
+    # Data Portal mở sổ tay và nối kho trong luồng riêng: kho tắt hay chậm không giữ Open WebUI lại.
+    app.state.data_portal_khoi_dong = asyncio.create_task(
+        asyncio.to_thread(khoi_dong_data_portal, data_portal_api)
+    )
+
     # Mark application as ready to accept traffic from a startup perspective.
     if license_task:
         try:
@@ -516,6 +525,7 @@ async def lifespan(app: FastAPI):
     from open_webui.utils.session_pool import close_session
 
     await close_session()
+    await asyncio.to_thread(dung_data_portal, data_portal_api)
 
     if hasattr(app.state, 'redis_task_command_listener'):
         app.state.redis_task_command_listener.cancel()
@@ -880,7 +890,9 @@ app.include_router(ollama.router, prefix='/ollama', tags=['ollama'])
 app.include_router(openai.router, prefix='/openai', tags=['openai'])
 
 app.include_router(project_config.router, prefix='/api/v1/configs', tags=['project'])
-app.include_router(data_portal.router, prefix='/api/v1/data-portal', tags=['data-portal'])
+# Data Portal: API JSON nạp dữ liệu, chạy ngay trong Open WebUI (open_webui/data_portal).
+data_portal_api = tao_data_portal_api(get_verified_user, state=app.state)
+app.mount('/api/v1/data-portal', data_portal_api)
 
 
 app.include_router(pipelines.router, prefix='/api/v1/pipelines', tags=['pipelines'])
