@@ -1,0 +1,74 @@
+/* Data Portal — biến màu (đặc tả mục 11.2). Chế độ tối theo lớp `dark` của Open WebUI. */
+:root {
+	--dp-sans: 'Be Vietnam Pro', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+	--mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	--page: #f4f5f9;
+	--surface: #ffffff;
+	--sb: #fbfbfb;
+	--line: #ececf1;
+	--line2: #dedee6;
+	--th-bg: #ebebef;
+	--field: #f7f7fa;
+	--hover: #f2f2f6;
+	--ro: #fbfbfd;
+	--muted-bg: #f0f0f4;
+	--text: #1f2233;
+	--strong: #11131c;
+	--body: #3d4152;
+	--muted: #6b6f80;
+	--faint: #9a9eae;
+	--primary: #7c6cf2;
+	--primary-h: #6858e6;
+	--primary-dis: #bdb4f8;
+	--primary-soft: #efecfe;
+	--on-primary: #ffffff;
+	--link: #2350b8;
+	--req: #e5484d;
+	--ok: #15803d;
+	--ok-bg: #e8f6ee;
+	--err: #c62828;
+	--err-bg: #fdecec;
+	--warn: #b45309;
+	--warn-bg: #fff4e0;
+	--info: #2350b8;
+	--info-bg: #e9f0fd;
+	--overlay: rgba(12, 16, 32, 0.36);
+	--shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 2px 10px rgba(16, 24, 40, 0.05);
+	--shadow-lg: 0 16px 48px rgba(16, 24, 40, 0.18);
+}
+
+html.dark {
+	--page: #0f1117;
+	--surface: #181b24;
+	--sb: #0f0f0f;
+	--line: #262a36;
+	--line2: #343948;
+	--th-bg: #222633;
+	--field: #1f2330;
+	--hover: #232736;
+	--ro: #1c1f2a;
+	--muted-bg: #262a36;
+	--text: #eceef5;
+	--strong: #ffffff;
+	--body: #c9ccd8;
+	--muted: #a3a8b9;
+	--faint: #7d8296;
+	--primary: #8f82f7;
+	--primary-h: #a397fa;
+	--primary-dis: #4a4480;
+	--primary-soft: #2a2550;
+	--on-primary: #ffffff;
+	--link: #9bb7ff;
+	--req: #ff7b7f;
+	--ok: #6ee7a0;
+	--ok-bg: rgba(34, 197, 94, 0.15);
+	--err: #ff9a9a;
+	--err-bg: rgba(239, 68, 68, 0.16);
+	--warn: #fbbf62;
+	--warn-bg: rgba(245, 158, 11, 0.16);
+	--info: #9bb7ff;
+	--info-bg: rgba(59, 130, 246, 0.16);
+	--overlay: rgba(0, 0, 0, 0.6);
+	--shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+	--shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.5);
+}

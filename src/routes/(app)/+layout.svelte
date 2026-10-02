@@ -201,7 +201,7 @@
 			await goto('/auth');
 			return;
 		}
-		if (!['user', 'admin'].includes($user?.role)) {
+		if (!['user', 'data_uploader', 'admin'].includes($user?.role)) {
 			return;
 		}
 
@@ -378,6 +378,9 @@
 			};
 		});
 	};
+
+	// Màn Data Portal chỉ có thanh "Data Portal › {mục}", không hiện NovaHeader (đặc tả 14.2).
+	$: isDataPortal = $page.url.pathname.startsWith('/data-portal');
 </script>
 
 <SettingsModal bind:show={$showSettings} />
@@ -396,18 +399,25 @@
 {/if}
 
 {#if $user}
-	<div class="app relative" style="--topbar-height: 56px; --banner-height: 56px;">
-		<NovaHeader
-			on:user={() => {
-				showSettings.set(true);
-			}}
-		/>
+	<div
+		class="app relative"
+		style="--topbar-height: {isDataPortal ? '0px' : '56px'}; --banner-height: {isDataPortal
+			? '0px'
+			: '56px'};"
+	>
+		{#if !isDataPortal}
+			<NovaHeader
+				on:user={() => {
+					showSettings.set(true);
+				}}
+			/>
+		{/if}
 		<div
 			class=" text-gray-700 dark:text-gray-100 bg-white dark:bg-gray-900 h-screen max-h-[100dvh] overflow-hidden flex flex-col"
 			style="padding-top: var(--topbar-height);"
 		>
 			<div class="flex-1 min-h-0 overflow-hidden flex flex-row justify-end">
-				{#if !['user', 'admin'].includes($user?.role)}
+				{#if !['user', 'data_uploader', 'admin'].includes($user?.role)}
 					<AccountPending />
 				{:else}
 					{#if localDBChats.length > 0}

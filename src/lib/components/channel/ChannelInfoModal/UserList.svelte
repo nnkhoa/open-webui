@@ -246,7 +246,9 @@
 												? 'info'
 												: user.role === 'user'
 													? 'success'
-													: 'muted'}
+													: user.role === 'data_uploader'
+														? 'warning'
+														: 'muted'}
 											content={$i18n.t(user.role)}
 										/>
 									</div>

@@ -575,7 +575,7 @@ async def delete_all_user_chats(
     user=Depends(get_verified_user),
     db: AsyncSession = Depends(get_async_session),
 ):
-    if user.role == 'user' and not await has_permission(user.id, 'chat.delete', await Config.get('user.permissions')):
+    if user.role != 'admin' and not await has_permission(user.id, 'chat.delete', await Config.get('user.permissions')):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=ERROR_MESSAGES.ACCESS_PROHIBITED,

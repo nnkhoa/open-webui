@@ -82,6 +82,8 @@
 	import Code from '../icons/Code.svelte';
 	import { slide } from 'svelte/transition';
 	import HotkeyHint from '../common/HotkeyHint.svelte';
+	import DataPortalSidebarGroup from '../data-portal/SidebarGroup.svelte';
+	import DataPortalIcon from '../data-portal/Icon.svelte';
 
 	const BREAKPOINT = 768;
 	const DEFAULT_PINNED_ITEMS = ['notes', 'workspace'];
@@ -967,6 +969,29 @@
 						</div>
 					{/if}
 				{/each}
+
+				{#if ['admin', 'data_uploader'].includes($user?.role)}
+					<div class="">
+						<Tooltip content={$i18n.t('Data Portal')} placement="right">
+							<a
+								class=" cursor-pointer flex rounded-xl hover:bg-gray-100 dark:hover:bg-gray-850 transition group"
+								href="/data-portal"
+								on:click={async (e) => {
+									e.stopImmediatePropagation();
+									e.preventDefault();
+									goto('/data-portal');
+									itemClickHandler();
+								}}
+								draggable="false"
+								aria-label={$i18n.t('Data Portal')}
+							>
+								<div class=" self-center flex items-center justify-center size-9">
+									<DataPortalIcon name="db" size={18} />
+								</div>
+							</a>
+						</Tooltip>
+					</div>
+				{/if}
 			</div>
 		</button>
 
@@ -1170,6 +1195,8 @@
 							{/if}
 						{/each}
 					</div>
+
+					<DataPortalSidebarGroup onNavigate={itemClickHandler} />
 				</div>
 
 				{#if ($models ?? []).length > 0 && (($settings?.pinnedModels ?? []).length > 0 || $config?.default_pinned_models)}

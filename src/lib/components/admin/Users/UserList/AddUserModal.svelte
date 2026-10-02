@@ -81,7 +81,7 @@
 						if (idx > 0) {
 							if (
 								columns.length === 4 &&
-								['admin', 'user', 'pending'].includes(columns[3].toLowerCase())
+								['admin', 'user', 'data_uploader', 'pending'].includes(columns[3].toLowerCase())
 							) {
 								validRows.push({ idx, columns });
 							} else {
@@ -203,6 +203,7 @@
 									>
 										<option value="pending"> {$i18n.t('pending')} </option>
 										<option value="user"> {$i18n.t('user')} </option>
+										<option value="data_uploader"> {$i18n.t('data_uploader')} </option>
 										<option value="admin"> {$i18n.t('admin')} </option>
 									</select>
 								</div>

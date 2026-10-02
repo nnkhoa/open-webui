@@ -2532,5 +2532,13 @@
 	"Your usage stats have been successfully synced.": "",
 	"YouTube": "Youtube",
 	"Youtube Language": "Ngôn ngữ Youtube",
-	"Youtube Proxy URL": "URL Proxy Youtube"
+	"Youtube Proxy URL": "URL Proxy Youtube",
+	"Data Portal": "Data Portal",
+	"Upload data": "Nạp dữ liệu",
+	"Upload history": "Lịch sử nạp",
+	"Data": "Dữ liệu",
+	"Database configuration": "Cấu hình database",
+	"Data Loader": "Data Loader",
+	"data_uploader": "Data Loader",
+	"You do not have permission to access Data Portal. Contact Admin if you need to upload data.": "Bạn không có quyền vào Data Portal. Liên hệ Admin nếu cần nạp dữ liệu."
 }

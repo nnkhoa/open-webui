@@ -372,7 +372,13 @@
 								}}
 							>
 								<Badge
-									type={user.role === 'admin' ? 'info' : user.role === 'user' ? 'success' : 'muted'}
+									type={user.role === 'admin'
+										? 'info'
+										: user.role === 'user'
+											? 'success'
+											: user.role === 'data_uploader'
+												? 'warning'
+												: 'muted'}
 									content={$i18n.t(user.role)}
 								/>
 							</button>
