@@ -159,6 +159,7 @@ from open_webui.routers import (
     channels,
     chats,
     configs,
+    data_portal,
     evaluations,
     files,
     folders,
@@ -879,6 +880,7 @@ app.include_router(ollama.router, prefix='/ollama', tags=['ollama'])
 app.include_router(openai.router, prefix='/openai', tags=['openai'])
 
 app.include_router(project_config.router, prefix='/api/v1/configs', tags=['project'])
+app.include_router(data_portal.router, prefix='/api/v1/data-portal', tags=['data-portal'])
 
 
 app.include_router(pipelines.router, prefix='/api/v1/pipelines', tags=['pipelines'])
@@ -2561,7 +2563,7 @@ async def get_app_config(request: Request):
                     else {}
                 ),
             }
-            if user is not None and (user.role in ['admin', 'user'])
+            if user is not None and (user.role in ['admin', 'user', 'data_uploader'])
             else {
                 **(
                     {

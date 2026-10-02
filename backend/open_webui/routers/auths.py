@@ -709,7 +709,7 @@ async def signin(
 
             if WEBUI_AUTH_TRUSTED_ROLE_HEADER:
                 trusted_role = request.headers.get(WEBUI_AUTH_TRUSTED_ROLE_HEADER, '').lower().strip()
-                if trusted_role in {'admin', 'user', 'pending'}:
+                if trusted_role in {'admin', 'user', 'data_uploader', 'pending'}:
                     if user.role != trusted_role:
                         updated_user = await Users.update_user_role_by_id(user.id, trusted_role, db=db)
                         if updated_user:

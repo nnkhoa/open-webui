@@ -561,7 +561,8 @@ async def get_current_user_by_api_key(request, api_key: str):
     return user
 
 
-VERIFIED_USER_ROLES = {'user', 'admin'}
+# AI4BI: data_uploader (Data Loader của Data Portal) được coi là user đã xác thực
+VERIFIED_USER_ROLES = {'user', 'data_uploader', 'admin'}
 
 
 def get_verified_user(user=Depends(get_current_user)):
