@@ -58,9 +58,10 @@
 	import { updateUserSettings } from '$lib/apis/users';
 	import { checkActiveChats } from '$lib/apis/tasks';
 	import { createNoteHandler } from '$lib/components/notes/utils';
-	import { WEBUI_BASE_URL } from '$lib/constants';
+	import { WEBUI_API_BASE_URL, WEBUI_BASE_URL } from '$lib/constants';
 
 	import ArchivedChatsModal from './ArchivedChatsModal.svelte';
+	import UserMenu from './Sidebar/UserMenu.svelte';
 	import ChatItem from './Sidebar/ChatItem.svelte';
 	import Spinner from '../common/Spinner.svelte';
 	import Loader from '../common/Loader.svelte';
@@ -995,21 +996,50 @@
 			</div>
 		</button>
 
-		<div class="flex justify-center py-2">
-			<a
-				href="/"
-				class="flex rounded-xl hover:bg-gray-100 dark:hover:bg-gray-850 transition no-drag-region"
-				draggable="false"
-			>
-				<div class="self-center flex items-center justify-center size-9">
-					<img
-						src="{WEBUI_BASE_URL}/static/favicon.png"
-						class="size-6 rounded-full"
-						alt=""
-						draggable="false"
-					/>
+		<div>
+			<div>
+				<div class=" py-2 flex justify-center items-center">
+					{#if $user !== undefined && $user !== null}
+						<UserMenu
+							role={$user?.role}
+							profile={$config?.features?.enable_user_status ?? true}
+							showActiveUsers={false}
+							on:show={(e) => {
+								if (e.detail === 'archived-chat') {
+									showArchivedChats.set(true);
+								}
+							}}
+						>
+							<button
+								type="button"
+								class=" cursor-pointer flex rounded-xl hover:bg-gray-100 dark:hover:bg-gray-850 transition group"
+								aria-label={$i18n.t('User menu')}
+							>
+								<div class="self-center relative">
+									<img
+										src={`${WEBUI_API_BASE_URL}/users/${$user?.id}/profile/image`}
+										class=" size-7 object-cover rounded-full"
+										alt={$i18n.t('Open User Profile Menu')}
+										aria-label={$i18n.t('Open User Profile Menu')}
+									/>
+
+									{#if $config?.features?.enable_user_status}
+										<div class="absolute -bottom-0.5 -right-0.5">
+											<span class="relative flex size-2.5">
+												<span
+													class="relative inline-flex size-2.5 rounded-full {true
+														? 'bg-green-500'
+														: 'bg-gray-300 dark:bg-gray-700'} border-2 border-white dark:border-gray-900"
+												></span>
+											</span>
+										</div>
+									{/if}
+								</div>
+							</button>
+						</UserMenu>
+					{/if}
 				</div>
-			</a>
+			</div>
 		</div>
 	</div>
 {/if}
@@ -1038,7 +1068,19 @@
 			<div
 				class="sidebar px-[0.5625rem] pt-2 pb-1.5 flex justify-between space-x-1 text-gray-600 dark:text-gray-400 sticky top-0 z-10 -mb-3"
 			>
-				<div class="flex flex-1"></div>
+				<a
+					href="/"
+					class="flex flex-1 min-w-0 items-center px-1.5 no-drag-region"
+					draggable="false"
+					on:click={newChatHandler}
+				>
+					<img
+						src="{WEBUI_BASE_URL}/static/nbc-logo.png"
+						class="h-[34px] w-auto"
+						alt="NBC"
+						draggable="false"
+					/>
+				</a>
 				<Tooltip
 					content={$showSidebar ? $i18n.t('Close Sidebar') : $i18n.t('Open Sidebar')}
 					placement="bottom"
@@ -1577,21 +1619,47 @@
 					class=" sidebar-bg-gradient-to-t bg-linear-to-t from-gray-50 dark:from-gray-950 to-transparent from-50% pointer-events-none absolute inset-0 -z-10 -mt-6"
 				></div>
 				<div class="flex flex-col font-primary">
-					<a
-						href="/"
-						class="flex items-center rounded-2xl py-2 px-1.5 w-full hover:bg-gray-100/50 dark:hover:bg-gray-900/50 transition no-drag-region"
-						draggable="false"
-					>
-						<div class="self-center mr-3">
-							<img
-								src="{WEBUI_BASE_URL}/static/favicon.png"
-								class="size-7 object-cover rounded-full"
-								alt=""
-								draggable="false"
-							/>
-						</div>
-						<div class="self-center font-medium">{$WEBUI_NAME}</div>
-					</a>
+					{#if $user !== undefined && $user !== null}
+						<UserMenu
+							role={$user?.role}
+							profile={$config?.features?.enable_user_status ?? true}
+							showActiveUsers={false}
+							className="w-[calc(var(--sidebar-width)-1rem)]"
+							on:show={(e) => {
+								if (e.detail === 'archived-chat') {
+									showArchivedChats.set(true);
+								}
+							}}
+						>
+							<button
+								type="button"
+								class=" flex items-center rounded-2xl py-2 px-1.5 w-full hover:bg-gray-100/50 dark:hover:bg-gray-900/50 transition"
+								aria-label={$i18n.t('User menu')}
+							>
+								<div class=" self-center mr-3 relative flex-shrink-0">
+									<img
+										src={`${WEBUI_API_BASE_URL}/users/${$user?.id}/profile/image`}
+										class=" size-7 object-cover rounded-full"
+										alt={$i18n.t('Open User Profile Menu')}
+										aria-label={$i18n.t('Open User Profile Menu')}
+									/>
+
+									{#if $config?.features?.enable_user_status}
+										<div class="absolute -bottom-0.5 -right-0.5">
+											<span class="relative flex size-2.5">
+												<span
+													class="relative inline-flex size-2.5 rounded-full {true
+														? 'bg-green-500'
+														: 'bg-gray-300 dark:bg-gray-700'} border-2 border-white dark:border-gray-900"
+												></span>
+											</span>
+										</div>
+									{/if}
+								</div>
+								<div class=" self-center font-medium truncate">{$user?.name}</div>
+							</button>
+						</UserMenu>
+					{/if}
 				</div>
 			</div>
 		</div>

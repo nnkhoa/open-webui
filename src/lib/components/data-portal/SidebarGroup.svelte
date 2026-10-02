@@ -18,19 +18,10 @@
 		{ href: '/data-portal/admin', label: 'Database configuration', icon: 'db', adminOnly: true }
 	];
 
-	let open = true;
-	try {
-		open = localStorage.getItem('dp-group-open') !== '0';
-	} catch {
-		open = true;
-	}
+	// Mặc định đóng; bấm dòng "Data Portal" mới hiện các mục con.
+	let open = false;
 	const toggle = () => {
 		open = !open;
-		try {
-			localStorage.setItem('dp-group-open', open ? '1' : '0');
-		} catch {
-			/* bỏ qua */
-		}
 	};
 
 	$: visible = DP_ROLES.includes($user?.role ?? '');

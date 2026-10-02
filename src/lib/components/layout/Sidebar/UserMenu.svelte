@@ -43,8 +43,7 @@
 	export let align = 'end';
 
 	export let showActiveUsers = true;
-	// Minimal mode is used by the NovaHeader avatar menu, where settings,
-	// archived chats and the admin links live in the header itself.
+	// Minimal mode hides settings, archived chats and the admin links.
 	export let minimal = false;
 
 	let showUserStatusModal = false;

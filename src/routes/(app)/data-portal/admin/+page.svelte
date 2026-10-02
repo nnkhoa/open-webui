@@ -111,7 +111,7 @@
 <HeaderCard title="Cấu hình database">
 	<svelte:fragment slot="actions">
 		<button type="button" class="btn" disabled={ban} title="Thử nối tới máy chủ với thông tin đang nhập. Không lưu gì." on:click={thu}>Kiểm tra kết nối</button>
-		<button type="button" class="btn primary" disabled={ban} title="Thử nối, được thì lưu và portal dùng kết nối này ngay" on:click={luu}>Lưu và nối lại</button>
+		<button type="button" class="btn primary" disabled={ban} title="Thử nối, được thì lưu và Data Portal dùng kết nối này ngay" on:click={luu}>Lưu và nối lại</button>
 	</svelte:fragment>
 </HeaderCard>
 
@@ -177,7 +177,7 @@
 		</div>
 		<div class="s3 helps">
 			<p class="guide"><b>Kiểm tra kết nối</b> — thử nối tới máy chủ với thông tin đang nhập. Không lưu gì.</p>
-			<p class="guide"><b>Lưu và nối lại</b> — thử nối, được thì lưu và portal dùng kết nối này ngay. Không được thì báo lỗi, giữ cấu hình cũ.</p>
+			<p class="guide"><b>Lưu và nối lại</b> — thử nối, được thì lưu và Data Portal dùng kết nối này ngay. Không được thì báo lỗi, giữ cấu hình cũ.</p>
 		</div>
 	</div>
 </form>
