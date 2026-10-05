@@ -6,7 +6,7 @@ from decimal import Decimal
 
 import openpyxl
 
-from open_webui.data_portal.pipeline import cac_buoc, kiem_tra_tep
+from open_webui.data_portal.pipeline import file_check, steps
 from open_webui.data_portal.registry.loader import load_definitions
 from .conftest import DEFINITIONS_DIR, can_tep_mau
 
@@ -14,7 +14,7 @@ FORM = load_definitions(DEFINITIONS_DIR).form("BAO_CAO_HQKH")
 
 
 def test_tep_nbc_t1_t7_dung_so_cua_dac_ta():
-    kt = kiem_tra_tep.kiem_tra(FORM, can_tep_mau(), 2026)
+    kt = file_check.check_file(FORM, can_tep_mau(), 2026)
     assert kt["loi"] == [] and kt["buoc_loi"] is None
     assert kt["so_sheet"] == 3
     bang = {b["bang"]: b for b in kt["bang"]}
@@ -37,8 +37,8 @@ def test_tep_nbc_t1_t7_dung_so_cua_dac_ta():
 
 
 def test_cau_a3_va_a2_theo_dac_ta():
-    kt = kiem_tra_tep.kiem_tra(FORM, can_tep_mau(), 2026)
-    buoc = cac_buoc.buoc_a(kt, nguoi="admin", a4=None)
+    kt = file_check.check_file(FORM, can_tep_mau(), 2026)
+    buoc = steps.check_steps(kt, user="admin", a4_result=None)
     theo_ma = {b["ma"]: b for b in buoc}
     assert theo_ma["A1"]["ket_qua"] == "Đúng định dạng .xlsx, đọc được 3 sheet."
     assert theo_ma["A2"]["ket_qua"] == (
@@ -56,10 +56,10 @@ def test_thieu_sheet_bi_tu_choi_o_a2(tmp_path):
     del so["DANH MỤC CHI PHÍ"]
     tep = tmp_path / "thieu-sheet.xlsx"
     so.save(tep)
-    kt = kiem_tra_tep.kiem_tra(FORM, tep, 2026)
+    kt = file_check.check_file(FORM, tep, 2026)
     assert kt["buoc_loi"] == "A2"
     assert [e["reason_code"] for e in kt["loi"]] == ["MISSING_SHEET"]
-    buoc = cac_buoc.buoc_a(kt, nguoi="admin", a4=None) + cac_buoc.buoc_b_tu_choi("A2", "B4")
+    buoc = steps.check_steps(kt, user="admin", a4_result=None) + steps.rejected_write_steps("A2", "B4")
     assert buoc[1]["ket_qua"] == "Có 1 lỗi (thiếu sheet). Cả tệp bị từ chối."
     assert buoc[1]["trang_thai"] == "err"
     assert all(b["ket_luan"] == "Không chạy" for b in buoc[2:])

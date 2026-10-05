@@ -132,7 +132,7 @@ class HeaderTableReader:
                     candidate.worksheet.title.strip(),
                     messages.SOURCE_LOCATION_ROW.format(row=candidate.header_row),
                     'DUPLICATE_COLUMN',
-                    {'ten': ' '.join(name.split())},
+                    {'name': ' '.join(name.split())},
                 )
             )
         if self._issues:
@@ -155,15 +155,15 @@ class HeaderTableReader:
         form_label = self._form.label
         if not candidates:
             columns = ', '.join(' '.join(header.split()) for header in self._headers_in_file_order())
-            params = {'n': str(len(self._required_headers)), 'loai': form_label, 'cot': columns}
+            params = {'count': str(len(self._required_headers)), 'form': form_label, 'columns': columns}
             self._issues.append(self._whole_file_issue('NO_DATA_SHEET', params))
             return False
         if len(candidates) > 1:
             params = {
-                'so': str(len(candidates)),
-                'n': str(len(self._required_headers)),
-                'loai': form_label,
-                'cac_sheet': ', '.join(candidate.worksheet.title.strip() for candidate in candidates),
+                'sheet_count': str(len(candidates)),
+                'count': str(len(self._required_headers)),
+                'form': form_label,
+                'sheets': ', '.join(candidate.worksheet.title.strip() for candidate in candidates),
             }
             self._issues.append(self._whole_file_issue('MANY_DATA_SHEETS', params))
             return False

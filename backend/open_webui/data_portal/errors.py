@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from . import messages
+
+if TYPE_CHECKING:
+    from .pipeline.reconcile import Mismatch
 
 
 class PortalError(Exception):
@@ -30,7 +35,7 @@ class StructureError(PortalError):
 class ReconcileError(PortalError):
     def __init__(
         self,
-        mismatches: list[dict],
+        mismatches: list[Mismatch],
         steps: list[dict] | None = None,
         reconciliation: dict | None = None,
     ) -> None:

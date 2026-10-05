@@ -166,7 +166,7 @@ class CustomerReportReader:
             actual = actual_names.get(normalize_name(name))
             if actual is None:
                 self._issues.append(
-                    SourceIssue(name, messages.SOURCE_LOCATION_WHOLE_SHEET, 'MISSING_SHEET', {'ten': name})
+                    SourceIssue(name, messages.SOURCE_LOCATION_WHOLE_SHEET, 'MISSING_SHEET', {'name': name})
                 )
             else:
                 sheets[name] = _Sheet(workbook[actual])
@@ -241,7 +241,7 @@ def _empty_tables() -> dict[str, list[FlatRow]]:
 
 
 def _column_issue(sheet: str, row_number: int, name: str, code: str) -> SourceIssue:
-    return SourceIssue(sheet, messages.SOURCE_LOCATION_ROW.format(row=row_number), code, {'ten': name})
+    return SourceIssue(sheet, messages.SOURCE_LOCATION_ROW.format(row=row_number), code, {'name': name})
 
 
 def _stripped_cells(sheet: _Sheet, row_number: int) -> list[str | None]:

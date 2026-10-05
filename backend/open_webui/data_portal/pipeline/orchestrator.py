@@ -1,52 +1,61 @@
-"""Điều phối một lần nạp.
-
-    chặn tệp trùng → kiểm tra cấu trúc → ghi lớp gốc → ép kiểu → chặn nội dung
-    trùng → chuẩn hoá → phân tích → đối chiếu R1–R4 → chốt
-
-Toàn bộ việc ghi nằm trong **một giao dịch duy nhất**, dưới khoá theo cặp
-(nhóm thông tin, bộ bảng). Hoặc mọi thứ vào đủ, hoặc không gì vào cả: lỗi ở bất kỳ
-bước nào làm cả lần nạp bị huỷ, không có dòng nào bị loại riêng.
-"""
-
 from __future__ import annotations
 
+import datetime as dt
 import json
 import time
-from datetime import UTC, datetime
+from dataclasses import dataclass
 from pathlib import Path
 
-from ..db import sql as q
+from .. import messages
+from ..db import sql as warehouse_sql
 from ..db.lock import acquire_write_locks
 from ..errors import ReconcileError, StructureError
 from ..formatting import format_integer
-from ..registry.schema import Form
+from ..registry.schema import Form, FormTable
 from ..sources import customer_report, header_table  # noqa: F401
 from ..sources.base import open_reader
-from . import bronze, cac_buoc, doi_chieu_the, gold, kiem_tra_tep, reconcile, silver, validate
+from . import bronze, doi_chieu_the, gold, reconcile, silver, steps
 from .context import LoadContext
-from .structure import kiem_tra as kiem_tra_cau_truc
+from .file_check import check_file
+from .reconcile import Mismatch
+from .steps import StepOutcome
+from .structure import check_structure
+from .validate import validate_rows
+
+STEP_OF_RULE = {'R1': 'B1', 'R2': 'B2', 'R4a': 'B2', 'R3': 'B3', 'R4c': 'B4'}
+R1_DIFFERENCE_KEYS = ('o_lech', 'thieu_o_goc', 'thua_o_goc')
 
 
-def _table_id_theo_ten(conn, form_id: int) -> dict[str, int]:
-    return {r["name"]: r["table_id"] for r in q.query(
-        conn, "SELECT table_id, name FROM ctl.form_table WHERE form_id = %s", (form_id,))}
+@dataclass
+class LoadRequest:
+    domain_id: int
+    domain_code: str
+    form_id: int
+    upload_id: int
+    upload_path: Path
+    file_name: str
+    actor_username: str
+    request_id: str
+    year: int | None = None
+    file_check: dict | None = None
+    a4_result: str | None = None
+    actor_user_id: int | None = None
 
 
-def chay(conn, form: Form, *, domain_id: int, domain_code: str, form_id: int,
-         upload_id: int, upload_path: Path, file_name: str, file_sha256: str,
-         actor_user_id: int | None, actor_username: str, request_id: str,
-         settings, nam: int | None = None, kiem_tra: dict | None = None,
-         a4: str | None = None) -> int:
-    """Nạp một tệp đã nằm trên đĩa. Trả `load_id` của lần nạp thành công.
+def run_load(conn, form: Form, request: LoadRequest) -> int:
+    started = time.monotonic()
+    ctx = _open_load(conn, form, request)
+    table_ids = _table_ids(conn, request.form_id)
+    acquire_write_locks(conn, [(request.domain_id, request.form_id)])
+    ctx.reader = open_reader(form.source_kind, request.upload_path, form)
+    try:
+        return _run_locked(ctx, table_ids, started, request.file_check, request.a4_result)
+    finally:
+        ctx.reader.close()
 
-    `nam` là Năm dữ liệu chọn lúc nạp (QT-02). `kiem_tra` là kết quả bước Kiểm tra
-    tệp đã chạy trước khi người nạp xác nhận (`kiem_tra_tep.kiem_tra`); không có
-    thì chạy lại ở đây. `a4` là câu của bước So với dữ liệu đang có.
-    """
-    bat_dau = time.monotonic()
 
-    # Tạo lần nạp và lô.
-    load_id = q.scalar(
+def _open_load(conn, form: Form, request: LoadRequest) -> LoadContext:
+    load_id = warehouse_sql.scalar(
         conn,
         """
         INSERT INTO ctl.load (upload_id, domain_id, form_id, form_version, status,
@@ -54,81 +63,107 @@ def chay(conn, form: Form, *, domain_id: int, domain_code: str, form_id: int,
              VALUES (%s, %s, %s, %s, 'running', %s, %s, %s, %s)
           RETURNING load_id
         """,
-        (upload_id, domain_id, form_id, form.version, actor_user_id,
-         actor_username, request_id, nam),
+        (
+            request.upload_id,
+            request.domain_id,
+            request.form_id,
+            form.version,
+            request.actor_user_id,
+            request.actor_username,
+            request.request_id,
+            request.year,
+        ),
     )
-    batch_id = q.scalar(
+    batch_id = warehouse_sql.scalar(
         conn,
-        "INSERT INTO ctl.batch (load_id, domain_id, form_id, state) "
-        "VALUES (%s, %s, %s, 'open') RETURNING batch_id",
-        (load_id, domain_id, form_id),
+        "INSERT INTO ctl.batch (load_id, domain_id, form_id, state) VALUES (%s, %s, %s, 'open') RETURNING batch_id",
+        (load_id, request.domain_id, request.form_id),
     )
-    q.execute(conn, "UPDATE ctl.load SET batch_id = %s WHERE load_id = %s",
-              (batch_id, load_id))
-
-    ctx = LoadContext(
-        conn=conn, form=form, domain_id=domain_id, domain_code=domain_code,
-        form_id=form_id, load_id=load_id, batch_id=batch_id, upload_path=upload_path,
-        file_name=file_name, actor_user_id=actor_user_id, actor_username=actor_username,
-        request_id=request_id, nam=nam,
-    )
-    table_id = _table_id_theo_ten(conn, form_id)
-
-    # Khoá đúng phạm vi ghi.
-    acquire_write_locks(conn, [(domain_id, form_id)])
-
-    ctx.reader = open_reader(form.source_kind, upload_path, form)
-    try:
-        return _chay_trong_khoa(ctx, table_id, settings, bat_dau, kiem_tra, a4)
-    finally:
-        ctx.reader.close()
-
-
-def _chay_trong_khoa(ctx: LoadContext, table_id: dict[str, int], settings,
-                     bat_dau: float, kt: dict | None, a4: str | None) -> int:
-    conn, form = ctx.conn, ctx.form
-
-    # Kiểm tra cấu trúc. Sai ⇒ từ chối cả tệp, không ghi dòng nào.
-    loi = kiem_tra_cau_truc(ctx.reader, form)
-    if loi:
-        raise StructureError(loi)
-    if kt is None:
-        kt = kiem_tra_tep.kiem_tra(form, ctx.upload_path, ctx.nam)
-
-    ctx.sheets_count = sum(
-        1 for t in form.tables
-        if any(s.lower() == t.sheet.lower() for s in ctx.reader.sheets())
+    warehouse_sql.execute(conn, 'UPDATE ctl.load SET batch_id = %s WHERE load_id = %s', (batch_id, load_id))
+    return LoadContext(
+        conn=conn,
+        form=form,
+        domain_id=request.domain_id,
+        domain_code=request.domain_code,
+        form_id=request.form_id,
+        load_id=load_id,
+        batch_id=batch_id,
+        upload_path=request.upload_path,
+        file_name=request.file_name,
+        actor_user_id=request.actor_user_id,
+        actor_username=request.actor_username,
+        request_id=request.request_id,
+        year=request.year,
     )
 
-    # B9: chụp số dòng, tổng tiền theo tháng của năm đang nạp trước khi ghi.
-    truoc = doi_chieu_the.chup_truoc(ctx)
 
-    # Ghi lớp gốc rồi ép kiểu. Danh mục trước, số liệu sau.
-    for table in form.tables_by_dependency:
-        hang_goc = bronze.ghi(ctx, table)
-        ctx.dong_sach[table.name], trung = validate.kiem_tra(table, hang_goc)
-        ctx.bang(table).rows_duplicate = len(trung)
-        _ghi_nhan_ky(ctx, table)
+def _table_ids(conn, form_id: int) -> dict[str, int]:
+    rows = warehouse_sql.query(conn, 'SELECT table_id, name FROM ctl.form_table WHERE form_id = %s', (form_id,))
+    return {row['name']: row['table_id'] for row in rows}
 
-    # Chuẩn hoá rồi phân tích.
-    for table in form.tables_by_dependency:
-        silver.hop_nhat(ctx, table, ctx.dong_sach[table.name])
-        gold.dung(ctx, table)
-        silver.ghi_phan_vung(ctx, table, table_id[table.name])
 
-    # Đối chiếu R1–R4 và các thẻ đối chiếu (B7–B9). Lệch bất kỳ ⇒ huỷ toàn bộ.
-    lech = reconcile.chay(ctx, table_id)
-    the = doi_chieu_the.tinh(ctx, truoc, kt)
-    cac_buoc = _cac_buoc(ctx, kt, a4, the, lech)
-    if lech or the["lech"]:
-        lech += [{"step": "B4", "table": None, "label": doi_chieu_the.TIEU_DE.get(m, m),
-                  "nhan_buoc": "Đối chiếu tệp gốc ↔ database"} for m in the["lech"]]
-        raise ReconcileError(lech, steps=cac_buoc, reconciliation=the["the"])
+def _run_locked(
+    ctx: LoadContext, table_ids: dict[str, int], started: float, file_check: dict | None, a4_result: str | None
+) -> int:
+    errors = check_structure(ctx.reader, ctx.form)
+    if errors:
+        raise StructureError(errors)
+    if file_check is None:
+        file_check = check_file(ctx.form, ctx.upload_path, ctx.year)
+    ctx.sheets_count = _matched_sheet_count(ctx)
 
-    # Chốt.
-    ms = int((time.monotonic() - bat_dau) * 1000)
-    q.execute(
-        conn,
+    before = doi_chieu_the.chup_truoc(ctx)
+    _write_layers(ctx, table_ids)
+
+    mismatches = reconcile.run_reconciliation(ctx, table_ids)
+    cards = doi_chieu_the.tinh(ctx, before, file_check)
+    load_steps = _load_steps(ctx, file_check, a4_result, cards, mismatches)
+    if mismatches or cards['lech']:
+        mismatches += [
+            Mismatch('B4', None, doi_chieu_the.TIEU_DE.get(key, key), messages.RECONCILE_STEP_CARDS)
+            for key in cards['lech']
+        ]
+        raise ReconcileError(mismatches, steps=load_steps, reconciliation=cards['the'])
+
+    _commit(ctx, started, file_check, load_steps, cards['the'])
+    return ctx.load_id
+
+
+def _matched_sheet_count(ctx: LoadContext) -> int:
+    return sum(
+        1 for table in ctx.form.tables if any(sheet.lower() == table.sheet.lower() for sheet in ctx.reader.sheets())
+    )
+
+
+def _write_layers(ctx: LoadContext, table_ids: dict[str, int]) -> None:
+    for table in ctx.form.tables_by_dependency:
+        bronze_rows = bronze.write(ctx, table)
+        ctx.clean_rows[table.name], duplicates = validate_rows(table, bronze_rows)
+        ctx.table_result(table).rows_duplicate = len(duplicates)
+        _record_periods(ctx, table)
+
+    for table in ctx.form.tables_by_dependency:
+        silver.merge(ctx, table, ctx.clean_rows[table.name])
+        gold.build(ctx, table)
+        silver.write_partitions(ctx, table, table_ids[table.name])
+
+
+def _record_periods(ctx: LoadContext, table: FormTable) -> None:
+    if not table.partition_by:
+        return
+    column = table.partition_column
+    periods = set()
+    for row in ctx.clean_rows.get(table.name, []):
+        value = row.values.get(column.name)
+        if value is not None:
+            periods.add(column.display(value) if column.type == 'month' else str(value))
+    ctx.touched_periods[table.name] = periods
+
+
+def _commit(ctx: LoadContext, started: float, file_check: dict, load_steps: list[dict], cards) -> None:
+    duration_ms = int((time.monotonic() - started) * 1000)
+    warehouse_sql.execute(
+        ctx.conn,
         """
         UPDATE ctl.load
            SET status = 'success', rows_read = %s,
@@ -137,128 +172,195 @@ def _chay_trong_khoa(ctx: LoadContext, table_id: dict[str, int], settings,
                kiem_tra = %s, cac_buoc = %s, doi_chieu = %s
          WHERE load_id = %s
         """,
-        (ctx.rows_read, ctx.rows_written, ctx.sheets_count,
-         datetime.now(UTC), ms,
-         _json(ctx.bao_cao()), _json(kt), _json(cac_buoc), _json(the["the"]),
-         ctx.load_id),
+        (
+            ctx.rows_read,
+            ctx.rows_written,
+            ctx.sheets_count,
+            dt.datetime.now(dt.UTC),
+            duration_ms,
+            _json(ctx.report()),
+            _json(file_check),
+            _json(load_steps),
+            _json(cards),
+            ctx.load_id,
+        ),
     )
-    q.execute(conn, "UPDATE ctl.batch SET state = 'current', closed_at = now() "
-                    "WHERE batch_id = %s", (ctx.batch_id,))
-
-    return ctx.load_id
-
-
-def _json(gia_tri) -> str:
-    return json.dumps(gia_tri, ensure_ascii=False, default=str)
+    warehouse_sql.execute(
+        ctx.conn,
+        "UPDATE ctl.batch SET state = 'current', closed_at = now() WHERE batch_id = %s",
+        (ctx.batch_id,),
+    )
 
 
-# Bước đối chiếu R1–R4 nằm ở bước nào của mục 17.
-BUOC_CUA = {"R1": "B1", "R2": "B2", "R4a": "B2", "R3": "B3", "R4c": "B4"}
+def _load_steps(
+    ctx: LoadContext, file_check: dict, a4_result: str | None, cards: dict, mismatches: list[Mismatch]
+) -> list[dict]:
+    single_table = len(ctx.form.tables) == 1
+    check = steps.check_steps(file_check, user=ctx.actor_username, a4_result=a4_result, single_table=single_table)
+
+    mismatched = _mismatched_tables_by_step(mismatches)
+    results = _results_by_rule(ctx)
+    to_write = {table['bang']: table['se_ghi'] for table in file_check.get('bang', [])}
+    tables = [table for table in ctx.form.tables_by_display_order if ctx.table_result(table).rows_bronze]
+    outcomes = [
+        _b1_outcome(results.get('R1', []), mismatched),
+        _b2_outcome(ctx, tables, to_write, results, mismatched),
+        _b3_outcome(ctx, tables, results.get('R3', []), mismatched),
+        _b4_outcome(results.get('R4c', []), cards),
+    ]
+    return check + steps.write_steps(
+        outcomes, commit_result=_commit_result(ctx, file_check), b4_step_name=steps.b4_name(file_check)
+    )
 
 
-def _cac_buoc(ctx: LoadContext, kt: dict, a4: str | None, the: dict,
-              lech: list[dict]) -> list[dict]:
-    """A1–A5 từ bước Kiểm tra tệp, B1–B5 từ đối chiếu vừa chạy (mục 17)."""
-    lech_theo_buoc: dict[str, list[str]] = {}
-    for e in lech:
-        lech_theo_buoc.setdefault(BUOC_CUA.get(e["step"], "B4"), []).append(e["label"])
-    mot_bang = len(ctx.form.tables) == 1
-    ra = cac_buoc.buoc_a(kt, nguoi=ctx.actor_username, a4=a4, mot_bang=mot_bang)
-
-    recon: dict[str, list[dict]] = {}
-    for r in reconcile.ket_qua_theo_lan_nap(ctx.conn, ctx.load_id):
-        recon.setdefault(r["step"], []).append(r)
-    se_ghi = {b["bang"]: b["se_ghi"] for b in kt.get("bang", [])}
-    bang = [t for t in ctx.form.tables_by_display_order if ctx.bang(t).rows_bronze]
-
-    # B1 — tệp ↔ lớp gốc, qua đường đọc độc lập.
-    r1 = recon.get("R1", [])
-    tep = sum(int(r["expected"] or 0) for r in r1)
-    goc = sum(int(r["actual"] or 0) for r in r1)
-    hong = [r for r in r1 if not r["passed"]]
-    b1_lech = "; ".join(
-        [f"bảng {r['table_label']} khác tệp ở {format_integer(_so_cho(r))} chỗ" for r in hong]
-        + [f"bảng {t} khác tệp" for t in lech_theo_buoc.get("B1", [])
-           if t not in {r["table_label"] for r in hong}])
-    b1 = ("B1", not hong and "B1" not in lech_theo_buoc,
-          f"Đọc lại tệp độc lập rồi so: {format_integer(tep)} dòng trong tệp = "
-          f"{format_integer(goc)} dòng đã ghi.",
-          f"Đọc lại tệp độc lập rồi so: {b1_lech}.")
-
-    # B2 — số dòng chuẩn hoá so với số dòng sẽ ghi ở A3.
-    lech_b2 = []
-    for t in bang:
-        k = ctx.bang(t)
-        thuc = k.rows_silver + k.rows_unchanged
-        if thuc != se_ghi.get(t.name, thuc):
-            lech_b2.append(f"bảng {t.label} lệch {format_integer(abs(thuc - se_ghi[t.name]))} dòng")
-    r2_hong = [r for r in recon.get("R2", []) + recon.get("R4a", []) if not r["passed"]]
-    for r in r2_hong:
-        cau = f"bảng {r['table_label']} lệch {format_integer(abs(int(r['diff'] or 0)))} dòng"
-        if cau not in lech_b2:
-            lech_b2.append(cau)
-    for ten in lech_theo_buoc.get("B2", []):
-        if not any(c.startswith(f"bảng {ten} ") for c in lech_b2):
-            lech_b2.append(f"bảng {ten} lệch")
-    tong_se_ghi = sum(se_ghi.get(t.name, 0) for t in bang)
-    tong_ghi = sum(ctx.bang(t).rows_silver + ctx.bang(t).rows_unchanged for t in bang)
-    b2 = ("B2", not lech_b2,
-          f"So với số dòng sẽ ghi ở A3: {format_integer(tong_se_ghi)} = {format_integer(tong_ghi)} dòng.",
-          f"So với số dòng sẽ ghi ở A3: {', '.join(lech_b2)}.")
-
-    # B3 — chuẩn hoá ↔ phân tích.
-    r3 = recon.get("R3", [])
-    hong3 = [r for r in r3 if not r["passed"]]
-    khong_doi = sum(ctx.bang(t).rows_unchanged for t in bang)
-    a = sum(int(r["expected"] or 0) for r in r3) + khong_doi
-    b = sum(int(r["actual"] or 0) for r in r3) + khong_doi
-    b3_lech = [f"Bảng {r['table_label']}: {format_integer(int(r['expected'] or 0))} ≠ "
-               f"{format_integer(int(r['actual'] or 0))} dòng" for r in hong3]
-    b3_lech += [f"Bảng {t} lệch" for t in lech_theo_buoc.get("B3", [])
-                if t not in {r["table_label"] for r in hong3}]
-    b3 = ("B3", not b3_lech, f"{format_integer(a)} = {format_integer(b)} dòng.",
-          "; ".join(b3_lech) + ".")
-
-    # B4 — tổng tiền, tháng, các mã; cộng tổng kiểm soát R4c.
-    hong4 = [r for r in recon.get("R4c", []) if not r["passed"]]
-    cau_b4 = the["b4"]
-    if hong4 and not the["lech"]:
-        cau_b4 = ("Tổng kiểm soát lệch ở bảng "
-                  + ", ".join(r["table_label"] for r in hong4) + ".")
-    b4 = ("B4", not hong4 and not the["lech"], the["b4"], cau_b4)
-
-    ra += cac_buoc.buoc_b([b1, b2, b3, b4], chot=_cau_chot(ctx, kt),
-                          ten_buoc_b4=cac_buoc.ten_b4(kt))
-    return ra
+def _mismatched_tables_by_step(mismatches: list[Mismatch]) -> dict[str, list[str]]:
+    by_step: dict[str, list[str]] = {}
+    for mismatch in mismatches:
+        by_step.setdefault(STEP_OF_RULE.get(mismatch.step, 'B4'), []).append(mismatch.label)
+    return by_step
 
 
-def _so_cho(r: dict) -> int:
-    """Số ô và dòng khác nhau giữa tệp và lớp gốc mà R1 ghi lại."""
-    chi_tiet = r["detail"] or {}
-    return sum(len(chi_tiet.get(k, [])) for k in ("o_lech", "thieu_o_goc", "thua_o_goc"))
+def _results_by_rule(ctx: LoadContext) -> dict[str, list[dict]]:
+    by_rule: dict[str, list[dict]] = {}
+    for result in reconcile.load_results(ctx.conn, ctx.load_id):
+        by_rule.setdefault(result['step'], []).append(result)
+    return by_rule
 
 
-def _cau_chot(ctx: LoadContext, kt: dict) -> str:
-    """B5: "Dữ liệu tháng 1–7 năm 2026 có hiệu lực từ lúc này."."""
-    if kt.get("cau_chot"):
-        return kt["cau_chot"]
-    thang = sorted({int(k) for b in kt.get("bang", []) for k in (b.get("theo_ky") or {})
-                    if str(k).isdigit()})
-    nam = f" năm {ctx.nam}" if ctx.nam else ""
-    if not thang:
-        return f"Dữ liệu{nam} có hiệu lực từ lúc này."
-    pham_vi = str(thang[0]) if len(thang) == 1 else f"{thang[0]}–{thang[-1]}"
-    return f"Dữ liệu tháng {pham_vi}{nam} có hiệu lực từ lúc này."
+def _b1_outcome(results: list[dict], mismatched: dict[str, list[str]]) -> StepOutcome:
+    file_rows = sum(int(result['expected'] or 0) for result in results)
+    bronze_rows = sum(int(result['actual'] or 0) for result in results)
+    failed = [result for result in results if not result['passed']]
+    failed_labels = {result['table_label'] for result in failed}
+    details = [
+        messages.STEP_B1_TABLE_CELLS_DIFFER.format(
+            table=result['table_label'], count=format_integer(_difference_count(result))
+        )
+        for result in failed
+    ]
+    details += [
+        messages.STEP_B1_TABLE_DIFFERS.format(table=label)
+        for label in mismatched.get('B1', [])
+        if label not in failed_labels
+    ]
+    return StepOutcome(
+        'B1',
+        not failed and 'B1' not in mismatched,
+        messages.STEP_B1_MATCH.format(file_rows=format_integer(file_rows), bronze_rows=format_integer(bronze_rows)),
+        messages.STEP_B1_MISMATCH.format(details='; '.join(details)),
+    )
 
 
-def _ghi_nhan_ky(ctx: LoadContext, table) -> None:
-    """Kỳ nào bị lô này chạm tới — nguồn của "Kỳ dữ liệu" trên các màn."""
-    if not table.partition_by:
-        return
-    col = table.partition_column
-    cac_ky = set()
-    for dong in ctx.dong_sach.get(table.name, []):
-        gia_tri = dong.values.get(col.name)
-        if gia_tri is not None:
-            cac_ky.add(col.display(gia_tri) if col.type == "month" else str(gia_tri))
-    ctx.ky_cham_toi[table.name] = cac_ky
+def _b2_outcome(
+    ctx: LoadContext,
+    tables: list[FormTable],
+    to_write: dict[str, int],
+    results: dict[str, list[dict]],
+    mismatched: dict[str, list[str]],
+) -> StepOutcome:
+    details = _b2_details(ctx, tables, to_write, results, mismatched)
+    expected = sum(to_write.get(table.name, 0) for table in tables)
+    actual = sum(_written_rows(ctx, table) for table in tables)
+    return StepOutcome(
+        'B2',
+        not details,
+        messages.STEP_B2_MATCH.format(expected=format_integer(expected), actual=format_integer(actual)),
+        messages.STEP_B2_MISMATCH.format(details=', '.join(details)),
+    )
+
+
+def _b2_details(
+    ctx: LoadContext,
+    tables: list[FormTable],
+    to_write: dict[str, int],
+    results: dict[str, list[dict]],
+    mismatched: dict[str, list[str]],
+) -> list[str]:
+    details: list[str] = []
+    for table in tables:
+        written = _written_rows(ctx, table)
+        if written != to_write.get(table.name, written):
+            difference = format_integer(abs(written - to_write[table.name]))
+            details.append(messages.STEP_B2_TABLE_ROWS_DIFFER.format(table=table.label, count=difference))
+    for result in results.get('R2', []) + results.get('R4a', []):
+        if result['passed']:
+            continue
+        difference = format_integer(abs(int(result['diff'] or 0)))
+        detail = messages.STEP_B2_TABLE_ROWS_DIFFER.format(table=result['table_label'], count=difference)
+        if detail not in details:
+            details.append(detail)
+    for label in mismatched.get('B2', []):
+        prefix = messages.STEP_TABLE.format(table=label) + ' '
+        if not any(detail.startswith(prefix) for detail in details):
+            details.append(messages.STEP_B2_TABLE_DIFFERS.format(table=label))
+    return details
+
+
+def _b3_outcome(
+    ctx: LoadContext, tables: list[FormTable], results: list[dict], mismatched: dict[str, list[str]]
+) -> StepOutcome:
+    failed = [result for result in results if not result['passed']]
+    failed_labels = {result['table_label'] for result in failed}
+    unchanged = sum(ctx.table_result(table).rows_unchanged for table in tables)
+    expected = sum(int(result['expected'] or 0) for result in results) + unchanged
+    actual = sum(int(result['actual'] or 0) for result in results) + unchanged
+    details = [
+        messages.STEP_B3_TABLE_ROWS_DIFFER.format(
+            table=result['table_label'],
+            expected=format_integer(int(result['expected'] or 0)),
+            actual=format_integer(int(result['actual'] or 0)),
+        )
+        for result in failed
+    ]
+    details += [
+        messages.STEP_B3_TABLE_DIFFERS.format(table=label)
+        for label in mismatched.get('B3', [])
+        if label not in failed_labels
+    ]
+    return StepOutcome(
+        'B3',
+        not details,
+        messages.STEP_B3_MATCH.format(expected=format_integer(expected), actual=format_integer(actual)),
+        '; '.join(details) + '.',
+    )
+
+
+def _b4_outcome(results: list[dict], cards: dict) -> StepOutcome:
+    failed = [result for result in results if not result['passed']]
+    mismatch_result = cards['b4']
+    if failed and not cards['lech']:
+        tables = ', '.join(result['table_label'] for result in failed)
+        mismatch_result = messages.STEP_B4_CONTROL_TOTAL_MISMATCH.format(tables=tables)
+    return StepOutcome('B4', not failed and not cards['lech'], cards['b4'], mismatch_result)
+
+
+def _written_rows(ctx: LoadContext, table: FormTable) -> int:
+    result = ctx.table_result(table)
+    return result.rows_silver + result.rows_unchanged
+
+
+def _difference_count(result: dict) -> int:
+    detail = result['detail'] or {}
+    return sum(len(detail.get(key, [])) for key in R1_DIFFERENCE_KEYS)
+
+
+def _commit_result(ctx: LoadContext, file_check: dict) -> str:
+    if file_check.get('cau_chot'):
+        return file_check['cau_chot']
+    months = sorted(
+        {
+            int(period)
+            for table in file_check.get('bang', [])
+            for period in (table.get('theo_ky') or {})
+            if str(period).isdigit()
+        }
+    )
+    year = messages.STEP_B5_YEAR.format(year=ctx.year) if ctx.year else ''
+    if not months:
+        return messages.STEP_B5_EFFECTIVE.format(year=year)
+    month_range = str(months[0]) if len(months) == 1 else f'{months[0]}–{months[-1]}'
+    return messages.STEP_B5_MONTHS_EFFECTIVE.format(months=month_range, year=year)
+
+
+def _json(value) -> str:
+    return json.dumps(value, ensure_ascii=False, default=str)

@@ -5,20 +5,18 @@ from __future__ import annotations
 
 import threading
 
-from open_webui.data_portal.pipeline import nap, tep_cho
+from open_webui.data_portal.pipeline import pending_uploads, upload
 
 from .conftest import can_tep_mau, dem, tai_len
 
 
 def test_hai_lan_xac_nhan_cung_luc(admin, sach):
     ma = [tai_len(admin, can_tep_mau()).json()["ma_tep_cho"] for _ in range(2)]
-    form = sach.registry.form("BAO_CAO_HQKH")
     ket_qua: list[dict] = []
 
     def chay(m: str) -> None:
-        tep = tep_cho.doc(sach.settings.upload_dir, m)
-        ket_qua.append(nap.xac_nhan(sach.warehouse, sach.catalog, sach.settings, form, tep,
-                                    domain_code="HQKD", request_id=f"thu-{m[:6]}"))
+        tep = pending_uploads.get_pending(sach.settings.upload_dir, m)
+        ket_qua.append(upload.confirm_upload(sach, tep, request_id=f"thu-{m[:6]}"))
 
     luong = [threading.Thread(target=chay, args=(m,)) for m in ma]
     for t in luong:

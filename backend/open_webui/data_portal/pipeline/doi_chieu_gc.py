@@ -15,11 +15,12 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+from .. import messages
 from ..formatting import format_amount, format_integer
 from ..registry.schema import FormTable
 from .context import LoadContext
 from .doi_chieu_the import TIEU_DE, _mo_bang, so
-from .kiem_tra_tep import CHUA_CO_NGAY, khoa_thang
+from .file_check import month_key
 
 KHONG = Decimal(0)
 
@@ -55,7 +56,7 @@ def _tong(dong: list[dict], cot: str) -> Decimal:
 def _khoa(cot: str, gia_tri) -> str:
     if gia_tri is None:
         return ""
-    return khoa_thang(gia_tri) if cot == "ngay_giao_mau" else str(gia_tri)
+    return month_key(gia_tri) if cot == "ngay_giao_mau" else str(gia_tri)
 
 
 # --------------------------------------------------------------------------- #
@@ -142,14 +143,14 @@ def ma_tran_chieu(ctx: LoadContext, table: FormTable, goc: list, db: list) -> di
         chia[cot] = {"nhan": nhan, "nhom": [
             {"khoa": k, "tep": v["tep"], "db": v["db"], "sl_tep": so(v["sl_tep"]),
              "sl_db": so(v["sl_db"])} for k, v in nhom.items()]}
-    return {"ma": "theo_chieu", "bang": table.name, "nam": ctx.nam, "chia": chia,
+    return {"ma": "theo_chieu", "bang": table.name, "nam": ctx.year, "chia": chia,
             "thu_tu_chia": [c for c, _ in CHIEU.get(table.name, [])], "lech": co_lech}
 
 
 def _nhan_nhom(cot: str, khoa: str) -> str:
     if cot == "ngay_giao_mau":
         if not khoa:
-            return CHUA_CO_NGAY
+            return messages.CHECK_NO_DELIVERY_DATE
         nam, thang = khoa.split("-")
         return f"Tháng {int(thang)}/{nam}"
     return khoa or "(trống)"
@@ -227,7 +228,7 @@ def the_ma(table: FormTable, goc: list, db: list) -> dict:
 def the_truoc_sau(ctx: LoadContext, table: FormTable, truoc: dict[str, int],
                   sau: dict[str, int], cac_bang: list[dict]) -> dict:
     dong = []
-    se_ghi = ctx.bang(table).rows_silver
+    se_ghi = ctx.table_result(table).rows_silver
     for b in cac_bang:
         ten = b["name"]
         t, s = truoc.get(ten, 0), sau.get(ten, 0)
@@ -239,10 +240,10 @@ def the_truoc_sau(ctx: LoadContext, table: FormTable, truoc: dict[str, int],
         hang = {"o": [b["label"], "Có" if ten == table.name else "Không", t, s, cach],
                 "ket_luan": ket_luan, "phu": ten}
         if s:
-            hang["mo"] = {"bang": ten, "lop": "gold", **({"nam": ctx.nam} if ctx.nam else {})}
+            hang["mo"] = {"bang": ten, "lop": "gold", **({"nam": ctx.year} if ctx.year else {})}
         dong.append(hang)
     return {"ma": "truoc_sau",
-            "tieu_de": TIEU_DE["truoc_sau_gc"].format(nhom=ctx.domain_code, nam=ctx.nam or ""),
+            "tieu_de": TIEU_DE["truoc_sau_gc"].format(nhom=ctx.domain_code, nam=ctx.year or ""),
             "cot": [{"t": "Bảng"}, {"t": "Có trong tệp"},
                     {"t": "Số dòng trước lần nạp", "r": True},
                     {"t": "Số dòng sau lần nạp", "r": True}, {"t": "Cách ghi"},
