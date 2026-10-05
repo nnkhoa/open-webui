@@ -2599,8 +2599,11 @@ app.mount('/static', StaticFiles(directory=STATIC_DIR), name='static')
 async def serve_project_logo(filename: str):
     from fastapi.responses import FileResponse
 
-    file_path = UPLOAD_DIR / 'project_logo' / filename
-    if file_path.exists():
+    logo_dir = os.path.abspath(os.path.join(UPLOAD_DIR, 'project_logo'))
+    file_path = os.path.abspath(os.path.join(logo_dir, filename))
+    if not file_path.startswith(logo_dir + os.sep):
+        raise HTTPException(status_code=400, detail='Invalid filename')
+    if os.path.isfile(file_path):
         return FileResponse(file_path)
     raise HTTPException(status_code=404, detail='Project logo not found')
 

@@ -103,7 +103,8 @@ async def upload_project_logo(
     file: UploadFile = File(...),
     user=Depends(get_admin_user),
 ):
-    allowed_types = {'image/png', 'image/jpeg', 'image/svg+xml', 'image/webp', 'image/gif'}
+    allowed_types = {'image/png', 'image/jpeg', 'image/webp', 'image/gif'}
+    # image/svg+xml intentionally rejected: SVG can embed <script>/event handlers (XSS)
     if file.content_type not in allowed_types:
         raise HTTPException(
             status_code=400,
