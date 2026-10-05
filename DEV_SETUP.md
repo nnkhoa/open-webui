@@ -104,10 +104,21 @@ A user in several listed groups gets the union. Admins with
 ## Tests
 
 ```bash
-cd backend
-STATIC_DIR=/tmp/ow-static WEBUI_SECRET_KEY=dev uv run pytest open_webui/test/util -q
+../../scripts/test.sh fast --only owui-backend,owui-lint,owui-frontend   # from the workspace
+
+cd backend && .venv/bin/python -m pytest open_webui/test/util -q        # backend only
+node_modules/.bin/vitest run --dir src                                   # frontend only (repo root)
 ```
 
-`open_webui/test/util/test_tool_result_fallback.py` covers the tool-result
-fallback and the permission-error detection, including the case where query data
-merely contains words like "forbidden".
+`open_webui/test/conftest.py` moves `DATA_DIR`, `STATIC_DIR` and `FRONTEND_BUILD_DIR` to a temp
+dir before `open_webui.config` is imported, so the tests never migrate `backend/data/webui.db` or
+rewrite `backend/open_webui/static/`.
+
+- `test_tool_result_fallback.py`: tool-result fallback and permission-error detection,
+  including query data that merely contains words like "forbidden".
+- `test_responses_replay.py`, `test_openai_responses_payload.py`: reasoning replay between tool
+  rounds on Responses API connections.
+- `test_stream_chunks.py`: long `response.completed` lines with
+  `CHAT_STREAM_RESPONSE_CHUNK_MAX_BUFFER_SIZE`.
+- `test_tool_loop.py`: errors shown when a tool round fails.
+- `src/lib/components/chat/Messages/structuredOutput.test.ts`: "Thought" block merging.

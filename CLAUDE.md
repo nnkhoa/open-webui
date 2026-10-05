@@ -15,6 +15,21 @@ carrying the AI4BI customizations.
 
 Remotes: `origin` is the fork, `upstream` is `open-webui/open-webui`.
 
+## Working here
+
+This repo lives inside the `ai-for-bi` workspace (`../../`), whose `CLAUDE.md` holds the
+cross-repo rules. In short:
+
+- Fixes for the NBC deployment are committed directly on `nbc/v0.10.2`; other work goes on a
+  `feat/<topic>` branch and is merged into `merge/vX.Y.Z` (workspace ADR 0002).
+- Every customization commit carries an `Fpt-Feature: <id>` trailer, and the feature ledger is
+  `../../docs/forks/open-webui.md` (workspace repo) — add or update its row in the same change.
+- Put fork logic in new modules (e.g. `utils/tool_loop.py`) and keep edits to upstream core files
+  (`middleware.py`, `config.py`, `main.py`, `Sidebar.svelte`) to a few call-site lines.
+- Code identifiers in English; comments, UI text and user-facing messages may be Vietnamese.
+- Done means `../../scripts/test.sh fast --only owui-backend,owui-lint,owui-frontend` passes, and
+  every new feature or bug fix comes with a test (see Tests).
+
 ## What is customized
 
 Everything else is upstream. `git diff v0.10.2..HEAD --stat` is the authoritative list.
@@ -92,6 +107,16 @@ report tokens at all.
   inspected — see `extract_tool_error_text`.
 - Large tool output raises the delta chunk size; pending deltas flush after 50ms
   so uneven streams don't arrive in bursts.
+- Responses API connections (`api_type: responses`) get the turn's raw output items back on
+  every tool round — reasoning with `encrypted_content`, `function_call` with its `id`, tool
+  outputs — so the model keeps its chain of thought (`utils/tool_loop.py`:
+  `uses_responses_api`, `responses_replay_items`; `RESPONSES_ALLOWED_FIELDS['reasoning']` in
+  `routers/openai.py`). Upstream's `convert_output_to_messages` drops reasoning.
+- A tool round that fails (stream error, upstream HTTP ≥ 400) logs a traceback, keeps the
+  earlier rounds in the saved message and shows the error in chat instead of an empty answer
+  (`tool_loop_http_error`, `tool_loop_exception_error`).
+- Deployments must set `CHAT_STREAM_RESPONSE_CHUNK_MAX_BUFFER_SIZE` (32 MiB): the Responses API
+  `response.completed` line exceeds aiohttp's 128 KB readline limit at high reasoning effort.
 
 ### Per-group tool filtering
 
@@ -108,6 +133,11 @@ in `middleware.connect_mcp_server`.
 - Navbar has no temporary-chat, Controls or user-avatar buttons; settings are
   reached through the user menu at the bottom of the sidebar.
 - BuildKit cache mounts in the `Dockerfile` for npm, pip and uv.
+- Reasoning display (`src/lib/components/chat/Messages/structuredOutput.ts`): consecutive
+  reasoning items merge into one "Thought" block, finished empty ones are hidden, summary parts
+  are separated by a blank line.
+- `vite.config.ts` proxies `/api` to `:8080` under `vite dev` only, so relative links such as
+  file downloads work on `:5173`.
 
 ## Config in v0.10.2 — read this before touching settings
 
@@ -132,24 +162,56 @@ Model methods and most router helpers are `async` now, including
 
 ## Development
 
-```bash
-# Backend (from backend/)
-WEBUI_SECRET_KEY=dev uv run uvicorn open_webui.main:app --reload --port 8080
+Use the workspace scripts; they set the data dir, secrets, static dir and GPU env for you:
 
-# Frontend
-npm install
-npm run dev
+```bash
+../../scripts/dev-data.sh        # once: copy the NBC Open WebUI volume to backend/data/nhabe
+../../scripts/dev-backend.sh     # backend :8080, hot reload on backend/open_webui/*.py
+../../scripts/dev-frontend.sh    # frontend :5173 (Vite HMR)
 ```
 
-Two landmines worth knowing:
+Do not run `uvicorn` by hand from `backend/`: without `DATA_DIR`/`STATIC_DIR` it migrates
+`backend/data/webui.db` and rewrites `backend/open_webui/static/`.
 
-1. **Importing `open_webui.config` wipes `backend/open_webui/static/`** and
-   repopulates it from `build/static`. Run backend commands with
-   `STATIC_DIR=/tmp/somewhere` when there is no fresh frontend build, or you will
-   commit a deleted icon set.
+## Tests
+
+```bash
+../../scripts/test.sh fast --only owui-backend,owui-lint,owui-frontend   # what the pre-push hook runs
+cd backend && .venv/bin/python -m pytest open_webui/test/util -q          # backend unit tests
+node_modules/.bin/vitest run --dir src                                     # frontend unit tests
+```
+
+- Backend tests live in `backend/open_webui/test/util/test_<topic>.py` (file names must be unique —
+  there is no `__init__.py`). `test/conftest.py` points `DATA_DIR`, `STATIC_DIR` and
+  `FRONTEND_BUILD_DIR` at a temp dir before anything imports `open_webui.config`, so running
+  pytest directly is safe. pytest-asyncio is not installed: drive coroutines with `asyncio.run`;
+  monkeypatch lazily imported helpers on their home module.
+- Frontend logic worth testing goes in plain `.ts` modules with a colocated `*.test.ts`
+  (vitest, node environment, no DOM).
+- `test/data_portal/` needs a throwaway Postgres database whose name ends in `_test`
+  (`DATA_PORTAL_TEST_DATABASE_URL`); its fixture drops schemas, so it refuses any other name.
+  It is not part of the fast tier.
+
+## Lint
+
+- Python: the upstream CI rules on changed files —
+  `ruff check --select=F --ignore=F401,F403,F405,F541,F811,F841` and `ruff format --check`
+  (ruff 0.16.10, line length 120, single quotes). `data_portal/` and `test/data_portal/` keep
+  their own double-quote style and are excluded from the format check.
+- Frontend: `prettier --check` on changed files (tabs, single quotes, width 100). Never run
+  `npm run format` or `npm run lint:frontend` — they rewrite the whole tree.
+
+Landmines worth knowing:
+
+1. **Importing `open_webui.config` wipes `backend/open_webui/static/`**, repopulates it from
+   `FRONTEND_BUILD_DIR/static`, runs `alembic upgrade` on `DATABASE_URL` and opens the vector DB
+   under `DATA_DIR`. Always set those three (the dev scripts and the test conftest do).
 2. **`npm run build` needs more than 4GB of heap.** Use
    `NODE_OPTIONS=--max-old-space-size=7168`. The `Dockerfile` sets its own value;
    check it before building an image.
+3. **`npm run dev` rewrites `static/pyodide/pyodide-lock.json`.** Don't commit that change.
+4. **The NBC volume was once opened by 0.11.4**: if a DB reports `Can't locate revision`, see
+   "DB lệch phiên bản" in `../../docs/forks/open-webui.md` (downgrade with the 0.11.4 scripts).
 
 ## Upgrading to a newer upstream
 
