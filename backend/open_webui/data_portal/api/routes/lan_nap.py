@@ -23,7 +23,7 @@ from ...domain import lan_nap
 from ...errors import Conflict, InvalidInput, NotFound
 from ...pipeline import doi_chieu_the, rollback
 from ...security.audit import record_event
-from ...sources import tep_goc
+from ...sources import source_file
 from .. import json
 from ..deps import NguCanhApi, mo_ngu_canh, mo_ngu_canh_admin
 from .nhom import loai_tep_json
@@ -191,7 +191,7 @@ def tai_tep_goc(load_id: int, ngu_canh: NguCanhApi = Depends(mo_ngu_canh)) -> Fi
 @router.get("/loads/{load_id}/file/sheets")
 def cac_sheet(load_id: int, ngu_canh: NguCanhApi = Depends(mo_ngu_canh)) -> list[dict]:
     _, duong = _tep(ngu_canh, load_id)
-    return tep_goc.cac_sheet(duong)
+    return source_file.list_sheets(duong)
 
 
 @router.get("/loads/{load_id}/file/sheets/{so}")
@@ -199,7 +199,7 @@ def noi_dung_sheet(load_id: int, so: int, trang: int = 1, moi: int | None = None
                    ngu_canh: NguCanhApi = Depends(mo_ngu_canh)) -> dict:
     _, duong = _tep(ngu_canh, load_id)
     trang, moi = trang_moi(trang, moi, 50)
-    ra = tep_goc.noi_dung(duong, so, trang, moi)
+    ra = source_file.sheet_page(duong, so, trang, moi)
     if ra is None:
         raise NotFound("Không có sheet này trong tệp.")
     return ra

@@ -32,8 +32,8 @@ def dien_ngoai_tep(table: FormTable, dong: SourceRow, nam: int | None,
     for c in table.columns:
         if c.is_year:
             them[c.name] = None if nam is None else str(nam)
-        elif c.from_header and reader is not None and hasattr(reader, "gia_tri_tieu_de"):
-            them[c.name] = reader.gia_tri_tieu_de(c.file_header)
+        elif c.from_header and reader is not None and hasattr(reader, "header_value"):
+            them[c.name] = reader.header_value(c.file_header)
     return SourceRow(dong.number, {**dong.values, **them}) if them else dong
 
 

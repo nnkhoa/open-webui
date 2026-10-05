@@ -11,7 +11,7 @@ thường. Giá trị từng ô không kiểm tra ở đây; đó là việc c�
 from __future__ import annotations
 
 from ..registry.schema import Form
-from ..sources.base import chuan_ten
+from ..sources.base import normalize_name
 from .ma_loi import ma
 
 
@@ -31,15 +31,15 @@ def kiem_tra(reader, form: Form) -> list[dict]:
     """Trả danh sách lỗi cấu trúc. Rỗng nghĩa là tệp qua được bước này."""
     # Bộ đọc không tách được tệp (thiếu sheet, thiếu cột) ⇒ chỉ nêu lỗi đó, các
     # kiểm tra dưới đây chạy trên bảng rỗng không nói thêm được gì.
-    loi_nguon = reader.loi_nguon()
+    loi_nguon = reader.source_issues()
     if loi_nguon:
-        return [dong_loi(x.sheet, x.vi_tri, x.code, **x.truong) for x in loi_nguon]
+        return [dong_loi(x.sheet, x.location, x.code, **x.params) for x in loi_nguon]
 
     loi: list[dict] = []
     policy = form.policy
 
-    theo_sheet = {chuan_ten(t.sheet): t for t in form.tables}
-    co_trong_tep = {chuan_ten(s): s for s in reader.sheets()}
+    theo_sheet = {normalize_name(t.sheet): t for t in form.tables}
+    co_trong_tep = {normalize_name(s): s for s in reader.sheets()}
 
     # Sheet ngoài khai báo.
     if policy.unknown_sheet == "reject":
@@ -50,7 +50,7 @@ def kiem_tra(reader, form: Form) -> list[dict]:
 
     # Thiếu sheet đã khai.
     for table in form.tables:
-        if chuan_ten(table.sheet) not in co_trong_tep:
+        if normalize_name(table.sheet) not in co_trong_tep:
             if policy.missing_column == "reject":
                 loi.append(dong_loi(table.label, "Toàn bộ sheet", "MISSING_SHEET",
                                     ten=table.sheet))
@@ -62,10 +62,10 @@ def kiem_tra(reader, form: Form) -> list[dict]:
 def _kiem_tra_sheet(reader, form: Form, table) -> list[dict]:
     loi: list[dict] = []
     policy = form.policy
-    vi_tri, khong_ten, lap = reader.vi_tri_cot(table.sheet)
+    vi_tri, khong_ten, lap = reader.column_layout(table.sheet)
 
     # Cột `nam` và cột để trống không có trong tệp nên không đòi ở dòng tiêu đề.
-    can = {chuan_ten(c.file_header): c.file_header for c in table.file_columns}
+    can = {normalize_name(c.file_header): c.file_header for c in table.file_columns}
 
     for ten in lap:
         loi.append(dong_loi(table.label, "Dòng 1", "DUPLICATE_COLUMN", ten=ten))
@@ -86,7 +86,7 @@ def _kiem_tra_sheet(reader, form: Form, table) -> list[dict]:
     # Ô có dữ liệu ở cột không có tên cột — chỉ kiểm khi đã không còn lỗi tên cột,
     # để không đổ một loạt lỗi phụ lên người dùng khi nguyên nhân là thiếu tiêu đề.
     if not loi and khong_ten:
-        for so_dong, chu in reader.o_co_du_lieu_ngoai_cot(table.sheet, khong_ten):
+        for so_dong, chu in reader.cells_outside_columns(table.sheet, khong_ten):
             loi.append(dong_loi(table.label, f"Dòng {so_dong}, cột {chu}",
                             "DATA_IN_UNNAMED_COLUMN",
                             cell_ref=f"{table.sheet}!{chu}{so_dong}"))

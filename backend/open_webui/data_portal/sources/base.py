@@ -1,86 +1,81 @@
-"""Giao diện bộ đọc nguồn dữ liệu.
-
-Thêm nguồn mới (csv, API…) = thêm một lớp con và gắn `@register`. Đường xử lý
-không biết tệp đến từ đâu, chỉ biết ba việc: có sheet nào, dòng tiêu đề gì,
-các dòng dữ liệu là gì.
-
-Mọi giá trị trả về đều là **văn bản hoặc None**, đúng như ô trong nguồn — không
-sửa, không suy đoán, không làm tròn ở lớp này.
-"""
-
 from __future__ import annotations
 
 import unicodedata
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import ClassVar, Protocol
+from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple, Protocol
 
+from .. import messages
 from ..errors import SourceFileError
+
+if TYPE_CHECKING:
+    from ..registry.schema import Form
 
 
 @dataclass(frozen=True)
 class SourceRow:
-    number: int                       # số dòng thật trong nguồn (dòng Excel)
-    values: dict[str, str | None]     # theo tên cột đã khai, không theo vị trí
+    number: int
+    values: dict[str, str | None]
 
 
 @dataclass(frozen=True)
-class LoiNguon:
-    """Thiếu sheet hoặc thiếu cột khi bộ đọc tách tệp — từ chối cả tệp.
-
-    `code` là mã ở `pipeline/ma_loi.py`; `truong` điền vào câu của mã đó.
-    """
-
+class SourceIssue:
     sheet: str
-    vi_tri: str
+    location: str
     code: str
-    truong: dict[str, str]
+    params: dict[str, str]
+
+
+class ColumnLayout(NamedTuple):
+    positions: dict[str, int]
+    unnamed_columns: list[int]
+    duplicate_names: list[str]
 
 
 class SourceReader(Protocol):
     kind: ClassVar[str]
-    yeu_cau: ClassVar[tuple[str, ...]]  # thẻ "Yêu cầu đối với tệp"; rỗng = mặc định
+
+    def __init__(self, path: Path, form: Form) -> None: ...
 
     def sheets(self) -> list[str]: ...
 
     def header(self, sheet: str) -> list[str | None]: ...
 
-    # `anh_xa` là `{tên kỹ thuật: tên cột trong tệp}` — xem `xlsx.XlsxReader.rows`.
-    def rows(self, sheet: str, anh_xa: dict[str, str]) -> Iterator[SourceRow]: ...
+    def column_layout(self, sheet: str) -> ColumnLayout: ...
 
-    def loi_nguon(self) -> list[LoiNguon]: ...
+    def cells_outside_columns(self, sheet: str, unnamed_columns: list[int]) -> list[tuple[int, str]]: ...
+
+    def rows(self, sheet: str, header_map: dict[str, str]) -> Iterator[SourceRow]: ...
+
+    def source_sheet(self, sheet: str) -> str: ...
+
+    def source_issues(self) -> list[SourceIssue]: ...
 
     def close(self) -> None: ...
 
 
-READERS: dict[str, type] = {}
+READERS: dict[str, type[SourceReader]] = {}
 
 
-def register(cls):
+def register(cls: type[SourceReader]) -> type[SourceReader]:
     READERS[cls.kind] = cls
     return cls
 
 
-def mo(kind: str, path: Path, header_row: int = 1, form=None) -> SourceReader:
-    """Mở bộ đọc của dạng nguồn `kind`. `form` là khai báo bộ bảng — bộ đọc cần
-    biết cột nào phải có (bộ đọc theo dòng tiêu đề của HQ-MAU-GC)."""
+def open_reader(kind: str, path: Path, form: Form) -> SourceReader:
     cls = READERS.get(kind)
     if cls is None:
-        raise SourceFileError(
-            f"Chưa có bộ đọc cho nguồn {kind!r}. Các nguồn có sẵn: "
-            f"{', '.join(sorted(READERS))}."
-        )
-    return cls(path, header_row, form)
+        raise SourceFileError(messages.SOURCE_READER_NOT_FOUND.format(kind=kind, available=', '.join(sorted(READERS))))
+    return cls(path, form)
 
 
-def yeu_cau(kind: str) -> tuple[str, ...]:
-    """Thẻ "Yêu cầu đối với tệp" riêng của dạng nguồn; rỗng thì dùng câu mặc định."""
-    cls = READERS.get(kind)
-    return cls.yeu_cau if cls else ()
+def normalize_name(value: Any) -> str:
+    return ' '.join(unicodedata.normalize('NFC', str(value or '')).split()).lower()
 
 
-def chuan_ten(value) -> str:
-    """So tên sheet và tên cột: chuẩn hoá NFC, bỏ khoảng trắng thừa, không phân
-    biệt hoa thường."""
-    return " ".join(unicodedata.normalize("NFC", str(value or "")).split()).lower()
+def column_index(letters: str) -> int:
+    index = 0
+    for letter in letters:
+        index = index * 26 + (ord(letter) - 64)
+    return index

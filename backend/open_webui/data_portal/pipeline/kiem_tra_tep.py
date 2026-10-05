@@ -20,9 +20,10 @@ from pathlib import Path
 
 from ..errors import StructureError
 from ..registry.schema import Form, FormTable
-from ..sources import bang_theo_tieu_de, bao_cao_kh  # noqa: F401 — đăng ký bộ đọc
-from ..sources import base as nguon
-from ..sources.xlsx import ten_cac_sheet
+from ..sources import customer_report, header_table  # noqa: F401
+from ..sources.base import open_reader
+from ..sources.header_table import HeaderTableInfo
+from ..sources.xlsx import sheet_names
 from . import validate
 from .bronze import dien_ngoai_tep
 from .dedup import bam_dong
@@ -54,17 +55,17 @@ def cot_cong_tong(table: FormTable) -> list[str]:
 
 def sheet_goc(reader, table: FormTable) -> str:
     """Sheet của tệp NBC mà bảng được lấy ra."""
-    ham = getattr(reader, "sheet_goc", None)
+    ham = getattr(reader, "source_sheet", None)
     return ham(table.sheet) if ham else table.sheet
 
 
 def kiem_tra(form: Form, duong_dan: Path, nam: int | None) -> dict:
     """Kiểm tra một tệp đã nằm trên đĩa. Ném `SourceFileError` nếu không mở được."""
-    cac_sheet = ten_cac_sheet(duong_dan)
+    cac_sheet = sheet_names(duong_dan)
     ket_qua: dict = {"so_sheet": len(cac_sheet), "cac_sheet": cac_sheet,
                      "loi": [], "buoc_loi": None, "bang": []}
 
-    reader = nguon.mo(form.source_kind, duong_dan, form.header_row, form)
+    reader = open_reader(form.source_kind, duong_dan, form)
     try:
         loi = kiem_tra_cau_truc(reader, form)
         if loi:
@@ -83,16 +84,29 @@ def kiem_tra(form: Form, duong_dan: Path, nam: int | None) -> dict:
         ket_qua["sheet_du_lieu"] = _sheet_du_lieu(reader, form)
         # Bộ đọc theo dòng tiêu đề (HQ-MAU-GC) ghi thêm: dòng tiêu đề, khoảng dòng
         # dữ liệu, ô tổng, ngày của bản, số dòng đang ẩn — cho A2, A3, B5 và đối chiếu.
-        tt = getattr(reader, "thong_tin", None) or {}
-        ket_qua.update({k: tt[k] for k in ("dong_tieu_de", "so_cot_can", "dong_tu",
-                                           "dong_den", "o_tong", "ngay_ban", "so_dong_an",
-                                           "so_dong_hien") if k in tt})
+        info = getattr(reader, "info", None)
+        if info is not None:
+            ket_qua.update(_header_table_fields(info))
         if len(form.tables) == 1 and form.tables[0].merge == "replace_all" and nam:
-            ban = f" (bản {tt['ngay_ban']})" if tt.get("ngay_ban") else ""
+            ban = f" (bản {info.report_date})" if info is not None and info.report_date else ""
             ket_qua["cau_chot"] = f"{form.label} năm {nam}{ban} có hiệu lực từ lúc này."
         return ket_qua
     finally:
         reader.close()
+
+
+def _header_table_fields(info: HeaderTableInfo) -> dict:
+    fields: dict = {"dong_tieu_de": info.header_row, "so_cot_can": info.required_column_count,
+                    "dong_tu": info.first_row, "dong_den": info.last_row}
+    if info.total_cell is not None:
+        fields["o_tong"] = {"o": info.total_cell.reference, "gia_tri": info.total_cell.value,
+                            "tieu_de": info.total_cell.header,
+                            "ghi_nhan": info.total_cell.informational}
+    if info.report_date is not None:
+        fields["ngay_ban"] = info.report_date
+    fields["so_dong_an"] = info.hidden_row_count
+    fields["so_dong_hien"] = info.visible_row_count
+    return fields
 
 
 def _sheet_du_lieu(reader, form: Form) -> str | None:

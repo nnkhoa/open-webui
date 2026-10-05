@@ -2,7 +2,7 @@
 #  Bộ bảng DON_GIA_CONG — Đơn gia công ngoài (nhóm HQ-MAU-GC)
 #
 #  Tệp NBC: "TOTAL PO SUBCON.xlsx" (9 sheet, 6 sheet ẩn). Bộ đọc
-#  `sources/bang_theo_tieu_de.py` nhận sheet **theo dòng tiêu đề**: sheet đang
+#  `sources/header_table.py` nhận sheet **theo dòng tiêu đề**: sheet đang
 #  hiện có đủ 7 cột cần lấy (sheet ẩn "Fty update" cũng có đủ cột nhưng không
 #  tính). Dữ liệu từ dòng ngay dưới dòng tiêu đề tới trước dòng trống đầu tiên.
 #  Dòng 1 là các ô tổng (SUBTOTAL), chỉ dùng để đối chiếu (QT-16, 18.2 b).

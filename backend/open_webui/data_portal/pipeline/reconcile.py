@@ -25,9 +25,9 @@ from psycopg import sql
 
 from ..db import sql as q
 from ..registry.schema import FormTable
-from ..sources.bang_theo_tieu_de_verify import BangTheoTieuDeDocLai
-from ..sources.bao_cao_kh_verify import BaoCaoKhDocLai
-from ..sources.base import chuan_ten
+from ..sources.base import normalize_name
+from ..sources.customer_report_verify import CustomerReportVerifyReader
+from ..sources.header_table_verify import HeaderTableVerifyReader
 from .context import LoadContext
 
 # Mốc ngày của Excel trên Windows (1900), đã tính cả lỗi năm nhuận 1900.
@@ -123,17 +123,17 @@ def bang_nhau(a: str | None, b: str | None) -> bool:
 
 
 def r1(ctx: LoadContext, table: FormTable, table_id: int) -> bool:
-    doc_lai = (BangTheoTieuDeDocLai(ctx.upload_path, ctx.form)
+    doc_lai = (HeaderTableVerifyReader(ctx.upload_path, ctx.form)
                if ctx.form.source_kind == "bang_theo_tieu_de"
-               else BaoCaoKhDocLai(ctx.upload_path))
+               else CustomerReportVerifyReader(ctx.upload_path))
     try:
-        tieu_de, hang_tep = doc_lai.doc_sheet(table.sheet)
+        tieu_de, hang_tep = doc_lai.read_table(table.sheet)
     finally:
         doc_lai.close()
 
-    theo_cot = {chuan_ten(ten): chi_so for chi_so, ten in tieu_de.items()}
+    theo_cot = {normalize_name(ten): chi_so for chi_so, ten in tieu_de.items()}
     # Cột `nam` và cột để trống không có trong tệp — không có gì để đọc lại.
-    can = {c.name: theo_cot.get(chuan_ten(c.file_header)) for c in table.file_columns}
+    can = {c.name: theo_cot.get(normalize_name(c.file_header)) for c in table.file_columns}
 
     goc = q.query(
         ctx.conn,
