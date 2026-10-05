@@ -67,7 +67,7 @@ def _loc(lop: str, nam: str, table) -> tuple[str, int | None]:
     lop = lop or "gold"
     if lop not in bang_dl.TEN_LOP:
         raise InvalidInput("Lớp dữ liệu không hợp lệ.")
-    return lop, (_nam(nam) if table.cot_nam is not None else None)
+    return lop, (_nam(nam) if table.year_column is not None else None)
 
 
 @router.get("/tables/{ten}")
@@ -82,7 +82,7 @@ def chi_tiet(ten: str, lop: str = "", nam: str = "", ky: str = "", tim: str = ""
     du_lieu = bang_dl.doc(conn, table, nhom["domain_id"], lop=lop, nam=nam_so, ky=ky.strip(),
                           tim=tim.strip(), trang=trang, moi=moi)
     thang_moi_nhat = None
-    if tk["cac_ky"] and table.cot_nam is not None:
+    if tk["cac_ky"] and table.year_column is not None:
         nam_cuoi = nam_so if nam_so is not None else _nam_moi_nhat(conn, table, nhom)
         thang_moi_nhat = f"{tk['cac_ky'][-1]}/{nam_cuoi}" if nam_cuoi else None
     return json.sach({

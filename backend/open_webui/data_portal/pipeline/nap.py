@@ -157,9 +157,9 @@ def ky_dang_co(conn, table: FormTable, domain_id: int, nam: int | None) -> dict[
     """Kỳ đang có dữ liệu hiện hành trong năm đã chọn, kèm lần nạp giữ dữ liệu đó."""
     nam_dk = sql.SQL("")
     tham: list = [domain_id]
-    if table.cot_nam is not None:
+    if table.year_column is not None:
         nam_dk = sql.SQL(" AND s.{} IS NOT DISTINCT FROM %s").format(
-            sql.Identifier(table.cot_nam.name))
+            sql.Identifier(table.year_column.name))
         tham.append(nam)
     hang = q.query(conn, sql.SQL(
         "SELECT s.{cot}::text AS ky, count(*) AS so_dong, max(s.load_id) AS load_id "
@@ -203,7 +203,7 @@ def thong_tin_cho(conn, form: Form, tep: tep_cho.TepCho) -> dict:
         "ma_tep_cho": tep.ma,
         "nhom": tt["nhom"],
         "nam": nam,
-        "loai": {"ma": form.code, "ten": form.label, "phu": form.chu_phu},
+        "loai": {"ma": form.code, "ten": form.label, "phu": form.subtitle},
         "ten_tep": tt["ten_tep"],
         "size_bytes": tt["size_bytes"],
         "sheet": kt.get("sheet_du_lieu"),
@@ -305,7 +305,7 @@ def _theo_thang(conn, form: Form, domain_id: int, nam: int | None, kt: dict) -> 
     """HQKD — thẻ "Theo tháng": mỗi tháng một dòng cho mỗi bảng số liệu, Ghi đè /
     Ghi thêm theo dữ liệu đang có của tháng đó trong năm đã chọn (QT-09)."""
     theo_bang = {b["bang"]: b for b in kt["bang"]}
-    bang = [t for t in form.tables_hien_thi if t.partition_by and t.name in theo_bang]
+    bang = [t for t in form.tables_by_display_order if t.partition_by and t.name in theo_bang]
     dang_co = {t.name: ky_dang_co(conn, t, domain_id, nam) for t in bang}
     cac_ky = sorted({k for t in bang for k in theo_bang[t.name].get("theo_ky", {})},
                     key=lambda k: (len(k), k))

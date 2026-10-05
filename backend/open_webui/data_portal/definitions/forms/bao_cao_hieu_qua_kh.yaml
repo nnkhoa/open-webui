@@ -16,7 +16,7 @@
 #  "1. Tong quan cac bang" với hai danh mục.
 #
 #  v4: bảng số liệu có thêm cột `nam` (lấy từ ô Năm dữ liệu chọn lúc nạp, không
-#  có trong tệp — `lay_tu: nam_du_lieu`), là cột đầu của khoá nghiệp vụ. Nạp lại
+#  có trong tệp — `value_from: nam_du_lieu`), là cột đầu của khoá nghiệp vụ. Nạp lại
 #  ghi đè theo tháng **trong năm đã chọn** (QT-02, QT-09).
 # =============================================================================
 
@@ -108,7 +108,7 @@ tables:
     columns:
       - name: nam
         type: int
-        lay_tu: nam_du_lieu
+        value_from: nam_du_lieu
         label: Không có trong tệp — lấy từ ô Năm dữ liệu chọn lúc nạp
         meaning: Năm của số liệu, chọn ở ô Năm dữ liệu lúc nạp. Tháng 1/2026 và tháng 1/2027 là hai kỳ khác nhau.
         example: "2026"
@@ -212,7 +212,7 @@ tables:
     columns:
       - name: nam
         type: int
-        lay_tu: nam_du_lieu
+        value_from: nam_du_lieu
         label: Không có trong tệp — lấy từ ô Năm dữ liệu chọn lúc nạp
         meaning: Năm của số liệu, chọn ở ô Năm dữ liệu lúc nạp. Tháng 1/2026 và tháng 1/2027 là hai kỳ khác nhau.
         example: "2026"

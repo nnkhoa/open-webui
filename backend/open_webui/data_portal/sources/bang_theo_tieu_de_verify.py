@@ -23,7 +23,7 @@ class BangTheoTieuDeDocLai:
 
     def __init__(self, path: Path, form) -> None:
         table = form.tables[0]
-        can = list(dict.fromkeys(c.tieu_de for c in table.cot_tu_tep))
+        can = list(dict.fromkeys(c.file_header for c in table.file_columns))
         khoa = {chuan_ten(c) for c in can}
         self._tieu_de: dict[int, str] = {}
         self._hang: dict[int, dict[int, str]] = {}
@@ -37,7 +37,7 @@ class BangTheoTieuDeDocLai:
                         theo_ten.setdefault(chuan_ten(luoi[so][c]), c)
                     if khoa <= set(theo_ten):
                         self._dung(luoi, so, {theo_ten[chuan_ten(c)]: c for c in can},
-                                   int(form.source_opts.get("dong_du_lieu", 1)))
+                                   int(form.source_options.get("data_row_offset", 1)))
                         return
         finally:
             doc.close()

@@ -29,7 +29,7 @@ from fastapi import HTTPException, Request
 from open_webui.data_portal.config import PACKAGE_DIR, load_settings
 from open_webui.data_portal.container import build_container
 
-KHAI_BAO = PACKAGE_DIR / "khai_bao"
+DEFINITIONS_DIR = PACKAGE_DIR / "definitions"
 MAU = Path(os.getenv("DATA_PORTAL_SAMPLE_DIR", "/khong-co-tep-mau"))
 TEP_HQKD = (MAU / "2. HQKD - Hieu qua kinh doanh"
             / "FORM MAU - HIEU QUA TUNG KHACH HANG T1-T7.26.xlsx")

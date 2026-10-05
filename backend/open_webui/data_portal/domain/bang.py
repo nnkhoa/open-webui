@@ -32,7 +32,7 @@ def nhom_cua_bang(conn, ten_bang: str) -> dict | None:
 
 
 def _nam_dk(table: FormTable, nam: int | None, lop: str) -> tuple[sql.Composable, list]:
-    cot = table.cot_nam
+    cot = table.year_column
     if cot is None or nam is None:
         return sql.SQL(""), []
     if lop == "bronze":
@@ -90,7 +90,7 @@ def danh_sach(conn, registry: FormRegistry, domain_id: int, nam: int | None) -> 
         ra.append({
             "table": table, "form": form, **tk,
             "load_id": lan_nap_moi_nhat(conn, domain_id, r["form_id"],
-                                        nam if table.cot_nam is not None else None),
+                                        nam if table.year_column is not None else None),
         })
     return ra
 
@@ -176,7 +176,7 @@ def thong_tin_cot(table: FormTable, cac_bang: list[FormTable]) -> list[dict]:
         "ten": c.name,
         "ten_nbc": c.label,
         "kieu": c.type,
-        "kieu_hien": c.type_label_vi,
+        "kieu_hien": c.type_label,
         "bat_buoc": c.is_business_key or c.required,
         "y_nghia": c.meaning,
         "dung_de": datasets.dung_de(table, c, cac_bang),

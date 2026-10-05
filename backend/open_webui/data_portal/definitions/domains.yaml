@@ -7,7 +7,7 @@
 #    code      mã nhóm thông tin, dùng trên URL. 2–20 ký tự in hoa, số hoặc dấu `-`.
 #              Không đổi sau khi đã có dữ liệu.
 #    name      tên hiển thị ở ô chọn nhóm thông tin.
-#    bo_bang   mã bộ bảng (`form.code` trong `registry/forms/*.yaml`) mà nhóm thông tin
+#    forms     mã bộ bảng (`form.code` trong `registry/forms/*.yaml`) mà nhóm thông tin
 #              nhận dữ liệu — một mã, hoặc danh sách mã khi nhóm có nhiều loại tệp
 #              (thứ tự trong danh sách là thứ tự ở ô chọn Loại tệp). Bỏ trống khi
 #              chưa có bộ bảng: nhóm thông tin vẫn hiện trong ô chọn nhưng chưa nạp
@@ -20,8 +20,8 @@
 domains:
   - code: HQKD
     name: Hiệu quả kinh doanh theo nhóm và khách hàng
-    bo_bang: BAO_CAO_HQKH
+    forms: BAO_CAO_HQKH
 
   - code: HQ-MAU-GC
     name: Hiệu quả may mẫu chào hàng, gia công ngoài
-    bo_bang: [LICH_MAY_MAU, DON_GIA_CONG]
+    forms: [LICH_MAY_MAU, DON_GIA_CONG]

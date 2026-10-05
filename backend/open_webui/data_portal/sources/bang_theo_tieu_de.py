@@ -82,10 +82,10 @@ class BangTheoTieuDeReader:
         self.path = path
         self._form = form
         self._table = form.tables[0]
-        self._opts = form.source_opts
-        self._can = list(dict.fromkeys(c.tieu_de for c in self._table.cot_tu_tep))
+        self._opts = form.source_options
+        self._can = list(dict.fromkeys(c.file_header for c in self._table.file_columns))
         # Thứ tự cột như trong tệp (khai ở bộ bảng) cho câu báo lỗi; mặc định theo cột.
-        thu_tu = [c for c in self._opts.get("cot_can", []) if c in self._can]
+        thu_tu = [c for c in self._opts.get("required_headers", []) if c in self._can]
         self._cot_bao_loi = thu_tu + [c for c in self._can if c not in thu_tu]
         self._loi: list[LoiNguon] = []
         self._hang: list[SourceRow] = []
@@ -177,7 +177,7 @@ class BangTheoTieuDeReader:
         self._tieu_de = ten
         cot_can = [ten[chuan_ten(c)][0] for c in self._can]
 
-        bat_dau = dong_td + int(self._opts.get("dong_du_lieu", 1))
+        bat_dau = dong_td + int(self._opts.get("data_row_offset", 1))
         an = {r for r, kt in ws.row_dimensions.items() if kt.hidden}
         dong_den = bat_dau - 1
         so_an = 0
@@ -195,16 +195,16 @@ class BangTheoTieuDeReader:
             "dong_tu": bat_dau, "dong_den": dong_den,
             "so_dong_an": so_an, "so_dong_hien": len(self._hang) - so_an,
         }
-        o_tong = self._opts.get("o_tong")
+        o_tong = self._opts.get("total_cell")
         if o_tong:
             khop = _O.match(str(o_tong))
             c, d = chi_so_cot(khop.group(1)), int(khop.group(2))
             self.thong_tin["o_tong"] = {
                 "o": o_tong, "gia_tri": o_thanh_van_ban(luoi.get(d, {}).get(c)),
                 "tieu_de": " ".join(str(luoi.get(dong_td, {}).get(c) or "").split()),
-                "ghi_nhan": bool(self._opts.get("o_tong_ghi_nhan")),
+                "ghi_nhan": bool(self._opts.get("total_cell_informational")),
             }
-        o_ngay = self._opts.get("o_ngay_ban")
+        o_ngay = self._opts.get("report_date_cell")
         if o_ngay:
             khop = _O.match(str(o_ngay))
             self.thong_tin["ngay_ban"] = doc_ngay_ban(

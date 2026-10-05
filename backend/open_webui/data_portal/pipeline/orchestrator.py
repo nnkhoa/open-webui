@@ -104,14 +104,14 @@ def _chay_trong_khoa(ctx: LoadContext, table_id: dict[str, int], settings,
     truoc = doi_chieu_the.chup_truoc(ctx)
 
     # Ghi lớp gốc rồi ép kiểu. Danh mục trước, số liệu sau.
-    for table in form.tables_theo_thu_tu:
+    for table in form.tables_by_dependency:
         hang_goc = bronze.ghi(ctx, table)
         ctx.dong_sach[table.name], trung = validate.kiem_tra(table, hang_goc)
         ctx.bang(table).rows_duplicate = len(trung)
         _ghi_nhan_ky(ctx, table)
 
     # Chuẩn hoá rồi phân tích.
-    for table in form.tables_theo_thu_tu:
+    for table in form.tables_by_dependency:
         silver.hop_nhat(ctx, table, ctx.dong_sach[table.name])
         gold.dung(ctx, table)
         silver.ghi_phan_vung(ctx, table, table_id[table.name])
@@ -169,7 +169,7 @@ def _cac_buoc(ctx: LoadContext, kt: dict, a4: str | None, the: dict,
     for r in reconcile.ket_qua_theo_lan_nap(ctx.conn, ctx.load_id):
         recon.setdefault(r["step"], []).append(r)
     se_ghi = {b["bang"]: b["se_ghi"] for b in kt.get("bang", [])}
-    bang = [t for t in ctx.form.tables_hien_thi if ctx.bang(t).rows_bronze]
+    bang = [t for t in ctx.form.tables_by_display_order if ctx.bang(t).rows_bronze]
 
     # B1 — tệp ↔ lớp gốc, qua đường đọc độc lập.
     r1 = recon.get("R1", [])

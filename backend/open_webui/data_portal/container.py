@@ -14,7 +14,7 @@ from .domain import ket_noi_kho
 from .errors import MigrationError, WarehouseNotConfigured
 from .migrate import ledger
 from .registry import sync
-from .registry.loader import FormRegistry, doc_thu_muc
+from .registry.loader import FormRegistry, load_definitions
 
 
 @dataclass
@@ -64,7 +64,7 @@ class Container:
     def build_warehouse(self, catalog_conn) -> None:
         with self.warehouse.transaction() as conn:
             ledger.apply(conn, self.settings.warehouse_migrations_dir, applied_by='portal')
-            sync.chieu_lai(catalog_conn, conn)
+            sync.mirror_to_warehouse(catalog_conn, conn)
 
 
 def build_container(settings: Settings | None = None) -> Container:
@@ -73,10 +73,10 @@ def build_container(settings: Settings | None = None) -> Container:
         settings=settings,
         catalog=Catalog(settings.catalog_path, settings.catalog_migrations_dir),
         warehouse=Warehouse(),
-        registry=doc_thu_muc(settings.registry_dir),
+        registry=load_definitions(settings.registry_dir),
     )
     container.catalog.open()
     with container.catalog.transaction() as catalog_conn:
-        sync.dong_bo(catalog_conn, None, container.registry)
+        sync.sync_definitions(catalog_conn, None, container.registry)
         container.reconnect_warehouse(catalog_conn)
     return container
