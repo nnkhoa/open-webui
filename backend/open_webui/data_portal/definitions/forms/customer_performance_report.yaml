@@ -28,7 +28,7 @@ form:
     Doanh thu, giá vốn, lợi nhuận và chi phí theo khách hàng, nhóm kinh doanh
     và tháng.
   source:
-    kind: bao_cao_hieu_qua_kh
+    kind: customer_report
 
 tables:
   # --------------------------------- DANH MỤC ---------------------------------

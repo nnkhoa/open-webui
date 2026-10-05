@@ -247,7 +247,7 @@ export const downloadLoadErrors = async (token: string, loadId: number): Promise
 	downloadFile(
 		token,
 		`${DATA_PORTAL_API_BASE_URL}/loads/${loadId}/errors.csv`,
-		`loi-lan-nap-${loadId}.csv`
+		`load-${loadId}-errors.csv`
 	);
 
 export const downloadLoadFile = async (

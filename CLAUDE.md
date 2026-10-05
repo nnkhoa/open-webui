@@ -77,7 +77,7 @@ reconcile, roll back, browse data. The spec is
   (`get_verified_user`); roles `admin` and `data_uploader` only.
 - Started in `lifespan` on a worker thread (opens the SQLite notebook, syncs
   the form registry, connects to the warehouse, applies migrations).
-- Storage: `{DATA_DIR}/data_portal/so-tay.db` and `uploads/`; the warehouse
+- Storage: `{DATA_DIR}/data_portal/catalog.db` and `uploads/`; the warehouse
   address lives in the notebook, seeded once from `DATA_PORTAL_DATABASE_URL`.
 - Forms and groups: `data_portal/definitions/`; migrations:
   `data_portal/migrations/`. After editing a form run
@@ -186,16 +186,13 @@ node_modules/.bin/vitest run --dir src                                     # fro
   monkeypatch lazily imported helpers on their home module.
 - Frontend logic worth testing goes in plain `.ts` modules with a colocated `*.test.ts`
   (vitest, node environment, no DOM).
-- `test/data_portal/` needs a throwaway Postgres database whose name ends in `_test`
-  (`DATA_PORTAL_TEST_DATABASE_URL`); its fixture drops schemas, so it refuses any other name.
-  It is not part of the fast tier.
 
 ## Lint
 
 - Python: the upstream CI rules on changed files —
   `ruff check --select=F --ignore=F401,F403,F405,F541,F811,F841` and `ruff format --check`
-  (ruff 0.16.10, line length 120, single quotes). `data_portal/` and `test/data_portal/` keep
-  their own double-quote style and are excluded from the format check.
+  (ruff 0.16.10, line length 120, single quotes). `data_portal/` keeps
+  its own double-quote style and are excluded from the format check.
 - Frontend: `prettier --check` on changed files (tabs, single quotes, width 100). Never run
   `npm run format` or `npm run lint:frontend` — they rewrite the whole tree.
 

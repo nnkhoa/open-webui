@@ -38,7 +38,7 @@ def load_settings() -> Settings:
     data_dir = Path(os.getenv('DATA_PORTAL_DIR', DATA_DIR / 'data_portal'))
     settings = Settings(
         default_database_url=os.getenv('DATA_PORTAL_DATABASE_URL') or None,
-        catalog_path=data_dir / 'so-tay.db',
+        catalog_path=data_dir / 'catalog.db',
         catalog_migrations_dir=PACKAGE_DIR / 'migrations' / 'catalog',
         registry_dir=PACKAGE_DIR / 'definitions',
         warehouse_migrations_dir=PACKAGE_DIR / 'migrations' / 'warehouse',

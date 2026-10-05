@@ -422,7 +422,7 @@ TABLE_PURPOSE_MEASURE = 'Số đo: cộng được khi gom theo tháng, nhóm ki
 TABLE_PURPOSE_ATTRIBUTE = 'Thuộc tính mô tả: dùng để lọc, gom nhóm và hiển thị.'
 
 EXPORT_ERRORS_CSV_HEADER = ('Sheet', 'Vị trí', 'Vấn đề', 'Cách xử lý')
-EXPORT_ERRORS_CSV_NAME = 'loi-lan-nap-{load_id}.csv'
+EXPORT_ERRORS_CSV_NAME = 'load-{load_id}-errors.csv'
 
 DB_CONFIG_INVALID = 'Cấu hình kết nối chưa hợp lệ.'
 DB_CONFIG_MISSING_HOST = 'Chưa nhập địa chỉ máy chủ.'

@@ -191,7 +191,7 @@ Link = {table, layer: "gold"|"silver"|"bronze", year?, period?, query?}  hoặc 
 
 ### 3.9 `GET /loads/{id}/errors.csv`
 
-`text/csv; charset=utf-8` có BOM, `Content-Disposition: attachment; filename="loi-lan-nap-{id}.csv"`. Cột: Sheet, Vị trí, Vấn đề, Cách xử lý.
+`text/csv; charset=utf-8` có BOM, `Content-Disposition: attachment; filename="load-{id}-errors.csv"`. Cột: Sheet, Vị trí, Vấn đề, Cách xử lý.
 
 ### 3.10 Tệp gốc
 

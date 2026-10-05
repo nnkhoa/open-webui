@@ -17,7 +17,7 @@ from .xlsx import cell_text, is_blank, open_workbook
 if TYPE_CHECKING:
     from ..registry.schema import Form
 
-KIND = 'bang_theo_tieu_de'
+KIND = 'header_table'
 HEADER_SEARCH_ROWS = 30
 TOTAL_ROW_PREFIXES = ('total', 'tổng cộng')
 CELL_REFERENCE_PATTERN = re.compile(r'^([A-Z]+)(\d+)$')

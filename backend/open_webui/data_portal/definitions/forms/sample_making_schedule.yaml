@@ -26,7 +26,7 @@ form:
     unknown_sheet: ignore
     unknown_column: ignore
   source:
-    kind: bang_theo_tieu_de
+    kind: header_table
     data_row_offset: 3           # dữ liệu bắt đầu ở dòng tiêu đề + 3 (dòng 14 khi tiêu đề ở dòng 11)
     total_cell: P10              # ô SUBTOTAL — chỉ cộng dòng đang hiện, chỉ ghi nhận (QT-14)
     total_cell_informational: true
