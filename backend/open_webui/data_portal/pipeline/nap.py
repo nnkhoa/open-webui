@@ -22,9 +22,9 @@ from typing import BinaryIO
 from psycopg import sql
 
 from ..db import sql as q
-from ..errors import CauTrucError, DoiChieuError, KhongTimThay, NguonDuLieuError
+from ..errors import NotFound, ReconcileError, SourceFileError, StructureError
 from ..registry.schema import Form, FormTable
-from ..security.audit import ghi as ghi_nhat_ky
+from ..security.audit import record_event
 from . import cac_buoc, dedup, kiem_tra_tep, orchestrator, tep_cho
 from .reconcile import NHAN_BUOC
 
@@ -49,7 +49,7 @@ def kiem_tra(kho, so_tay, settings, *, domain_id: int, domain_code: str, form_id
              form: Form, nam: int, ten_tep: str, nguon: BinaryIO, nguoi_id: str,
              nguoi_ten: str, request_id: str) -> dict:
     """Đọc và kiểm tra tệp, không ghi dữ liệu. Trả `{"ma_tep_cho"}` hoặc
-    `{"load_id", "status": "rejected"}`. Tệp không mở được ⇒ `NguonDuLieuError`."""
+    `{"load_id", "status": "rejected"}`. Tệp không mở được ⇒ `SourceFileError`."""
     tep_cho.don_tep_bo_do(settings.upload_dir)
     tep = tep_cho.luu(settings.upload_dir, nguon, {
         "domain_id": domain_id, "nhom": domain_code, "form_id": form_id,
@@ -59,7 +59,7 @@ def kiem_tra(kho, so_tay, settings, *, domain_id: int, domain_code: str, form_id
     file_sha256, so_byte = dedup.bam_tep(tep.duong_dan)
     try:
         kt = kiem_tra_tep.kiem_tra(form, tep.duong_dan, nam)
-    except NguonDuLieuError:
+    except SourceFileError:
         tep_cho.xoa(tep)
         raise
     tep.thong_tin.update({"sha256": file_sha256, "size_bytes": so_byte, "kiem_tra": kt})
@@ -95,7 +95,7 @@ def ghi_that_bai(kho, so_tay, trang_thai: str, loi: list[dict], *, domain_id: in
                  nam: int | None, kiem_tra: dict | None, cac: list[dict] | None,
                  doi_chieu: dict | None) -> int:
     """Ghi bản ghi lần nạp thất bại (Bị từ chối / Lỗi đối chiếu) ở giao dịch mới."""
-    with kho.giao_dich() as conn:
+    with kho.transaction() as conn:
         upload_id = q.scalar(
             conn,
             "INSERT INTO ctl.upload (domain_id, form_id, file_name, file_sha256, "
@@ -119,8 +119,8 @@ def ghi_that_bai(kho, so_tay, trang_thai: str, loi: list[dict], *, domain_id: in
              nam, _json(kiem_tra), _json(cac), _json(doi_chieu),
              (kiem_tra or {}).get("so_sheet", 0)),
         )
-    with so_tay.giao_dich() as so:
-        ghi_nhat_ky(so, action=f"load.{trang_thai}", actor_user_id=None,
+    with so_tay.transaction() as so:
+        record_event(so, action=f"load.{trang_thai}", actor_user_id=None,
                     actor_username=nguoi_ten, domain_id=domain_id, object_type="load",
                     object_id=str(load_id), request_id=request_id,
                     detail={"nguoi_id": nguoi_id, "nam": nam})
@@ -354,7 +354,7 @@ def xac_nhan(kho, so_tay, settings, form: Form, tep: tep_cho.TepCho, *,
     """Ghi tệp chờ vào database. Trả `{"load_id", "status"}`."""
     giu = tep_cho.giu_de_ghi(tep)
     if giu is None:
-        raise KhongTimThay(TEP_CHO_HET)
+        raise NotFound(TEP_CHO_HET)
     tt = giu.thong_tin
     kt = tt["kiem_tra"]
     dich = _cat_tep(settings.upload_dir, giu)
@@ -362,7 +362,7 @@ def xac_nhan(kho, so_tay, settings, form: Form, tep: tep_cho.TepCho, *,
              "file_name": tt["ten_tep"], "file_sha256": tt["sha256"]}
     try:
         try:
-            with kho.giao_dich() as conn:
+            with kho.transaction() as conn:
                 upload_id = q.scalar(
                     conn,
                     "INSERT INTO ctl.upload (domain_id, form_id, file_name, file_sha256, "
@@ -377,24 +377,24 @@ def xac_nhan(kho, so_tay, settings, form: Form, tep: tep_cho.TepCho, *,
                     upload_path=dich, actor_user_id=None, actor_username=tt["nguoi"],
                     request_id=request_id, settings=settings, nam=tt["nam"],
                     kiem_tra=kt, a4=a4, **chung)
-        except CauTrucError as exc:
-            kt_loi = {**kt, "loi": exc.loi, "buoc_loi": "A3"}
+        except StructureError as exc:
+            kt_loi = {**kt, "loi": exc.errors, "buoc_loi": "A3"}
             cac = (cac_buoc.buoc_a(kt_loi, nguoi=tt["nguoi"], a4=None,
                                    mot_bang=len(form.tables) == 1)
                    + cac_buoc.buoc_b_tu_choi("A3", cac_buoc.ten_b4(kt)))
             load_id = ghi_that_bai(
-                kho, so_tay, "rejected", exc.loi, so_byte=tt["size_bytes"],
+                kho, so_tay, "rejected", exc.errors, so_byte=tt["size_bytes"],
                 storage_uri=str(dich), nguoi_id=tt["nguoi_id"], nguoi_ten=tt["nguoi"],
                 request_id=request_id, nam=tt["nam"], kiem_tra=kt_loi, cac=cac,
                 doi_chieu=None, domain_id=tt["domain_id"], form_id=tt["form_id"],
                 file_name=tt["ten_tep"], file_sha256=tt["sha256"])
             return {"load_id": load_id, "status": "rejected"}
-        except DoiChieuError as exc:
+        except ReconcileError as exc:
             load_id = ghi_that_bai(
-                kho, so_tay, "mismatch", lech_thanh_loi(exc.lech), so_byte=tt["size_bytes"],
+                kho, so_tay, "mismatch", lech_thanh_loi(exc.mismatches), so_byte=tt["size_bytes"],
                 storage_uri=str(dich), nguoi_id=tt["nguoi_id"], nguoi_ten=tt["nguoi"],
-                request_id=request_id, nam=tt["nam"], kiem_tra=kt, cac=exc.cac_buoc,
-                doi_chieu=exc.doi_chieu, domain_id=tt["domain_id"], form_id=tt["form_id"],
+                request_id=request_id, nam=tt["nam"], kiem_tra=kt, cac=exc.steps,
+                doi_chieu=exc.reconciliation, domain_id=tt["domain_id"], form_id=tt["form_id"],
                 file_name=tt["ten_tep"], file_sha256=tt["sha256"])
             return {"load_id": load_id, "status": "mismatch"}
     except BaseException:
@@ -406,8 +406,8 @@ def xac_nhan(kho, so_tay, settings, form: Form, tep: tep_cho.TepCho, *,
         if giu.thu_muc.exists() and giu.thu_muc.name.endswith(tep_cho.DANG_GHI):
             tep_cho.xoa(giu)
 
-    with so_tay.giao_dich() as so:
-        ghi_nhat_ky(so, action="load.success", actor_user_id=None, actor_username=tt["nguoi"],
+    with so_tay.transaction() as so:
+        record_event(so, action="load.success", actor_user_id=None, actor_username=tt["nguoi"],
                     domain_id=tt["domain_id"], object_type="load", object_id=str(load_id),
                     request_id=request_id, detail={"nguoi_id": tt["nguoi_id"],
                                                    "nam": tt["nam"]})

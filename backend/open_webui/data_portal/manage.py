@@ -1,119 +1,131 @@
-"""Lệnh quản trị Data Portal (chạy trong thư mục `backend/`).
-
-    python -m open_webui.data_portal.manage migrate            áp dụng bước nâng cấp chưa chạy
-    python -m open_webui.data_portal.manage makemigration      so khai báo bảng với schema, sinh bước mới
-    python -m open_webui.data_portal.manage registry validate  kiểm tra khai báo trong khai_bao/
-    python -m open_webui.data_portal.manage registry ddl <mã>  in DDL sinh ra, không chạm cơ sở dữ liệu
-    python -m open_webui.data_portal.manage sync-registry      ghi khai báo vào sổ tay + kho
-
-Open WebUI tự áp dụng migration và chép khai báo mỗi lần khởi động; các lệnh này
-dùng khi phát triển, chủ yếu là `makemigration` sau khi sửa tệp trong `khai_bao/forms/`.
-"""
-
 from __future__ import annotations
 
 import argparse
 import sys
+from contextlib import AbstractContextManager
 
-from .config import doc_cau_hinh
-from .container import dung
-from .errors import ChuaCauHinhKho, PortalError
+from . import messages
+from .config import load_settings
+from .container import Container, build_container
+from .errors import PortalError, WarehouseNotConfigured
 from .migrate import ledger, planner
 from .registry import sync
 from .registry.ddl import ddl_form
 
 
-def _in(*phan) -> None:
-    print(*phan, file=sys.stdout)
-
-
-def _kho(container):
-    if not container.kho.da_cau_hinh:
-        raise ChuaCauHinhKho(ly_do=container.kho.ly_do)
-    return container.kho.giao_dich()
-
-
-def lenh_migrate(container, _) -> int:
-    with _kho(container) as conn:
-        # `ap_dung` tự chốt từng bước một, để bước hỏng không kéo theo bước trước.
-        ap = ledger.ap_dung(conn, container.settings.migrations_dir)
-    _in("Đã áp dụng:", ", ".join(ap)) if ap else _in("Schema đã ở phiên bản mới nhất.")
+def run_migrate(container: Container, _args: argparse.Namespace) -> int:
+    with _warehouse_transaction(container) as conn:
+        applied = ledger.apply(conn, container.settings.warehouse_migrations_dir)
+    if applied:
+        _echo(messages.CLI_APPLIED, ', '.join(applied))
+    else:
+        _echo(messages.CLI_UP_TO_DATE)
     return 0
 
 
-def lenh_makemigration(container, _) -> int:
-    with _kho(container) as conn:
-        sinh = [planner.sinh_buoc(conn, form, container.settings.migrations_dir)
-                for form in container.registry.forms]
-    sinh = [d for d in sinh if d is not None]
-    if not sinh:
-        _in("Không có chênh lệch: bảng vật lý đã đúng khai báo.")
+def run_makemigration(container: Container, _args: argparse.Namespace) -> int:
+    with _warehouse_transaction(container) as conn:
+        generated = [
+            planner.generate_migration(conn, form, container.settings.warehouse_migrations_dir)
+            for form in container.registry.forms
+        ]
+    generated = [path for path in generated if path is not None]
+    if not generated:
+        _echo(messages.CLI_NO_CHANGES)
         return 0
-    for dich in sinh:
-        _in(f"Đã sinh {dich}")
-    _in("\nHãy đọc lại tệp vừa sinh rồi chạy lệnh migrate.")
+    for path in generated:
+        _echo(messages.CLI_GENERATED.format(path=path))
+    _echo(messages.CLI_REVIEW_THEN_MIGRATE)
     return 0
 
 
-def lenh_registry(container, args) -> int:
-    if args.viec == "validate":
-        for form in container.registry.forms:
-            _in(f"✓ bộ bảng {form.code} v{form.version} — {len(form.tables)} bảng, "
-                f"{sum(len(t.columns) for t in form.tables)} cột")
-        for d in container.registry.domains:
-            bo = ", ".join(d.cac_bo_bang) or "(chưa có)"
-            _in(f"✓ nhóm thông tin {d.code} — {d.name} — bộ bảng {bo}")
-        _in("Khai báo hợp lệ.")
+def run_registry(container: Container, args: argparse.Namespace) -> int:
+    if args.action == 'validate':
+        _print_registry(container)
         return 0
-    if not args.ma:
-        _in("Thiếu mã khai báo. Ví dụ: registry ddl BAO_CAO_HQKH")
+    if not args.code:
+        _echo(messages.CLI_MISSING_FORM_CODE)
         return 2
-    _in(ddl_form(container.registry.form(args.ma)))
+    _echo(ddl_form(container.registry.form(args.code)))
     return 0
 
 
-def lenh_sync_registry(container, _) -> int:
-    with container.so_tay.giao_dich() as so:
-        if container.kho.da_cau_hinh:
-            with container.kho.giao_dich() as conn:
-                sync.dong_bo(so, conn, container.registry)
+def run_sync_registry(container: Container, _args: argparse.Namespace) -> int:
+    with container.catalog.transaction() as catalog_conn:
+        if container.warehouse.is_configured:
+            with container.warehouse.transaction() as conn:
+                sync.dong_bo(catalog_conn, conn, container.registry)
         else:
-            sync.dong_bo(so, None, container.registry)
-            _in("Kho chưa cấu hình — chỉ ghi vào sổ tay, sẽ chiếu sang khi nối được.")
-    _in("Đã ghi khai báo:", ", ".join(f.code for f in container.registry.forms),
-        "·", ", ".join(d.code for d in container.registry.domains))
+            sync.dong_bo(catalog_conn, None, container.registry)
+            _echo(messages.CLI_CATALOG_ONLY)
+    _echo(
+        messages.CLI_SYNCED,
+        ', '.join(form.code for form in container.registry.forms),
+        '·',
+        ', '.join(domain.code for domain in container.registry.domains),
+    )
     return 0
 
 
 def main() -> int:
-    bo_phan = argparse.ArgumentParser(description="Quản trị Data Portal")
-    lenh = bo_phan.add_subparsers(dest="lenh", required=True)
-    lenh.add_parser("migrate", help="Áp dụng nâng cấp schema chưa chạy")
-    lenh.add_parser("makemigration", help="Sinh bước nâng cấp từ khai báo bộ bảng")
-    lenh.add_parser("sync-registry", help="Ghi khai báo bộ bảng, nhóm thông tin vào sổ tay và kho")
-    p = lenh.add_parser("registry", help="Kiểm tra và in khai báo bảng")
-    p.add_argument("viec", choices=["validate", "ddl"])
-    p.add_argument("ma", nargs="?")
-
-    args = bo_phan.parse_args()
-    container = dung(doc_cau_hinh())
-    ham = {
-        "migrate": lenh_migrate,
-        "makemigration": lenh_makemigration,
-        "registry": lenh_registry,
-        "sync-registry": lenh_sync_registry,
-    }[args.lenh]
+    args = _build_parser().parse_args()
+    container = build_container(load_settings())
+    command = {
+        'migrate': run_migrate,
+        'makemigration': run_makemigration,
+        'registry': run_registry,
+        'sync-registry': run_sync_registry,
+    }[args.command]
     try:
-        return ham(container, args)
-    except ChuaCauHinhKho as exc:
-        _in(f"Lỗi: {exc} — {exc.ly_do}" if exc.ly_do else f"Lỗi: {exc}")
+        return command(container, args)
+    except WarehouseNotConfigured as e:
+        if e.reason:
+            _echo(messages.CLI_ERROR_WITH_REASON.format(error=e, reason=e.reason))
+        else:
+            _echo(messages.CLI_ERROR.format(error=e))
         return 1
-    except PortalError as exc:
-        _in(f"Lỗi: {exc}")
+    except PortalError as e:
+        _echo(messages.CLI_ERROR.format(error=e))
         return 1
     finally:
-        container.dong()
+        container.close()
 
 
-if __name__ == "__main__":
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=messages.CLI_DESCRIPTION)
+    commands = parser.add_subparsers(dest='command', required=True)
+    commands.add_parser('migrate', help=messages.CLI_HELP_MIGRATE)
+    commands.add_parser('makemigration', help=messages.CLI_HELP_MAKEMIGRATION)
+    commands.add_parser('sync-registry', help=messages.CLI_HELP_SYNC_REGISTRY)
+    registry = commands.add_parser('registry', help=messages.CLI_HELP_REGISTRY)
+    registry.add_argument('action', choices=['validate', 'ddl'])
+    registry.add_argument('code', nargs='?')
+    return parser
+
+
+def _print_registry(container: Container) -> None:
+    for form in container.registry.forms:
+        column_count = sum(len(table.columns) for table in form.tables)
+        _echo(
+            messages.CLI_FORM_VALID.format(
+                code=form.code, version=form.version, table_count=len(form.tables), column_count=column_count
+            )
+        )
+    for domain in container.registry.domains:
+        forms = ', '.join(domain.cac_bo_bang) or messages.CLI_NO_FORMS
+        _echo(messages.CLI_DOMAIN_VALID.format(code=domain.code, name=domain.name, forms=forms))
+    _echo(messages.CLI_DEFINITIONS_VALID)
+
+
+def _warehouse_transaction(container: Container) -> AbstractContextManager:
+    if not container.warehouse.is_configured:
+        raise WarehouseNotConfigured(reason=container.warehouse.reason)
+    return container.warehouse.transaction()
+
+
+def _echo(*parts: object) -> None:
+    print(*parts, file=sys.stdout)
+
+
+if __name__ == '__main__':
     sys.exit(main())

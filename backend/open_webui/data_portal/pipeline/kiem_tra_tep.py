@@ -18,7 +18,7 @@ from __future__ import annotations
 from decimal import Decimal
 from pathlib import Path
 
-from ..errors import CauTrucError
+from ..errors import StructureError
 from ..registry.schema import Form, FormTable
 from ..sources import bang_theo_tieu_de, bao_cao_kh  # noqa: F401 — đăng ký bộ đọc
 from ..sources import base as nguon
@@ -59,7 +59,7 @@ def sheet_goc(reader, table: FormTable) -> str:
 
 
 def kiem_tra(form: Form, duong_dan: Path, nam: int | None) -> dict:
-    """Kiểm tra một tệp đã nằm trên đĩa. Ném `NguonDuLieuError` nếu không mở được."""
+    """Kiểm tra một tệp đã nằm trên đĩa. Ném `SourceFileError` nếu không mở được."""
     cac_sheet = ten_cac_sheet(duong_dan)
     ket_qua: dict = {"so_sheet": len(cac_sheet), "cac_sheet": cac_sheet,
                      "loi": [], "buoc_loi": None, "bang": []}
@@ -112,9 +112,9 @@ def _kiem_tra_bang(reader, table: FormTable, nam: int | None, loi: list[dict]) -
     try:
         giu, trung = validate.kiem_tra(table, hang, o_hong)
         thieu = 0
-    except CauTrucError as exc:
-        loi += exc.loi
-        thieu = len(exc.loi)
+    except StructureError as exc:
+        loi += exc.errors
+        thieu = len(exc.errors)
         giu, trung = [], []
 
     cot_tong = cot_cong_tong(table)

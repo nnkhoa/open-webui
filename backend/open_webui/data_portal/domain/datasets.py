@@ -11,7 +11,7 @@ from decimal import Decimal
 from psycopg import sql
 
 from ..db import sql as q
-from ..errors import KhongTimThay
+from ..errors import NotFound
 from ..registry.loader import FormRegistry
 from ..registry.schema import FormColumn, FormTable
 
@@ -63,7 +63,7 @@ def so_dong(conn, table: FormTable, domain_id: int, lop: str = "gold") -> int:
     lớp gốc đếm hết vì nó là bản ghi y nguyên mọi lần nạp.
     """
     if lop not in LOP_HOP_LE:
-        raise KhongTimThay(f"Không có lớp dữ liệu {lop!r}.")
+        raise NotFound(f"Không có lớp dữ liệu {lop!r}.")
     dieu_kien = sql.SQL("domain_id = %s")
     if lop in ("gold", "silver"):
         dieu_kien = sql.SQL("domain_id = %s AND is_current")
@@ -148,7 +148,7 @@ def doc_bang(conn, registry: FormRegistry, table: FormTable, domain_id: int, *,
              trang: int = 1, moi_trang: int = 50) -> dict:
     """Dữ liệu cho bảng ở P08, kèm hàng tổng khi đang lọc."""
     if lop not in LOP_HOP_LE:
-        raise KhongTimThay(f"Không có lớp dữ liệu {lop!r}.")
+        raise NotFound(f"Không có lớp dữ liệu {lop!r}.")
     cot = cot_hien_thi(table, lop)
     chon, tu = _cau_chon(table, lop, cot)
     where, tham_so = _bo_loc(table, lop, ky, tim, domain_id)

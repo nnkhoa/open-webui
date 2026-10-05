@@ -69,7 +69,7 @@ class ColumnType:
         raise NotImplementedError
 
     def display(self, value: Any) -> str:
-        from ..format import EMPTY
+        from ..formatting import EMPTY
 
         return EMPTY if value is None else str(value)
 
@@ -138,9 +138,9 @@ class MoneyType(_NumericType):
     label_vi = "Số, có thể âm"
 
     def display(self, value: Any) -> str:
-        from ..format import so_tien
+        from ..formatting import format_amount
 
-        return so_tien(value)
+        return format_amount(value)
 
 
 @register
@@ -151,9 +151,9 @@ class NumberType(_NumericType):
     label_vi = "Số"
 
     def display(self, value: Any) -> str:
-        from ..format import so_tien
+        from ..formatting import format_amount
 
-        return so_tien(value)
+        return format_amount(value)
 
 
 @register
@@ -178,9 +178,9 @@ class RatioType(_NumericType):
         return super().parse(raw)
 
     def display(self, value: Any) -> str:
-        from ..format import ty_le
+        from ..formatting import format_percent
 
-        return ty_le(value)
+        return format_percent(value)
 
 
 @register
@@ -200,9 +200,9 @@ class IntType(ColumnType):
         return Verdict.good(int(text))
 
     def display(self, value: Any) -> str:
-        from ..format import so_nguyen
+        from ..formatting import format_integer
 
-        return so_nguyen(value)
+        return format_integer(value)
 
 
 @register
@@ -224,7 +224,7 @@ class MonthType(ColumnType):
         return Verdict.good(date(year, month, 1))
 
     def display(self, value: Any) -> str:
-        from ..format import EMPTY
+        from ..formatting import EMPTY
 
         if value is None:
             return EMPTY
@@ -248,9 +248,9 @@ class DateType(ColumnType):
             return Verdict.bad(CODE_VALUE_UNPARSABLE)
 
     def display(self, value: Any) -> str:
-        from ..format import ngay
+        from ..formatting import format_date
 
-        return ngay(value)
+        return format_date(value)
 
 
 @register
@@ -294,6 +294,6 @@ class BoolType(ColumnType):
         return Verdict.bad(CODE_VALUE_UNPARSABLE)
 
     def display(self, value: Any) -> str:
-        from ..format import EMPTY
+        from ..formatting import EMPTY
 
         return EMPTY if value is None else ("Có" if value else "Không")

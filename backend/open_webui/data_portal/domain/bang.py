@@ -12,7 +12,7 @@ from decimal import Decimal
 from psycopg import sql
 
 from ..db import sql as q
-from ..errors import KhongTimThay
+from ..errors import NotFound
 from ..registry.loader import FormRegistry
 from ..registry.schema import FormTable
 from . import datasets
@@ -105,7 +105,7 @@ def doc(conn, table: FormTable, domain_id: int, *, lop: str, nam: int | None, ky
         tim: str, trang: int, moi: int | None) -> dict:
     """Các dòng của bảng theo bộ lọc. `moi=None` ⇒ lấy hết (tải Excel)."""
     if lop not in TEN_LOP:
-        raise KhongTimThay(f"Không có lớp dữ liệu {lop!r}.")
+        raise NotFound(f"Không có lớp dữ liệu {lop!r}.")
     cot = [c for c in table.columns if c.show_in_table]
     where, tham = _bo_loc(table, lop, nam, ky, tim, domain_id)
     tu = sql.SQL("{} t").format(sql.Identifier(lop, table.name))

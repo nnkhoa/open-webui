@@ -1,124 +1,78 @@
-"""Cây ngoại lệ của portal.
-
-Nguyên tắc: lỗi nghiệp vụ là exception có kiểu rõ ràng, lỗi hạ tầng được map ở
-adapter. Không `except: pass` ở bất kỳ đâu.
-
-Bộ bắt lỗi tập trung ở `web/errors.py` dịch cây này sang trang P12.
-"""
-
 from __future__ import annotations
+
+from . import messages
 
 
 class PortalError(Exception):
-    """Gốc của mọi lỗi portal tự sinh ra."""
-
-    ma_http = 500
+    status_code = 500
 
 
 class RegistryError(PortalError):
-    """Khai báo trong `khai_bao/` sai — phát hiện lúc `registry validate`, không lúc chạy."""
+    pass
 
 
 class MigrationError(PortalError):
-    """Nâng cấp schema hỏng."""
+    pass
 
 
-class NguonDuLieuError(PortalError):
-    """Không đọc được tệp nguồn: hỏng, sai định dạng, có mật khẩu."""
-
-    ma_http = 400
+class SourceFileError(PortalError):
+    status_code = 400
 
 
-class CauTrucError(PortalError):
-    """Tệp sai cấu trúc ⇒ từ chối cả tệp. Mang theo danh sách lỗi."""
+class StructureError(PortalError):
+    status_code = 400
 
-    ma_http = 400
-
-    def __init__(self, loi: list[dict]) -> None:
-        super().__init__(f"Tệp có {len(loi)} lỗi cấu trúc.")
-        self.loi = loi
+    def __init__(self, errors: list[dict]) -> None:
+        super().__init__(messages.ERROR_STRUCTURE.format(count=len(errors)))
+        self.errors = errors
 
 
-class DoiChieuError(PortalError):
-    """Đối chiếu R1–R4 lệch ⇒ huỷ cả giao dịch."""
-
-    def __init__(self, lech: list[dict], cac_buoc: list[dict] | None = None,
-                 doi_chieu: dict | None = None) -> None:
-        super().__init__(f"Đối chiếu lệch ở {len(lech)} bước.")
-        self.lech = lech
-        # Các bước A1–B5 và thẻ đối chiếu đã tính trong giao dịch bị huỷ — giữ
-        # lại để ghi vào bản ghi lần nạp "Lỗi đối chiếu" ở giao dịch mới.
-        self.cac_buoc = cac_buoc
-        self.doi_chieu = doi_chieu
-
-
-class KhongCoQuyen(PortalError):
-    """403 — không tiết lộ đối tượng có tồn tại hay không."""
-
-    ma_http = 403
-
-    def __init__(self, thong_diep: str = "Bạn không có quyền thực hiện thao tác này") -> None:
-        super().__init__(thong_diep)
+class ReconcileError(PortalError):
+    def __init__(
+        self,
+        mismatches: list[dict],
+        steps: list[dict] | None = None,
+        reconciliation: dict | None = None,
+    ) -> None:
+        super().__init__(messages.ERROR_RECONCILE_MISMATCH.format(count=len(mismatches)))
+        self.mismatches = mismatches
+        self.steps = steps
+        self.reconciliation = reconciliation
 
 
-class ChuaCoBoBang(PortalError):
-    """Domain đang chọn chưa được gắn bộ bảng nào trong `khai_bao/domains.yaml`.
+class PermissionDenied(PortalError):
+    status_code = 403
 
-    Là **tình trạng**, không phải lỗi: nhóm thông tin vẫn hiện trong ô chọn, chỉ chưa
-    nạp và chưa xem dữ liệu được. Bộ bắt lỗi nói rõ điều đó trong khung ứng dụng.
-    """
-
-    def __init__(self, ten_domain: str) -> None:
-        super().__init__(f"Nhóm thông tin {ten_domain} chưa có bộ bảng")
-        self.ten_domain = ten_domain
+    def __init__(self, message: str = messages.ERROR_PERMISSION_DENIED) -> None:
+        super().__init__(message)
 
 
-class ChuaCauHinhKho(PortalError):
-    """Chưa trỏ portal tới cơ sở dữ liệu nào — **không phải thiếu quyền**.
+class WarehouseNotConfigured(PortalError):
+    status_code = 503
 
-    Sổ tay SQLite luôn có; kho dữ liệu PostgreSQL thì không. Lần đầu dựng
-    portal, hoặc khi máy chủ cơ sở dữ liệu tắt, mọi màn đụng tới dữ liệu đều
-    không chạy được. Tách hẳn thành một kiểu riêng để bộ bắt lỗi đưa Quản trị
-    thẳng tới màn Cấu hình database, thay vì trả một trang 500 không nói gì.
-
-    `ly_do` là câu psycopg trả về khi thử kết nối — nói thẳng "sai mật khẩu"
-    hay "máy chủ từ chối" hữu ích hơn nhiều so với "không kết nối được".
-    """
-
-    ma_http = 503
-
-    def __init__(self, la_quan_tri: bool = False, ly_do: str = "") -> None:
-        super().__init__("Chưa cấu hình cơ sở dữ liệu")
-        self.la_quan_tri = la_quan_tri
-        self.ly_do = ly_do
+    def __init__(self, reason: str = '') -> None:
+        super().__init__(messages.ERROR_WAREHOUSE_NOT_CONFIGURED)
+        self.reason = reason
 
 
-class KhongTimThay(PortalError):
-    ma_http = 404
+class NotFound(PortalError):
+    status_code = 404
 
 
-class ChuaSanSang(PortalError):
-    """503 — Data Portal chưa khởi động xong (đang mở sổ tay, nối kho)."""
+class NotReady(PortalError):
+    status_code = 503
 
-    ma_http = 503
-
-    def __init__(self, thong_diep: str = "Data Portal đang khởi động. Thử lại sau ít giây."
-                 ) -> None:
-        super().__init__(thong_diep)
+    def __init__(self, message: str = messages.ERROR_NOT_READY) -> None:
+        super().__init__(message)
 
 
-class XungDot(PortalError):
-    """409 — thao tác không hợp với trạng thái hiện tại (ví dụ gỡ lần nạp không
-    phải mới nhất, QT-17)."""
-
-    ma_http = 409
+class Conflict(PortalError):
+    status_code = 409
 
 
-class DuLieuVaoSai(PortalError):
-    """Người dùng nhập sai ở biểu mẫu. `theo_truong` để hiện lỗi cạnh từng ô."""
+class InvalidInput(PortalError):
+    status_code = 400
 
-    ma_http = 400
-
-    def __init__(self, thong_diep: str, theo_truong: dict[str, str] | None = None) -> None:
-        super().__init__(thong_diep)
-        self.theo_truong = theo_truong or {}
+    def __init__(self, message: str, field_errors: dict[str, str] | None = None) -> None:
+        super().__init__(message)
+        self.field_errors = field_errors or {}

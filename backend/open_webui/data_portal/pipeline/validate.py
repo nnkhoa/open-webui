@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..errors import CauTrucError
+from ..errors import StructureError
 from ..registry.schema import FormTable
 from ..registry.types import CODE_ENUM_UNKNOWN
 from .context import DongSach
@@ -26,7 +26,7 @@ def kiem_tra(table: FormTable, hang_goc: list[tuple[int, int, str, dict]],
              o_hong: dict[str, dict[str, int]] | None = None
              ) -> tuple[list[DongSach], list[DongSach]]:
     """Trả `(dòng vào lớp chuẩn hoá, dòng trùng y hệt đã bỏ)`. Có lỗi thì ném
-    `CauTrucError`.
+    `StructureError`.
 
     `o_hong` (nếu truyền) nhận số ô không đổi được kiểu, theo cột rồi theo giá
     trị trong tệp — ô đó để trống ở lớp chuẩn hoá và chỉ được đếm (QT-11)."""
@@ -53,7 +53,7 @@ def kiem_tra(table: FormTable, hang_goc: list[tuple[int, int, str, dict]],
         dat.append(DongSach(source_row=source_row, bronze_id=bronze_id,
                             row_hash=row_hash, values=gia_tri))
     if loi:
-        raise CauTrucError(loi)
+        raise StructureError(loi)
     return _bo_dong_trung(dat) if table.is_dim else (dat, [])
 
 

@@ -12,7 +12,7 @@ from pathlib import Path
 
 from openpyxl import load_workbook
 
-from ..errors import NguonDuLieuError
+from ..errors import SourceFileError
 
 
 def o_trong(value) -> bool:
@@ -48,10 +48,10 @@ def mo_so(path: Path, *, data_only: bool = True, read_only: bool = False):
     try:
         return load_workbook(path, data_only=data_only, read_only=read_only)
     except zipfile.BadZipFile:
-        raise NguonDuLieuError(
+        raise SourceFileError(
             "Tệp không phải định dạng .xlsx hợp lệ. Nếu tệp là .xls cũ, hãy mở bằng "
             "Excel và lưu lại thành .xlsx."
         ) from None
     except Exception as exc:
-        raise NguonDuLieuError(f"Không mở được tệp: {exc}") from None
+        raise SourceFileError(f"Không mở được tệp: {exc}") from None
 

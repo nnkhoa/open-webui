@@ -55,6 +55,6 @@ def test_luu_va_bo_cau_hinh(admin, sach):
                                      "bị đụng tới."}
     assert admin("GET", "/loads?nhom=HQKD").status_code in (200, 503)
     # Nối lại kho cho các kiểm thử sau.
-    with sach.so_tay.giao_dich() as so:
-        sach.noi_lai_kho(so)
-    assert sach.kho.da_cau_hinh
+    with sach.catalog.transaction() as so:
+        sach.reconnect_warehouse(so)
+    assert sach.warehouse.is_configured

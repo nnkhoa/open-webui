@@ -138,7 +138,7 @@ def r1(ctx: LoadContext, table: FormTable, table_id: int) -> bool:
     goc = q.query(
         ctx.conn,
         sql.SQL("SELECT source_row, {cot} FROM {bang} WHERE load_id = %s").format(
-            cot=q.danh_sach_cot(table.column_names),
+            cot=q.column_list(table.column_names),
             bang=sql.Identifier("bronze", table.name)),
         (ctx.load_id,),
     )
@@ -205,7 +205,7 @@ def r2(ctx: LoadContext, table: FormTable, table_id: int) -> bool:
 
 def r3(ctx: LoadContext, table: FormTable, table_id: int) -> bool:
     """So hai chiều bằng `EXCEPT ALL` trên các cột được chép nguyên."""
-    cot = q.danh_sach_cot(table.column_names)
+    cot = q.column_list(table.column_names)
     silver = sql.Identifier("silver", table.name)
     gold = sql.Identifier("gold", table.name)
 

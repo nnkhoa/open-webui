@@ -13,8 +13,8 @@ from __future__ import annotations
 from psycopg import sql
 
 from ..db import sql as q
-from ..db.lock import khoa_ghi
-from ..errors import DuLieuVaoSai
+from ..db.lock import acquire_write_locks
+from ..errors import InvalidInput
 from ..registry.loader import FormRegistry
 
 # Trạng thái lần nạp xoá được khỏi lịch sử: không có dòng dữ liệu nào.
@@ -51,13 +51,13 @@ def co_go_duoc(conn, load_id: int) -> tuple[bool, str]:
 def go(conn, registry: FormRegistry, load_id: int) -> dict:
     duoc, ly_do = co_go_duoc(conn, load_id)
     if not duoc:
-        raise DuLieuVaoSai(ly_do)
+        raise InvalidInput(ly_do)
 
     lan_nap = q.query_one(
         conn, "SELECT load_id, batch_id, domain_id, form_id FROM ctl.load WHERE load_id = %s",
         (load_id,))
     batch_id = lan_nap["batch_id"]
-    khoa_ghi(conn, [(lan_nap["domain_id"], lan_nap["form_id"])])
+    acquire_write_locks(conn, [(lan_nap["domain_id"], lan_nap["form_id"])])
 
     form = registry.form(
         q.scalar(conn, "SELECT code FROM ctl.form WHERE form_id = %s", (lan_nap["form_id"],))
@@ -125,7 +125,7 @@ def xoa_lich_su(conn, load_id: int) -> str | None:
     lệch đối chiếu (giao dịch đã huỷ), hoặc đã gỡ. Trả đường dẫn tệp để xoá."""
     lan_nap = q.query_one(conn, "SELECT status FROM ctl.load WHERE load_id = %s", (load_id,))
     if lan_nap is None:
-        raise DuLieuVaoSai("Không tìm thấy lần nạp này.")
+        raise InvalidInput("Không tìm thấy lần nạp này.")
     if lan_nap["status"] not in XOA_DUOC:
-        raise DuLieuVaoSai("Chỉ xoá được lịch sử của lần nạp không còn dữ liệu.")
+        raise InvalidInput("Chỉ xoá được lịch sử của lần nạp không còn dữ liệu.")
     return _xoa_ban_ghi(conn, load_id)

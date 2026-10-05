@@ -9,7 +9,7 @@ Hàm thuần: nhận số liệu, trả danh sách `dict` để ghi vào `ctl.lo
 
 from __future__ import annotations
 
-from ..format import so_nguyen
+from ..formatting import format_integer
 
 TEN = {
     "A1": "Nhận tệp",
@@ -65,7 +65,7 @@ def _cac_loai_loi(loi: list[dict]) -> str:
 def cau_co_loi(loi: list[dict]) -> str:
     """"Có 3 lỗi (thiếu cột, lặp cột, thiếu sheet). Cả tệp bị từ chối."."""
     loai = _cac_loai_loi(loi)
-    return (f"Có {so_nguyen(len(loi))} lỗi" + (f" ({loai})" if loai else "")
+    return (f"Có {format_integer(len(loi))} lỗi" + (f" ({loai})" if loai else "")
             + ". Cả tệp bị từ chối.")
 
 
@@ -77,7 +77,7 @@ def ten_b4(kt: dict) -> str:
 def buoc_a(kt: dict, *, nguoi: str, a4: str | None, mot_bang: bool = False) -> list[dict]:
     """A1–A5. `a4` là câu của bước So với dữ liệu đang có; None khi bị từ chối."""
     loi_o = kt.get("buoc_loi")
-    ra = [_buoc("A1", f"Đúng định dạng .xlsx, đọc được {so_nguyen(kt['so_sheet'])} sheet.",
+    ra = [_buoc("A1", f"Đúng định dạng .xlsx, đọc được {format_integer(kt['so_sheet'])} sheet.",
                 "Đúng", "ok")]
 
     # A2 — cấu trúc
@@ -86,11 +86,11 @@ def buoc_a(kt: dict, *, nguoi: str, a4: str | None, mot_bang: bool = False) -> l
         ra.append(_buoc("A2", cau, "Sai", "err"))
     elif kt.get("sheet_du_lieu") and kt.get("dong_tieu_de"):
         ra.append(_buoc(
-            "A2", f"Sheet {kt['sheet_du_lieu']} có đủ {so_nguyen(kt['so_cot_can'])} cột "
-                  f"cần lấy ở dòng tiêu đề {so_nguyen(kt['dong_tieu_de'])}.", "Đúng", "ok"))
+            "A2", f"Sheet {kt['sheet_du_lieu']} có đủ {format_integer(kt['so_cot_can'])} cột "
+                  f"cần lấy ở dòng tiêu đề {format_integer(kt['dong_tieu_de'])}.", "Đúng", "ok"))
     else:
         sheet = [s for s in kt["cac_sheet"] if s in {b["sheet"] for b in kt["bang"]}]
-        ra.append(_buoc("A2", f"Đủ {so_nguyen(len(sheet))} sheet {', '.join(sheet)}; "
+        ra.append(_buoc("A2", f"Đủ {format_integer(len(sheet))} sheet {', '.join(sheet)}; "
                               f"đúng tên cột.", "Đúng", "ok"))
 
     # A3 — dữ liệu từng dòng
@@ -119,21 +119,21 @@ def cau_a3(kt: dict, mot_bang: bool) -> str:
     o_trong = sum(b["o_trong"] for b in bang)
     phan: list[str] = []
     if mot_bang:
-        pham_vi = (f" (dòng {so_nguyen(kt['dong_tu'])}–{so_nguyen(kt['dong_den'])})"
+        pham_vi = (f" (dòng {format_integer(kt['dong_tu'])}–{format_integer(kt['dong_den'])})"
                    if kt.get("dong_tu") and kt.get("dong_den") else "")
         trung = sum(b["trung_bo"] for b in bang)
-        phan.append(f"Đọc {so_nguyen(doc)} dòng{pham_vi}, "
+        phan.append(f"Đọc {format_integer(doc)} dòng{pham_vi}, "
                     + ("không có dòng trùng." if not trung
-                       else f"{so_nguyen(trung)} dòng trùng sẽ bỏ."))
+                       else f"{format_integer(trung)} dòng trùng sẽ bỏ."))
     else:
-        phan.append(f"Đọc {so_nguyen(doc)} dòng, không thiếu giá trị bắt buộc.")
+        phan.append(f"Đọc {format_integer(doc)} dòng, không thiếu giá trị bắt buộc.")
         for b in bang:
             if b["trung_bo"]:
-                phan.append(f"{so_nguyen(b['trung_bo'])} dòng trùng ở {b['ten_bang']} sẽ bỏ "
-                            f"({so_nguyen(b['doc'])} → {so_nguyen(b['se_ghi'])}).")
+                phan.append(f"{format_integer(b['trung_bo'])} dòng trùng ở {b['ten_bang']} sẽ bỏ "
+                            f"({format_integer(b['doc'])} → {format_integer(b['se_ghi'])}).")
     if o_trong:
-        phan.append(f"{so_nguyen(o_trong)} ô không đọc được ngày hoặc số sẽ để trống.")
-    phan.append(f"Sẽ ghi {so_nguyen(se_ghi)} dòng.")
+        phan.append(f"{format_integer(o_trong)} ô không đọc được ngày hoặc số sẽ để trống.")
+    phan.append(f"Sẽ ghi {format_integer(se_ghi)} dòng.")
     return " ".join(phan)
 
 

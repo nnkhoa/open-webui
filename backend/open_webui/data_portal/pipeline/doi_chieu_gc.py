@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from ..format import so_nguyen, so_tien
+from ..formatting import format_amount, format_integer
 from ..registry.schema import FormTable
 from .context import LoadContext
 from .doi_chieu_the import TIEU_DE, _mo_bang, so
@@ -85,8 +85,8 @@ def the_tong(ctx: LoadContext, table: FormTable, goc: list, db: list, kt: dict) 
             if o_tong.get("ghi_nhan"):
                 # SUBTOTAL chỉ cộng dòng đang hiện — chỉ ghi nhận, không chặn (QT-14).
                 hang["ket_luan"] = "Ghi nhận"
-                hang["phu"] = (f"Chỉ cộng {so_nguyen(kt.get('so_dong_hien', 0))} dòng đang "
-                               f"hiện; {so_nguyen(kt.get('so_dong_an', 0))} dòng bị bộ lọc "
+                hang["phu"] = (f"Chỉ cộng {format_integer(kt.get('so_dong_hien', 0))} dòng đang "
+                               f"hiện; {format_integer(kt.get('so_dong_an', 0))} dòng bị bộ lọc "
                                f"Excel ẩn. Portal đọc cả dòng ẩn.")
             else:
                 hang["ket_luan"] = "Đúng" if tep == trong_db else "Lệch"
@@ -267,8 +267,8 @@ def cau_b4(the: dict, lech: list[str], kt: dict, ten_bang: str) -> str:
         if ten.startswith("Tổng cột "):
             nhan = "Tổng" if not phan else "tổng"
             phan.append(f"{nhan} {ten.removeprefix('Tổng cột ')} "
-                        f"{so_tien(Decimal(str(d['o'][1])))} = "
-                        f"{so_tien(Decimal(str(d['o'][2])))}")
+                        f"{format_amount(Decimal(str(d['o'][1])))} = "
+                        f"{format_amount(Decimal(str(d['o'][2])))}")
         elif d["ket_luan"] != "Ghi nhận" and phan:
             o_tong = kt.get("o_tong") or {}
             phan[0] += f", bằng ô tổng {o_tong.get('o', '')} của tệp"

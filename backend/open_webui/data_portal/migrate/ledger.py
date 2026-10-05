@@ -1,9 +1,3 @@
-"""Sổ phiên bản schema
-
-Ghi từng bước đã chạy kèm mã kiểm tra, nên chạy lại là vô hại và sửa một tệp
-đã chạy bị phát hiện ngay.
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -14,96 +8,85 @@ from pathlib import Path
 
 from psycopg import sql
 
-from ..db import sql as q
+from .. import messages
+from ..db import sql as warehouse_sql
 from ..errors import MigrationError
 
-TEN_TEP = re.compile(r"^(\d{4})_([a-z0-9_]+)\.sql$")
+FILE_NAME_PATTERN = re.compile(r'^(\d{4})_([a-z0-9_]+)\.sql$')
 
 
 @dataclass(frozen=True)
-class Buoc:
+class Migration:
     version: int
     name: str
     sql_text: str
-    source: str            # 'manual' | 'generated'
+    source: str
 
     @property
     def checksum(self) -> str:
-        return hashlib.sha256(self.sql_text.encode("utf-8")).hexdigest()
+        return hashlib.sha256(self.sql_text.encode('utf-8')).hexdigest()
 
     @property
-    def nhan(self) -> str:
-        return f"{self.version:04d}_{self.name}"
+    def label(self) -> str:
+        return f'{self.version:04d}_{self.name}'
 
 
-def doc_cac_buoc(thu_muc: Path) -> list[Buoc]:
-    """Đọc `NNNN_ten.sql` ở thư mục gốc (viết tay) và trong `auto/` (sinh ra)."""
-    buoc: list[Buoc] = []
-    for path, nguon in [(p, "manual") for p in sorted(thu_muc.glob("*.sql"))] + [
-        (p, "generated") for p in sorted((thu_muc / "auto").glob("*.sql"))
-    ]:
-        khop = TEN_TEP.match(path.name)
-        if not khop:
-            raise MigrationError(
-                f"Tên tệp nâng cấp {path.name!r} phải theo dạng NNNN_ten_khong_dau.sql"
-            )
-        buoc.append(Buoc(int(khop.group(1)), khop.group(2),
-                         path.read_text(encoding="utf-8"), nguon))
-    so = [b.version for b in buoc]
-    trung = {v for v in so if so.count(v) > 1}
-    if trung:
-        raise MigrationError(f"Số hiệu nâng cấp bị lặp: {sorted(trung)}.")
-    return sorted(buoc, key=lambda b: b.version)
+def read_migrations(migrations_dir: Path) -> list[Migration]:
+    files = [(path, 'manual') for path in sorted(migrations_dir.glob('*.sql'))]
+    files += [(path, 'generated') for path in sorted((migrations_dir / 'auto').glob('*.sql'))]
+    migrations = [_read_migration(path, source) for path, source in files]
+    versions = [migration.version for migration in migrations]
+    duplicates = {version for version in versions if versions.count(version) > 1}
+    if duplicates:
+        raise MigrationError(messages.MIGRATION_DUPLICATE_VERSIONS.format(versions=sorted(duplicates)))
+    return sorted(migrations, key=lambda migration: migration.version)
 
 
-def so_da_chay(conn) -> dict[int, str]:
-    co_so = q.scalar(
+def applied_checksums(conn) -> dict[int, str]:
+    has_ledger = warehouse_sql.scalar(
         conn,
-        "SELECT count(*) FROM information_schema.tables "
-        "WHERE table_schema = 'ctl' AND table_name = 'schema_migration'",
+        "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'ctl' AND table_name = 'schema_migration'",
     )
-    if not co_so:
+    if not has_ledger:
         return {}
-    return {r["version"]: r["checksum"]
-            for r in q.query(conn, "SELECT version, checksum FROM ctl.schema_migration")}
+    rows = warehouse_sql.query(conn, 'SELECT version, checksum FROM ctl.schema_migration')
+    return {row['version']: row['checksum'] for row in rows}
 
 
-def ap_dung(conn, thu_muc: Path, nguoi_chay: str = "cli") -> list[str]:
-    """Áp dụng các bước chưa chạy, theo thứ tự, mỗi bước trong một giao dịch.
-
-    Bước đã chạy mà nội dung đổi ⇒ dừng với lỗi. Tệp nâng cấp đã áp dụng là bất
-    biến; muốn đổi thì thêm bước mới.
-    """
-    cac_buoc = doc_cac_buoc(thu_muc)
-    da_chay = so_da_chay(conn)
-    ap: list[str] = []
-    for buoc in cac_buoc:
-        cu = da_chay.get(buoc.version)
-        if cu is not None:
-            if cu != buoc.checksum:
-                raise MigrationError(
-                    f"Bước {buoc.nhan} đã chạy nhưng nội dung tệp đã đổi. "
-                    f"Tệp nâng cấp đã áp dụng là bất biến — hãy thêm một bước mới."
-                )
+def apply(conn, migrations_dir: Path, applied_by: str = 'cli') -> list[str]:
+    migrations = read_migrations(migrations_dir)
+    applied = applied_checksums(conn)
+    labels: list[str] = []
+    for migration in migrations:
+        checksum = applied.get(migration.version)
+        if checksum is not None:
+            if checksum != migration.checksum:
+                raise MigrationError(messages.MIGRATION_CHANGED.format(label=migration.label))
             continue
-        chay_mot_buoc(conn, buoc, nguoi_chay)
+        run_migration(conn, migration, applied_by)
         conn.commit()
-        ap.append(buoc.nhan)
-    return ap
+        labels.append(migration.label)
+    return labels
 
 
-def chay_mot_buoc(conn, buoc: Buoc, nguoi_chay: str) -> None:
-    """Chạy một bước và ghi sổ, **không chốt giao dịch** — người gọi chốt."""
-    bat_dau = time.monotonic()
+def run_migration(conn, migration: Migration, applied_by: str) -> None:
+    started_at = time.monotonic()
     with conn.cursor() as cur:
-        cur.execute(buoc.sql_text)
-    ms = int((time.monotonic() - bat_dau) * 1000)
+        cur.execute(migration.sql_text)
+    duration_ms = int((time.monotonic() - started_at) * 1000)
     with conn.cursor() as cur:
         cur.execute(
             sql.SQL(
-                "INSERT INTO ctl.schema_migration "
-                "(version, name, checksum, source, applied_by, duration_ms) "
-                "VALUES (%s, %s, %s, %s, %s, %s)"
+                'INSERT INTO ctl.schema_migration '
+                '(version, name, checksum, source, applied_by, duration_ms) '
+                'VALUES (%s, %s, %s, %s, %s, %s)'
             ),
-            (buoc.version, buoc.name, buoc.checksum, buoc.source, nguoi_chay, ms),
+            (migration.version, migration.name, migration.checksum, migration.source, applied_by, duration_ms),
         )
+
+
+def _read_migration(path: Path, source: str) -> Migration:
+    match = FILE_NAME_PATTERN.match(path.name)
+    if not match:
+        raise MigrationError(messages.MIGRATION_INVALID_FILE_NAME.format(name=path.name))
+    return Migration(int(match.group(1)), match.group(2), path.read_text(encoding='utf-8'), source)

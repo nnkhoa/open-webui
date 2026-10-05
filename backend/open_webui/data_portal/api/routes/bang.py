@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, Response
 
 from ...domain import bang as bang_dl
 from ...domain import xuat_excel
-from ...errors import DuLieuVaoSai, KhongTimThay
+from ...errors import InvalidInput, NotFound
 from .. import json
 from ..deps import NguCanhApi, mo_ngu_canh
 from .lan_nap import _nam, trang_moi
@@ -57,7 +57,7 @@ def _bang(ngu_canh: NguCanhApi, ten: str):
     """Bảng thuộc nhóm thông tin đang hoạt động, kèm nhóm và loại tệp của nó."""
     nhom = bang_dl.nhom_cua_bang(ngu_canh.kho(), ten)
     if nhom is None:
-        raise KhongTimThay("Không tìm thấy bảng dữ liệu này.")
+        raise NotFound("Không tìm thấy bảng dữ liệu này.")
     table = ngu_canh.registry.table(ten)
     form = next(f for f in ngu_canh.registry.forms if table in f.tables)
     return nhom, table, form
@@ -66,7 +66,7 @@ def _bang(ngu_canh: NguCanhApi, ten: str):
 def _loc(lop: str, nam: str, table) -> tuple[str, int | None]:
     lop = lop or "gold"
     if lop not in bang_dl.TEN_LOP:
-        raise DuLieuVaoSai("Lớp dữ liệu không hợp lệ.")
+        raise InvalidInput("Lớp dữ liệu không hợp lệ.")
     return lop, (_nam(nam) if table.cot_nam is not None else None)
 
 

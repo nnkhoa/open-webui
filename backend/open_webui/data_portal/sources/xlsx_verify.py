@@ -17,7 +17,7 @@ import zipfile
 from pathlib import Path
 from xml.etree import ElementTree
 
-from ..errors import NguonDuLieuError
+from ..errors import SourceFileError
 
 NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 NS_REL = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
@@ -42,7 +42,7 @@ class XlsxDocLai:
         try:
             self._zip = zipfile.ZipFile(path)
         except Exception as exc:
-            raise NguonDuLieuError(f"Không mở lại được tệp để đối chiếu: {exc}") from None
+            raise SourceFileError(f"Không mở lại được tệp để đối chiếu: {exc}") from None
         self._chuoi = self._doc_bang_chuoi()
         self._trang_thai: list[tuple[str, bool]] = []
         self._sheet = self._doc_danh_sach_sheet()
@@ -102,7 +102,7 @@ class XlsxDocLai:
         """
         duong = self._sheet.get(_chuan(ten_sheet))
         if duong is None:
-            raise NguonDuLieuError(f"Đọc lại: tệp không có sheet {ten_sheet!r}.")
+            raise SourceFileError(f"Đọc lại: tệp không có sheet {ten_sheet!r}.")
         goc = ElementTree.fromstring(self._zip.read(duong))
         hang: dict[int, dict[int, str]] = {}
         for row in goc.iter(f"{NS}row"):

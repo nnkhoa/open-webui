@@ -24,8 +24,8 @@ from __future__ import annotations
 
 import json
 
+from ..db import catalog_sql as qs
 from ..db import sql as q
-from ..db import sql_sotay as qs
 from .loader import FormRegistry
 from .schema import Form
 

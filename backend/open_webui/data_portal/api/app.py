@@ -22,17 +22,17 @@ from fastapi.responses import JSONResponse
 from starlette.datastructures import State
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from ..container import Container, dung
+from ..container import Container, build_container
 from ..errors import (
-    ChuaCauHinhKho,
-    ChuaSanSang,
-    DuLieuVaoSai,
-    KhongTimThay,
-    NguonDuLieuError,
+    InvalidInput,
+    NotFound,
+    NotReady,
     PortalError,
     RegistryError,
+    SourceFileError,
+    WarehouseNotConfigured,
 )
-from ..logging import MA_YEU_CAU
+from ..logs import REQUEST_ID
 from .deps import NguoiGoi, nguoi_dung_hien_tai, nguoi_goi
 from .routes import bang, cau_hinh_db, lan_nap, nap, nhom
 
@@ -67,7 +67,7 @@ def tao_api(xac_thuc: Callable, state: State | None = None,
     @api.api_route("/{duong_dan:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
                    include_in_schema=False)
     def _khong_co(duong_dan: str, nguoi: NguoiGoi = Depends(nguoi_goi)):
-        raise KhongTimThay("Không tìm thấy.")
+        raise NotFound("Không tìm thấy.")
 
     _bat_loi(api)
     return api
@@ -77,7 +77,7 @@ def khoi_dong(api: FastAPI) -> None:
     """Mở sổ tay, chép khai báo, nối kho. Chạy trong luồng riêng lúc Open WebUI lên;
     kho chưa cấu hình hay đang tắt thì vẫn lên, màn Cấu hình database báo lý do."""
     try:
-        api.state.data_portal = dung()
+        api.state.data_portal = build_container()
     except Exception:
         log.exception("Data Portal không khởi động được")
 
@@ -85,26 +85,26 @@ def khoi_dong(api: FastAPI) -> None:
 def dung_lai(api: FastAPI) -> None:
     container = getattr(api.state, "data_portal", None)
     if container is not None:
-        container.dong()
+        container.close()
         api.state.data_portal = None
 
 
 def _bat_loi(api: FastAPI) -> None:
-    @api.exception_handler(ChuaSanSang)
-    async def _chua_san_sang(request: Request, exc: ChuaSanSang):
+    @api.exception_handler(NotReady)
+    async def _chua_san_sang(request: Request, exc: NotReady):
         return _loi(503, str(exc))
 
-    @api.exception_handler(ChuaCauHinhKho)
-    async def _chua_kho(request: Request, exc: ChuaCauHinhKho):
-        return _loi(503, exc.ly_do or "Chưa cấu hình cơ sở dữ liệu.")
+    @api.exception_handler(WarehouseNotConfigured)
+    async def _chua_kho(request: Request, exc: WarehouseNotConfigured):
+        return _loi(503, exc.reason or "Chưa cấu hình cơ sở dữ liệu.")
 
-    @api.exception_handler(DuLieuVaoSai)
-    async def _vao_sai(request: Request, exc: DuLieuVaoSai):
-        them = {"theo_o": exc.theo_truong} if exc.theo_truong else {}
+    @api.exception_handler(InvalidInput)
+    async def _vao_sai(request: Request, exc: InvalidInput):
+        them = {"theo_o": exc.field_errors} if exc.field_errors else {}
         return _loi(422, str(exc), **them)
 
-    @api.exception_handler(NguonDuLieuError)
-    async def _nguon(request: Request, exc: NguonDuLieuError):
+    @api.exception_handler(SourceFileError)
+    async def _nguon(request: Request, exc: SourceFileError):
         return _loi(422, str(exc))
 
     @api.exception_handler(RegistryError)
@@ -113,10 +113,10 @@ def _bat_loi(api: FastAPI) -> None:
 
     @api.exception_handler(PortalError)
     async def _portal(request: Request, exc: PortalError):
-        if exc.ma_http >= 500:
+        if exc.status_code >= 500:
             log.exception("Lỗi nghiệp vụ chưa xử lý riêng: %s", exc)
-            return _loi(exc.ma_http, LOI_CHUNG, ma_yeu_cau=MA_YEU_CAU.get())
-        return _loi(exc.ma_http, str(exc))
+            return _loi(exc.status_code, LOI_CHUNG, ma_yeu_cau=REQUEST_ID.get())
+        return _loi(exc.status_code, str(exc))
 
     @api.exception_handler(RequestValidationError)
     async def _tham_so(request: Request, exc: RequestValidationError):
@@ -133,4 +133,4 @@ def _bat_loi(api: FastAPI) -> None:
     @api.exception_handler(Exception)
     async def _chung(request: Request, exc: Exception):
         log.exception("Lỗi ngoài dự kiến ở API: %s", exc)
-        return _loi(500, LOI_CHUNG, ma_yeu_cau=MA_YEU_CAU.get())
+        return _loi(500, LOI_CHUNG, ma_yeu_cau=REQUEST_ID.get())

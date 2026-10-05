@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import ClassVar, Protocol
 
-from ..errors import NguonDuLieuError
+from ..errors import SourceFileError
 
 
 @dataclass(frozen=True)
@@ -67,7 +67,7 @@ def mo(kind: str, path: Path, header_row: int = 1, form=None) -> SourceReader:
     biết cột nào phải có (bộ đọc theo dòng tiêu đề của HQ-MAU-GC)."""
     cls = READERS.get(kind)
     if cls is None:
-        raise NguonDuLieuError(
+        raise SourceFileError(
             f"Chưa có bộ đọc cho nguồn {kind!r}. Các nguồn có sẵn: "
             f"{', '.join(sorted(READERS))}."
         )

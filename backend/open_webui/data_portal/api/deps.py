@@ -20,10 +20,10 @@ from fastapi import Depends, Request
 
 from ..container import Container
 from ..domain import domains
-from ..errors import ChuaCauHinhKho, ChuaSanSang, DuLieuVaoSai, KhongCoQuyen
-from ..logging import ma_yeu_cau_moi
+from ..errors import InvalidInput, NotReady, PermissionDenied, WarehouseNotConfigured
+from ..logs import new_request_id
 from ..registry.schema import Form
-from ..security.rbac import Domain, domain_thay_duoc
+from ..security.rbac import Domain, active_domains
 
 VAI_TRO = ("admin", "data_uploader")
 KHONG_CO_QUYEN = "Bạn không có quyền vào Data Portal. Liên hệ Admin nếu cần nạp dữ liệu."
@@ -53,21 +53,21 @@ def nguoi_dung_hien_tai():
 
 def nguoi_goi(user=Depends(nguoi_dung_hien_tai)) -> NguoiGoi:
     if user.role not in VAI_TRO:
-        raise KhongCoQuyen(KHONG_CO_QUYEN)
+        raise PermissionDenied(KHONG_CO_QUYEN)
     return NguoiGoi(user_id=str(user.id), user_name=user.name or user.email or "",
                     role=user.role)
 
 
 def chi_admin(nguoi: NguoiGoi = Depends(nguoi_goi)) -> NguoiGoi:
     if not nguoi.la_admin:
-        raise KhongCoQuyen()
+        raise PermissionDenied()
     return nguoi
 
 
 def _container(request: Request) -> Container:
     container = getattr(request.app.state, "data_portal", None)
     if container is None:
-        raise ChuaSanSang()
+        raise NotReady()
     return container
 
 
@@ -91,30 +91,30 @@ class NguCanhApi:
     def so(self):
         """Giao dịch sổ tay, mở ở lần gọi đầu và giữ tới hết yêu cầu."""
         if self._so is None:
-            self._so = self._stack.enter_context(self.container.so_tay.giao_dich())
+            self._so = self._stack.enter_context(self.container.catalog.transaction())
         return self._so
 
     def noi_lai_neu_can(self) -> None:
         """Kho vừa sống lại (container Docker khởi động xong) thì nối lại ngay."""
-        if not self.container.kho.can_thu_lai():
+        if not self.container.warehouse.should_retry():
             return
         if self._so is not None:
-            self.container.noi_lai_neu_can(self._so)
+            self.container.reconnect_if_needed(self._so)
             return
-        with self.container.so_tay.giao_dich() as so:
-            self.container.noi_lai_neu_can(so)
+        with self.container.catalog.transaction() as so:
+            self.container.reconnect_if_needed(so)
 
     def bat_buoc_kho_san_sang(self) -> None:
         """Kho đã cấu hình — dùng trước những việc tự mở giao dịch riêng (nạp)."""
         self.noi_lai_neu_can()
-        if not self.container.kho.da_cau_hinh:
-            raise ChuaCauHinhKho(ly_do=self.container.kho.ly_do)
+        if not self.container.warehouse.is_configured:
+            raise WarehouseNotConfigured(reason=self.container.warehouse.reason)
 
     def kho(self):
-        """Giao dịch kho, mở ở lần gọi đầu; chưa cấu hình ⇒ `ChuaCauHinhKho` (503)."""
+        """Giao dịch kho, mở ở lần gọi đầu; chưa cấu hình ⇒ `WarehouseNotConfigured` (503)."""
         if self._kho is None:
             self.noi_lai_neu_can()
-            self._kho = self._stack.enter_context(self.container.giao_dich_kho())
+            self._kho = self._stack.enter_context(self.container.warehouse_transaction())
         return self._kho
 
     # -- nhóm thông tin, loại tệp --------------------------------------------- #
@@ -126,18 +126,18 @@ class NguCanhApi:
     def _doc_so(self, ham):
         if self._so is not None:
             return ham(self._so)
-        with self.container.so_tay.giao_dich() as so:
+        with self.container.catalog.transaction() as so:
             return ham(so)
 
     def cac_nhom(self) -> list[Domain]:
-        return self._doc_so(domain_thay_duoc)
+        return self._doc_so(active_domains)
 
     def nhom(self, ma: str) -> Domain:
         """Nhóm thông tin đang hoạt động theo mã; sai ⇒ 422."""
         for d in self.cac_nhom():
             if d.code == ma:
                 return d
-        raise DuLieuVaoSai("Nhóm thông tin không hợp lệ.")
+        raise InvalidInput("Nhóm thông tin không hợp lệ.")
 
     def cac_loai_tep(self, nhom: Domain) -> list[tuple[int, Form]]:
         hang = self._doc_so(lambda so: domains.cac_loai_tep(so, nhom.domain_id))
@@ -148,7 +148,7 @@ def mo_ngu_canh(request: Request, nguoi: NguoiGoi = Depends(nguoi_goi)
                 ) -> Iterator[NguCanhApi]:
     container = _container(request)
     with ExitStack() as stack:
-        yield NguCanhApi(container=container, nguoi=nguoi, ma_yeu_cau=ma_yeu_cau_moi(),
+        yield NguCanhApi(container=container, nguoi=nguoi, ma_yeu_cau=new_request_id(),
                          _stack=stack)
 
 
@@ -156,5 +156,5 @@ def mo_ngu_canh_admin(request: Request, nguoi: NguoiGoi = Depends(chi_admin)
                       ) -> Iterator[NguCanhApi]:
     container = _container(request)
     with ExitStack() as stack:
-        yield NguCanhApi(container=container, nguoi=nguoi, ma_yeu_cau=ma_yeu_cau_moi(),
+        yield NguCanhApi(container=container, nguoi=nguoi, ma_yeu_cau=new_request_id(),
                          _stack=stack)

@@ -6,7 +6,7 @@ lúc khởi động (`registry/sync.py`); ở đây chỉ còn phần đọc.
 
 from __future__ import annotations
 
-from ..db import sql_sotay as qs
+from ..db import catalog_sql as qs
 
 
 def cac_loai_tep(so, domain_id: int) -> list[dict]:

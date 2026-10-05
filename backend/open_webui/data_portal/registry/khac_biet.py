@@ -122,7 +122,7 @@ def cot_bat_buoc(conn, schema: str, ten_bang: str) -> set[str]:
 
 
 def so_dong(conn, schema: str, ten_bang: str) -> int:
-    cau = sql.SQL("SELECT count(*) FROM {}").format(q.bang(schema, ten_bang))
+    cau = sql.SQL("SELECT count(*) FROM {}").format(q.table_identifier(schema, ten_bang))
     return int(q.scalar(conn, cau) or 0)
 
 
