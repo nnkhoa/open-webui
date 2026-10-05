@@ -1,169 +1,256 @@
 <script lang="ts">
-	// Lịch sử nạp — danh sách (đặc tả 16.1).
+	import { getContext } from 'svelte';
+	import type { Writable } from 'svelte/store';
+	import type { i18n as i18nType } from 'i18next';
 	import { goto } from '$app/navigation';
-	import { dpNhom, dpNam, dpDomains, dpNap, NAP_TRONG } from '$lib/stores/dataPortal';
-	import { dpGet } from '$lib/apis/data-portal';
+
+	import {
+		hasMultipleFileTypes,
+		portalDomains,
+		resetUploadDraft,
+		selectedDomain,
+		selectedYear
+	} from '$lib/stores/dataPortal';
+	import { getLoads } from '$lib/apis/data-portal';
+	import type { LoadFilter, LoadList, LoadListItem, LoadStatus } from '$lib/apis/data-portal/types';
+
 	import HeaderCard from '$lib/components/data-portal/HeaderCard.svelte';
-	import GroupYearChips from '$lib/components/data-portal/GroupYearChips.svelte';
+	import DomainYearChips from '$lib/components/data-portal/DomainYearChips.svelte';
 	import Dropdown from '$lib/components/data-portal/Dropdown.svelte';
 	import SearchBox from '$lib/components/data-portal/SearchBox.svelte';
 	import Card from '$lib/components/data-portal/Card.svelte';
-	import DataTable, { type Row } from '$lib/components/data-portal/DataTable.svelte';
+	import DataTable, { type TableRow } from '$lib/components/data-portal/DataTable.svelte';
 	import Pager from '$lib/components/data-portal/Pager.svelte';
 	import EmptyState from '$lib/components/data-portal/EmptyState.svelte';
 	import Banner from '$lib/components/data-portal/Banner.svelte';
-	import { so, thoiGian, TRANG_THAI } from '$lib/components/data-portal/fmt';
+	import {
+		formatDateTime,
+		formatNumber,
+		LOAD_STATUS_BADGES
+	} from '$lib/components/data-portal/format';
 
-	type Dong = {
-		id: number;
-		ten_tep: string;
-		nam: string;
-		loai: { ma: string; ten: string } | null;
-		nguoi: string;
-		luc: string;
-		so_dong: number;
-		status: keyof typeof TRANG_THAI;
+	const i18n: Writable<i18nType> = getContext('i18n');
+
+	const DETAIL_TABS: Record<LoadStatus, string> = {
+		success: 'steps',
+		rolled_back: 'steps',
+		rejected: 'errors',
+		mismatch: 'reconcile'
 	};
 
-	let loai = '';
-	let tt = '';
-	let nguoi = '';
-	let tim = '';
-	let trang = 1;
-	let moi = 25;
-	let du: { tong: number; nguoi_nap: string[]; dong: Dong[] } | null = null;
-	let loi = '';
+	let fileType = '';
+	let status = '';
+	let uploader = '';
+	let query = '';
+	let currentPage = 1;
+	let pageSize = 25;
+	let loads: LoadList | null = null;
+	let errorMessage = '';
 
-	$: dom = $dpDomains.find((d) => d.code === $dpNhom);
-	$: gc = (dom?.loai_tep?.length ?? 0) > 1;
-	$: loc = !!(tim || tt || nguoi || (gc && loai));
+	$: domain = $portalDomains.find((item) => item.code === $selectedDomain);
+	$: multipleFileTypes = hasMultipleFileTypes(domain);
+	$: filtered = !!(query || status || uploader || (multipleFileTypes && fileType));
 
-	const tai = async () => {
+	const loadHistory = async (filter: LoadFilter) => {
 		try {
-			loi = '';
-			du = await dpGet('loads', {
-				nhom: $dpNhom,
-				nam: $dpNam,
-				loai: gc ? loai : '',
-				trang_thai: tt,
-				nguoi,
-				tim,
-				trang,
-				moi
+			errorMessage = '';
+			loads = await getLoads(localStorage.token, {
+				...filter,
+				file_type: multipleFileTypes ? filter.file_type : ''
 			});
-		} catch (e) {
-			loi = (e as Error).message;
+		} catch (error) {
+			errorMessage = (error as Error).message;
 		}
 	};
-	$: $dpNhom, $dpNam, loai, tt, nguoi, tim, trang, moi, tai();
 
-	const xoaLoc = () => {
-		tim = '';
-		tt = '';
-		nguoi = '';
-		loai = '';
-		trang = 1;
+	$: loadHistory({
+		domain: $selectedDomain,
+		year: $selectedYear,
+		file_type: fileType,
+		status,
+		user: uploader,
+		query,
+		page: currentPage,
+		page_size: pageSize
+	});
+
+	const clearFilters = () => {
+		query = '';
+		status = '';
+		uploader = '';
+		fileType = '';
+		currentPage = 1;
 	};
-	const napMoi = () => {
-		dpNap.set({ ...NAP_TRONG });
+
+	const startUpload = () => {
+		resetUploadDraft();
 		goto('/data-portal/upload');
 	};
 
-	$: rows = (du?.dong ?? []).map(
-		(L): Row => ({
-			cells: [
-				{ v: `#${L.id}`, bold: true, cls: 's' },
-				{ v: L.ten_tep, tep: true, link: () => goto(`/data-portal/history/${L.id}/file`), linkTitle: 'Xem tệp gốc' },
-				{ v: L.nam, cls: 's' },
-				...(gc ? [{ v: L.loai?.ten ?? '', cls: 's' }] : []),
-				L.nguoi,
-				{ v: thoiGian(L.luc), cls: 'nowrap' },
-				{ v: so(L.so_dong), cls: 's' },
-				{ badge: TRANG_THAI[L.status] }
-			],
-			onClick: () =>
-				goto(
-					`/data-portal/history/${L.id}?tab=${L.status === 'rejected' ? 'errors' : L.status === 'mismatch' ? 'reconcile' : 'steps'}`
-				),
-			title: `Xem chi tiết lần nạp #${L.id}`
+	const loadCells = (load: LoadListItem, multiple: boolean) => {
+		const badge = LOAD_STATUS_BADGES[load.status];
+		return [
+			{ value: `#${load.id}`, bold: true, className: 's' },
+			{
+				value: load.file_name,
+				file: true,
+				action: () => goto(`/data-portal/history/${load.id}/file`),
+				actionTitle: $i18n.t('View source file')
+			},
+			{ value: load.year, className: 's' },
+			...(multiple ? [{ value: load.file_type.name, className: 's' }] : []),
+			load.user,
+			{ value: formatDateTime(load.created_at), className: 'nowrap' },
+			{ value: formatNumber(load.row_count), className: 's' },
+			{ badge: { label: $i18n.t(badge.label), tone: badge.tone } }
+		];
+	};
+
+	$: rows = (loads?.items ?? []).map(
+		(load): TableRow => ({
+			cells: loadCells(load, multipleFileTypes),
+			onClick: () => goto(`/data-portal/history/${load.id}?tab=${DETAIL_TABS[load.status]}`),
+			title: $i18n.t('View details of upload #{{id}}', { id: load.id })
 		})
 	);
+
+	$: headers = [
+		{ label: $i18n.t('Code') },
+		{ label: $i18n.t('File') },
+		{ label: $i18n.t('Data year') },
+		...(multipleFileTypes ? [{ label: $i18n.t('File type') }] : []),
+		{ label: $i18n.t('Uploaded by') },
+		{ label: $i18n.t('Upload time') },
+		{ label: $i18n.t('Row count'), alignRight: true },
+		{ label: $i18n.t('Upload status') }
+	];
 </script>
 
-<HeaderCard title="Lịch sử nạp">
-	<button slot="actions" type="button" class="btn primary" on:click={napMoi}>Nạp tệp mới</button>
+<HeaderCard title={$i18n.t('Upload history')}>
+	<button slot="actions" type="button" class="btn primary" on:click={startUpload}
+		>{$i18n.t('Upload a new file')}</button
+	>
 </HeaderCard>
 
-<div class="chiprow" aria-label="Bộ lọc">
-	<GroupYearChips on:nhom={() => { loai = ''; trang = 1; }} on:nam={() => (trang = 1)} />
-	{#if gc}
+<div class="chiprow" aria-label={$i18n.t('Filter bar')}>
+	<DomainYearChips
+		on:domain={() => {
+			fileType = '';
+			currentPage = 1;
+		}}
+		on:year={() => (currentPage = 1)}
+	/>
+	{#if multipleFileTypes}
 		<Dropdown
-			chip="Loại tệp"
-			value={loai}
-			mac=""
-			options={[{ v: '', t: 'Tất cả' }, ...(dom?.loai_tep ?? []).map((l) => ({ v: l.ma, t: l.ten }))]}
-			on:change={(e) => { loai = e.detail; trang = 1; }}
+			chipLabel={$i18n.t('File type')}
+			value={fileType}
+			defaultValue=""
+			options={[
+				{ value: '', label: $i18n.t('All') },
+				...(domain?.file_types ?? []).map((item) => ({ value: item.code, label: item.name }))
+			]}
+			on:change={(event) => {
+				fileType = event.detail;
+				currentPage = 1;
+			}}
 		/>
 	{/if}
 	<Dropdown
-		chip="Trạng thái"
-		value={tt}
-		mac=""
+		chipLabel={$i18n.t('Upload status')}
+		value={status}
+		defaultValue=""
 		options={[
-			{ v: '', t: 'Tất cả' },
-			{ v: 'success', t: 'Thành công' },
-			{ v: 'rejected', t: 'Bị từ chối' },
-			{ v: 'mismatch', t: 'Lỗi đối chiếu' },
-			{ v: 'rolled_back', t: 'Đã gỡ' }
+			{ value: '', label: $i18n.t('All') },
+			...Object.entries(LOAD_STATUS_BADGES).map(([value, badge]) => ({
+				value,
+				label: $i18n.t(badge.label)
+			}))
 		]}
-		on:change={(e) => { tt = e.detail; trang = 1; }}
+		on:change={(event) => {
+			status = event.detail;
+			currentPage = 1;
+		}}
 	/>
 	<Dropdown
-		chip="Người nạp"
-		value={nguoi}
-		mac=""
-		options={[{ v: '', t: 'Tất cả' }, ...(du?.nguoi_nap ?? []).map((x) => ({ v: x, t: x }))]}
-		on:change={(e) => { nguoi = e.detail; trang = 1; }}
+		chipLabel={$i18n.t('Uploaded by')}
+		value={uploader}
+		defaultValue=""
+		options={[
+			{ value: '', label: $i18n.t('All') },
+			...(loads?.uploaders ?? []).map((name) => ({ value: name, label: name }))
+		]}
+		on:change={(event) => {
+			uploader = event.detail;
+			currentPage = 1;
+		}}
 	/>
-	<SearchBox value={tim} placeholder="Tìm mã hoặc tên tệp, Enter để tìm" on:search={(e) => { tim = e.detail; trang = 1; }} />
-	{#if loc}<button type="button" class="xoa" on:click={xoaLoc}>Xoá bộ lọc</button>{/if}
+	<SearchBox
+		value={query}
+		placeholder={$i18n.t('Search code or file name, press Enter to search')}
+		on:search={(event) => {
+			query = event.detail;
+			currentPage = 1;
+		}}
+	/>
+	{#if filtered}<button type="button" class="clear-filters" on:click={clearFilters}
+			>{$i18n.t('Clear filters')}</button
+		>{/if}
 </div>
 
-{#if loi}
-	<Banner k="err" icon="x" title={loi} />
-{:else if !du}
-	<p class="desc">Đang tải dữ liệu…</p>
-{:else if !du.dong.length}
+{#if errorMessage}
+	<Banner tone="err" icon="x" title={errorMessage} />
+{:else if !loads}
+	<p class="desc">{$i18n.t('Loading data…')}</p>
+{:else if !loads.items.length}
 	<section class="card">
-		{#if loc}
-			<EmptyState icon="list" title="Không tìm thấy kết quả phù hợp" p="Hãy thay đổi từ khoá hoặc xoá bớt điều kiện lọc.">
-				<button type="button" class="btn" on:click={xoaLoc}>Xoá bộ lọc</button>
+		{#if filtered}
+			<EmptyState
+				icon="list"
+				title={$i18n.t('No matching results')}
+				description={$i18n.t('Change the keyword or remove some filters.')}
+			>
+				<button type="button" class="btn" on:click={clearFilters}>{$i18n.t('Clear filters')}</button
+				>
 			</EmptyState>
-		{:else if $dpNam}
-			<EmptyState icon="list" title="Năm {$dpNam} chưa có lần nạp nào" p="Chọn năm khác ở ô Năm dữ liệu, hoặc nạp tệp với Năm dữ liệu {$dpNam}.">
-				<button type="button" class="btn primary" on:click={napMoi}>Nạp tệp mới</button>
+		{:else if $selectedYear}
+			<EmptyState
+				icon="list"
+				title={$i18n.t('Year {{year}} has no uploads yet', { year: $selectedYear })}
+				description={$i18n.t(
+					'Choose another year in the Data year field, or upload a file with Data year {{year}}.',
+					{ year: $selectedYear }
+				)}
+			>
+				<button type="button" class="btn primary" on:click={startUpload}
+					>{$i18n.t('Upload a new file')}</button
+				>
 			</EmptyState>
 		{:else}
-			<EmptyState icon="list" title="Chưa có lần nạp nào" p="Nhóm thông tin {dom?.name ?? ''} chưa có lần nạp nào. Hãy nạp tệp đầu tiên để bắt đầu.">
-				<button type="button" class="btn primary" on:click={napMoi}>Nạp tệp đầu tiên</button>
+			<EmptyState
+				icon="list"
+				title={$i18n.t('No uploads yet')}
+				description={$i18n.t(
+					'Information group {{name}} has no uploads yet. Upload the first file to get started.',
+					{ name: domain?.name ?? '' }
+				)}
+			>
+				<button type="button" class="btn primary" on:click={startUpload}
+					>{$i18n.t('Upload the first file')}</button
+				>
 			</EmptyState>
 		{/if}
 	</section>
 {:else}
-	<Card title="Danh sách lần nạp" count={du.tong} pad={false}>
-		<DataTable
-			heads={[
-				{ t: 'Mã' },
-				{ t: 'Tệp' },
-				{ t: 'Năm dữ liệu' },
-				...(gc ? [{ t: 'Loại tệp' }] : []),
-				{ t: 'Người nạp' },
-				{ t: 'Thời gian nạp' },
-				{ t: 'Số dòng', r: true },
-				{ t: 'Trạng thái' }
-			]}
-			{rows}
+	<Card title={$i18n.t('Upload list')} count={loads.total} padded={false}>
+		<DataTable {headers} {rows} />
+		<Pager
+			total={loads.total}
+			page={currentPage}
+			{pageSize}
+			on:change={(event) => {
+				currentPage = event.detail.page;
+				pageSize = event.detail.pageSize;
+			}}
 		/>
-		<Pager tong={du.tong} {trang} {moi} on:change={(e) => { trang = e.detail.trang; moi = e.detail.moi; }} />
 	</Card>
 {/if}

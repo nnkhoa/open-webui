@@ -1,11 +1,22 @@
 <script lang="ts">
-	// Nạp dữ liệu — bước 1 và 2 (đặc tả 15.1, 15.2).
-	import { onMount, getContext } from 'svelte';
+	import { getContext, onMount } from 'svelte';
+	import type { Writable } from 'svelte/store';
+	import type { i18n as i18nType } from 'i18next';
 	import { goto } from '$app/navigation';
 	import { toast } from 'svelte-sonner';
+
 	import { user } from '$lib/stores';
-	import { dpNap, dpDomains, DP_NAM, NAP_TRONG } from '$lib/stores/dataPortal';
-	import { dpGet, dpUpload, DpError, luuTep } from '$lib/apis/data-portal';
+	import {
+		DATA_YEARS,
+		hasMultipleFileTypes,
+		loadPortalDomains,
+		portalDomains,
+		resetUploadDraft,
+		uploadDraft,
+		type UploadDraft
+	} from '$lib/stores/dataPortal';
+	import { createUpload } from '$lib/apis/data-portal';
+
 	import HeaderCard from '$lib/components/data-portal/HeaderCard.svelte';
 	import StepBar from '$lib/components/data-portal/StepBar.svelte';
 	import Dropdown from '$lib/components/data-portal/Dropdown.svelte';
@@ -13,117 +24,158 @@
 	import Banner from '$lib/components/data-portal/Banner.svelte';
 	import Card from '$lib/components/data-portal/Card.svelte';
 	import Icon from '$lib/components/data-portal/Icon.svelte';
-	import { kb, noi, thoiGian } from '$lib/components/data-portal/fmt';
+	import { formatDateTime, formatKilobytes, joinWithAnd } from '$lib/components/data-portal/format';
+	import { saveFile } from '$lib/components/data-portal/download';
 
-	const i18n = getContext('i18n');
+	const i18n: Writable<i18nType> = getContext('i18n');
 
-	let dangKT = false;
-	let buocKT = 0;
-	let loiChon = false; // tệp không phải .xlsx
-	let loiChung = '';
-	let keo = false;
+	const XLSX_EXTENSION = '.xlsx';
+	const RECEIVED_STEP_DELAY_MS = 400;
+
+	let checking = false;
+	let checkProgress = 0;
+	let invalidFile = false;
+	let errorMessage = '';
+	let dragging = false;
 
 	onMount(async () => {
-		if (!$dpDomains.length) {
-			try {
-				dpDomains.set(await dpGet('domains'));
-			} catch (e) {
-				loiChung = (e as Error).message;
-			}
+		try {
+			await loadPortalDomains();
+		} catch (error) {
+			errorMessage = (error as Error).message;
 		}
 	});
 
-	$: n = $dpNap;
-	$: dom = $dpDomains.find((d) => d.code === n.nhom);
-	$: nhieuLoai = (dom?.loai_tep?.length ?? 0) > 1;
-	$: loai = dom?.loai_tep?.find((l) => l.ma === n.loai) ?? (!nhieuLoai ? dom?.loai_tep?.[0] : undefined);
-	$: thieuDs = [!n.nhom && 'Nhóm thông tin', !n.nam && 'Năm dữ liệu', nhieuLoai && !n.loai && 'Loại tệp'].filter(
-		Boolean
-	) as string[];
-	$: thieuNN = thieuDs.length ? 'Chọn ' + noi(thieuDs) : '';
-	$: thieu = thieuNN || (!n.file ? 'Chọn tệp ở mục File đính kèm' : '');
-	$: khoaTep = dangKT || !!thieuNN;
-	$: hopLe = !!n.file && n.file.name.toLowerCase().endsWith('.xlsx');
+	$: draft = $uploadDraft;
+	$: domain = $portalDomains.find((item) => item.code === draft.domain);
+	$: multipleFileTypes = hasMultipleFileTypes(domain);
+	$: fileType =
+		domain?.file_types.find((item) => item.code === draft.fileType) ??
+		(!multipleFileTypes ? domain?.file_types[0] : undefined);
+	$: missingFields = [
+		!draft.domain && $i18n.t('Information group'),
+		!draft.year && $i18n.t('Data year'),
+		multipleFileTypes && !draft.fileType && $i18n.t('File type')
+	].filter(Boolean) as string[];
+	$: missingSelection = missingFields.length
+		? $i18n.t('Select {{fields}}', { fields: joinWithAnd(missingFields, $i18n.t('and')) })
+		: '';
+	$: missingInput =
+		missingSelection || (!draft.file ? $i18n.t('Choose a file in the Attachment section') : '');
+	$: fileLocked = checking || !!missingSelection;
+	$: validFile = !!draft.file && draft.file.name.toLowerCase().endsWith(XLSX_EXTENSION);
+	$: fileTypeName = multipleFileTypes
+		? draft.fileType
+			? (fileType?.name ?? '')
+			: ''
+		: (fileType?.name ?? $portalDomains[0]?.file_types[0]?.name ?? '');
 
-	const dat = (patch: Partial<typeof n>) => dpNap.update((s) => ({ ...s, ...patch }));
+	const updateDraft = (changes: Partial<UploadDraft>) =>
+		uploadDraft.update((current) => ({ ...current, ...changes }));
 
-	const chonTep = (f: File | undefined | null) => {
-		if (!f) return;
-		if (khoaTep) {
+	const selectFile = (file: File | undefined | null) => {
+		if (!file) return;
+		if (fileLocked) {
 			toast(
-				`Chọn Nhóm thông tin${nhieuLoai ? ', Năm dữ liệu và Loại tệp' : ' và Năm dữ liệu'} trước khi chọn tệp.`
+				multipleFileTypes
+					? $i18n.t('Select the information group, data year and file type before choosing a file.')
+					: $i18n.t('Select the information group and data year before choosing a file.')
 			);
 			return;
 		}
-		loiChon = false;
-		dat({ file: f, luc: thoiGian(new Date().toISOString()) });
+		invalidFile = false;
+		updateDraft({ file, selectedAt: formatDateTime(new Date().toISOString()) });
 	};
 
-	const kiemTra = async () => {
-		if (!n.file) return;
-		if (!hopLe) {
-			loiChon = true;
-			dat({ file: null, luc: '' });
+	const checkFile = async () => {
+		if (!draft.file) return;
+		if (!validFile) {
+			invalidFile = true;
+			updateDraft({ file: null, selectedAt: '' });
 			return;
 		}
-		loiChon = false;
-		dangKT = true;
-		buocKT = 0;
-		const t = setTimeout(() => (buocKT = 1), 400);
-		const form = new FormData();
-		form.set('nhom', n.nhom);
-		form.set('nam', n.nam);
-		if (loai) form.set('loai', loai.ma);
-		form.set('file', n.file);
+		invalidFile = false;
+		checking = true;
+		checkProgress = 0;
+		const timer = setTimeout(() => (checkProgress = 1), RECEIVED_STEP_DELAY_MS);
 		try {
-			const kq = await dpUpload<{ ma_tep_cho?: string; load_id?: number }>('uploads', form);
-			if (kq.ma_tep_cho) goto(`/data-portal/upload/confirm/${kq.ma_tep_cho}`);
-			else if (kq.load_id) {
-				dpNap.set({ ...NAP_TRONG });
-				goto(`/data-portal/upload/result/${kq.load_id}`);
+			const result = await createUpload(localStorage.token, {
+				domain: draft.domain,
+				year: draft.year,
+				fileType: fileType?.code,
+				file: draft.file
+			});
+			if (result.pending_id) {
+				goto(`/data-portal/upload/confirm/${result.pending_id}`);
+			} else if (result.load_id) {
+				resetUploadDraft();
+				goto(`/data-portal/upload/result/${result.load_id}`);
 			}
-		} catch (e) {
-			loiChung = e instanceof DpError ? e.message : 'Mất kết nối, chưa xác định được kết quả xử lý.';
+		} catch (error) {
+			errorMessage = (error as Error).message;
 		} finally {
-			clearTimeout(t);
-			dangKT = false;
+			clearTimeout(timer);
+			checking = false;
 		}
 	};
 </script>
 
-<HeaderCard title="Nạp dữ liệu">
+<HeaderCard title={$i18n.t('Upload data')}>
 	<svelte:fragment slot="actions">
 		<button
 			type="button"
 			class="btn primary"
-			disabled={!!thieu || dangKT}
-			title={thieu ? thieu + ' để tiếp tục' : 'Đọc tệp và so với dữ liệu đang có. Chưa ghi gì vào database.'}
-			on:click={kiemTra}
+			disabled={!!missingInput || checking}
+			title={missingInput
+				? $i18n.t('{{reason}} to continue', { reason: missingInput })
+				: $i18n.t(
+						'Read the file and compare it with the existing data. Nothing is written to the database yet.'
+					)}
+			on:click={checkFile}
 		>
-			{#if dangKT}<span class="spin" aria-hidden="true"></span>Đang kiểm tra…{:else}<Icon name="up" size={16} />Kiểm tra tệp{/if}
+			{#if checking}<span class="spin" aria-hidden="true"></span>{$i18n.t('Checking…')}{:else}<Icon
+					name="up"
+					size={16}
+				/>{$i18n.t('Check file')}{/if}
 		</button>
 	</svelte:fragment>
 </HeaderCard>
 
-<StepBar i={dangKT ? 1 : 0} gc={nhieuLoai} />
+<StepBar current={checking ? 1 : 0} withFileType={multipleFileTypes} />
 
-{#if loiChon}
-	<Banner k="err" icon="x" title="Không thể chọn tệp này" p="Portal chỉ nhận tệp .xlsx. Hãy mở tệp trong Excel và lưu lại đúng định dạng." />
+{#if invalidFile}
+	<Banner
+		tone="err"
+		icon="x"
+		title={$i18n.t('This file cannot be selected')}
+		description={$i18n.t(
+			'The portal only accepts .xlsx files. Open the file in Excel and save it in the correct format.'
+		)}
+	/>
 {/if}
-{#if loiChung}
-	<Banner k="err" icon="x" title="Không thể kiểm tra tệp" p={loiChung} />
+{#if errorMessage}
+	<Banner
+		tone="err"
+		icon="x"
+		title={$i18n.t('Could not check the file')}
+		description={errorMessage}
+	/>
 {/if}
 
-{#if dangKT}
-	<Card title="Đang kiểm tra tệp">
+{#if checking}
+	<Card title={$i18n.t('Checking the file')}>
 		<div class="steps">
-			<div class="step {buocKT >= 1 ? 'done' : 'on'}"><span class="n">{buocKT >= 1 ? '✓' : '1'}</span>Nhận tệp</div>
-			<div class="step {buocKT >= 1 ? 'on' : ''}">
-				<span class="n">2</span>Kiểm tra cấu trúc tệp và dữ liệu từng dòng
-				{#if buocKT >= 1}<span class="spin" aria-hidden="true"></span>{/if}
+			<div class="step {checkProgress >= 1 ? 'done' : 'on'}">
+				<span class="n">{checkProgress >= 1 ? '✓' : '1'}</span>{$i18n.t('Receive file')}
 			</div>
-			<div class="step"><span class="n">3</span>So với dữ liệu đang có</div>
-			<p class="desc">Vui lòng giữ nguyên trang. Thời gian xử lý phụ thuộc vào dung lượng tệp.</p>
+			<div class="step {checkProgress >= 1 ? 'on' : ''}">
+				<span class="n">2</span>{$i18n.t('Check the file structure and the data of each row')}
+				{#if checkProgress >= 1}<span class="spin" aria-hidden="true"></span>{/if}
+			</div>
+			<div class="step"><span class="n">3</span>{$i18n.t('Compare with the existing data')}</div>
+			<p class="desc">
+				{$i18n.t('Please stay on this page. Processing time depends on the file size.')}
+			</p>
 		</div>
 	</Card>
 {/if}
@@ -131,53 +183,66 @@
 <section class="card">
 	<div class="card-h">
 		<div>
-			<h2>Thông tin nạp dữ liệu</h2>
+			<h2>{$i18n.t('Upload information')}</h2>
 			<div class="sub">
-				Vui lòng điền các thông tin bên dưới, thông tin có (<span style="color:var(--req)">*</span>) là bắt buộc.
+				{$i18n.t('Please fill in the details below; fields marked')} (<span style="color:var(--req)"
+					>*</span
+				>) {$i18n.t('are required.')}
 			</div>
 		</div>
 	</div>
 	<div class="form-grid">
 		<div class="field s2">
-			<span class="lbl">Nhóm thông tin <span class="req">*</span></span>
-			{#if dangKT}
-				<div class="ro lk"><Icon name="lock" size={13} />{dom?.code} · {dom?.name}</div>
+			<span class="lbl">{$i18n.t('Information group')} <span class="req">*</span></span>
+			{#if checking}
+				<div class="ro locked"><Icon name="lock" size={13} />{domain?.code} · {domain?.name}</div>
 			{:else}
 				<Dropdown
-					value={n.nhom}
-					placeholder="Chọn nhóm thông tin"
-					title="Chọn nhóm thông tin"
-					options={$dpDomains.map((d) => ({ v: d.code, t: d.name, ma: d.code, phu: d.phu ?? d.code }))}
-					on:change={(e) => dat({ nhom: e.detail, loai: '', file: null, luc: '' })}
+					value={draft.domain}
+					placeholder={$i18n.t('Select information group')}
+					title={$i18n.t('Select information group')}
+					options={$portalDomains.map((item) => ({
+						value: item.code,
+						label: item.name,
+						code: item.code,
+						subtitle: item.subtitle ?? item.code
+					}))}
+					on:change={(event) =>
+						updateDraft({ domain: event.detail, fileType: '', file: null, selectedAt: '' })}
 				/>
 			{/if}
 		</div>
 		<div class="field">
-			<span class="lbl">Năm dữ liệu <span class="req">*</span></span>
-			{#if dangKT}
-				<div class="ro lk"><Icon name="lock" size={13} />{n.nam}</div>
+			<span class="lbl">{$i18n.t('Data year')} <span class="req">*</span></span>
+			{#if checking}
+				<div class="ro locked"><Icon name="lock" size={13} />{draft.year}</div>
 			{:else}
 				<Dropdown
-					value={n.nam}
-					placeholder="Chọn năm"
-					title="Năm của số liệu trong tệp"
-					options={DP_NAM.map((y) => ({ v: y, t: y }))}
-					on:change={(e) => dat({ nam: e.detail })}
+					value={draft.year}
+					placeholder={$i18n.t('Select year')}
+					title={$i18n.t('Year of the figures in the file')}
+					options={DATA_YEARS.map((year) => ({ value: year, label: year }))}
+					on:change={(event) => updateDraft({ year: event.detail })}
 				/>
 			{/if}
 		</div>
-		{#if nhieuLoai}
+		{#if multipleFileTypes}
 			<div class="field s3">
-				<span class="lbl">Loại tệp <span class="req">*</span></span>
-				{#if dangKT}
-					<div class="ro lk"><Icon name="lock" size={13} />{loai?.ten}</div>
+				<span class="lbl">{$i18n.t('File type')} <span class="req">*</span></span>
+				{#if checking}
+					<div class="ro locked"><Icon name="lock" size={13} />{fileType?.name}</div>
 				{:else}
 					<Dropdown
-						value={n.loai}
-						placeholder="Chọn loại tệp"
-						title="Loại tệp"
-						options={(dom?.loai_tep ?? []).map((l) => ({ v: l.ma, t: l.ten, phu: l.phu }))}
-						on:change={(e) => dat({ loai: e.detail, file: null, luc: '' })}
+						value={draft.fileType}
+						placeholder={$i18n.t('Select file type')}
+						title={$i18n.t('File type')}
+						options={(domain?.file_types ?? []).map((item) => ({
+							value: item.code,
+							label: item.name,
+							subtitle: item.subtitle
+						}))}
+						on:change={(event) =>
+							updateDraft({ fileType: event.detail, file: null, selectedAt: '' })}
 					/>
 				{/if}
 			</div>
@@ -188,18 +253,18 @@
 <!-- svelte-ignore a11y-no-static-element-interactions -->
 <section
 	class="card"
-	class:over={keo}
-	on:dragover|preventDefault={() => (keo = !khoaTep)}
-	on:dragleave={() => (keo = false)}
-	on:drop|preventDefault={(e) => {
-		keo = false;
-		chonTep(e.dataTransfer?.files?.[0]);
+	class:over={dragging}
+	on:dragover|preventDefault={() => (dragging = !fileLocked)}
+	on:dragleave={() => (dragging = false)}
+	on:drop|preventDefault={(event) => {
+		dragging = false;
+		selectFile(event.dataTransfer?.files?.[0]);
 	}}
 >
 	<div class="card-h">
 		<div>
-			<h2>File đính kèm</h2>
-			<div class="sub">{n.file ? 1 : 0}/1 File</div>
+			<h2>{$i18n.t('Attachment')}</h2>
+			<div class="sub">{$i18n.t('{{count}}/1 File', { count: draft.file ? 1 : 0 })}</div>
 		</div>
 	</div>
 	<div class="tw">
@@ -207,57 +272,65 @@
 			<table>
 				<thead>
 					<tr>
-						<th>Loại file</th><th>Tên tài liệu</th><th class="r">Dung lượng</th><th>Người upload</th><th>Ngày upload</th><th>Trạng thái</th><th></th>
+						<th>{$i18n.t('File kind')}</th><th>{$i18n.t('Document name')}</th><th class="r"
+							>{$i18n.t('Size')}</th
+						><th>{$i18n.t('Uploader')}</th><th>{$i18n.t('Upload date')}</th><th
+							>{$i18n.t('Upload status')}</th
+						><th></th>
 					</tr>
 				</thead>
 				<tbody>
 					<tr>
-						<td class="s">{nhieuLoai ? (n.loai ? (loai?.ten ?? '') : '') : (loai?.ten ?? $dpDomains[0]?.loai_tep?.[0]?.ten ?? '')}</td>
-						<td class="s" style="word-break:break-all">{n.file?.name ?? ''}</td>
-						<td class="r">{n.file ? kb(n.file.size) : '0,0 KB'}</td>
-						<td>{n.file ? ($user?.name ?? '') : ''}</td>
-						<td>{n.file ? n.luc : '-'}</td>
+						<td class="s">{fileTypeName}</td>
+						<td class="s" style="word-break:break-all">{draft.file?.name ?? ''}</td>
+						<td class="r">{draft.file ? formatKilobytes(draft.file.size) : '0,0 KB'}</td>
+						<td>{draft.file ? ($user?.name ?? '') : ''}</td>
+						<td>{draft.file ? draft.selectedAt : '-'}</td>
 						<td>
-							{#if !n.file}<Badge t="Chưa upload" k="muted" />
-							{:else if hopLe}<Badge t="Đã chọn · hợp lệ" k="ok" />
-							{:else}<Badge t="Không phải tệp .xlsx" k="err" />{/if}
+							{#if !draft.file}<Badge label={$i18n.t('Not uploaded yet')} tone="muted" />
+							{:else if validFile}<Badge label={$i18n.t('Selected · valid')} tone="ok" />
+							{:else}<Badge label={$i18n.t('Not an .xlsx file')} tone="err" />{/if}
 						</td>
 						<td>
 							<div class="row" style="gap:6px;flex-wrap:nowrap;justify-content:flex-end">
 								<label
 									class="iconbtn"
-									class:off={khoaTep}
-									title={thieuNN ? `${thieuNN} trước khi chọn tệp` : 'Chọn tệp từ máy'}
-									aria-disabled={khoaTep}
-									style="cursor:{khoaTep ? 'not-allowed' : 'pointer'}"
+									class:off={fileLocked}
+									title={missingSelection
+										? $i18n.t('{{reason}} before choosing a file', { reason: missingSelection })
+										: $i18n.t('Choose a file from your computer')}
+									aria-disabled={fileLocked}
+									style="cursor:{fileLocked ? 'not-allowed' : 'pointer'}"
 								>
-									<Icon name="up" size={16} /><span class="sr">Chọn tệp</span>
+									<Icon name="up" size={16} /><span class="sr">{$i18n.t('Choose file')}</span>
 									<input
 										type="file"
 										accept=".xlsx,.xls"
 										hidden
-										disabled={khoaTep}
-										on:change={(e) => {
-											chonTep(e.currentTarget.files?.[0]);
-											e.currentTarget.value = '';
+										disabled={fileLocked}
+										on:change={(event) => {
+											selectFile(event.currentTarget.files?.[0]);
+											event.currentTarget.value = '';
 										}}
 									/>
 								</label>
 								<button
 									type="button"
 									class="iconbtn"
-									disabled={!n.file || dangKT}
-									title="Tải tệp đã chọn về máy"
-									aria-label="Tải tệp đã chọn về máy"
-									on:click={() => n.file && luuTep(n.file, n.file.name)}><Icon name="down" size={16} /></button
+									disabled={!draft.file || checking}
+									title={$i18n.t('Download the selected file')}
+									aria-label={$i18n.t('Download the selected file')}
+									on:click={() => draft.file && saveFile(draft.file, draft.file.name)}
+									><Icon name="down" size={16} /></button
 								>
 								<button
 									type="button"
 									class="iconbtn"
-									disabled={!n.file || dangKT}
-									title="Bỏ tệp đã chọn"
-									aria-label="Bỏ tệp đã chọn"
-									on:click={() => dat({ file: null, luc: '' })}><Icon name="trash" size={16} /></button
+									disabled={!draft.file || checking}
+									title={$i18n.t('Remove the selected file')}
+									aria-label={$i18n.t('Remove the selected file')}
+									on:click={() => updateDraft({ file: null, selectedAt: '' })}
+									><Icon name="trash" size={16} /></button
 								>
 							</div>
 						</td>
@@ -265,8 +338,13 @@
 				</tbody>
 			</table>
 		</div>
-		{#if thieuNN && !n.file}
-			<p class="hint" style="margin:10px 0 0"><Icon name="lock" size={12} /> {thieuNN} ở thẻ phía trên trước, rồi mới chọn được tệp.</p>
+		{#if missingSelection && !draft.file}
+			<p class="hint" style="margin:10px 0 0">
+				<Icon name="lock" size={12} />
+				{$i18n.t('{{reason}} in the card above first, then you can choose a file.', {
+					reason: missingSelection
+				})}
+			</p>
 		{/if}
 	</div>
 </section>

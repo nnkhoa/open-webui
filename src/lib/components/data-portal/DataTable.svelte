@@ -1,41 +1,47 @@
 <script context="module" lang="ts">
-	export type CellObj = {
-		v?: string | number | null;
-		sub?: string;
-		badge?: [string, string];
-		link?: () => void;
-		linkTitle?: string;
-		cls?: string;
-		mono?: boolean;
+	export type TableCellObject = {
+		value?: string | number | null;
+		subtitle?: string;
+		badge?: { label: string; tone: string };
+		action?: () => void;
+		actionTitle?: string;
+		className?: string;
 		bold?: boolean;
-		tep?: boolean; // tên tệp bấm được, có biểu tượng tệp
+		file?: boolean;
 	};
-	export type Cell = string | number | null | undefined | CellObj;
-	export type Row = { cells: Cell[]; onClick?: () => void; title?: string };
+	export type TableCell = string | number | null | undefined | TableCellObject;
+	export type TableRow = { cells: TableCell[]; onClick?: () => void; title?: string };
+	export type TableHeader = { label: string; alignRight?: boolean; title?: string };
 </script>
 
 <script lang="ts">
-	// Bảng dùng chung (đặc tả 12.6). Ô là chữ thuần (Svelte tự thoát ký tự) hoặc dạng có cấu trúc.
+	import { getContext } from 'svelte';
+	import type { Writable } from 'svelte/store';
+	import type { i18n as i18nType } from 'i18next';
+
 	import Badge from './Badge.svelte';
 	import Icon from './Icon.svelte';
+	import { isBlank } from './format';
 
-	export let heads: { t: string; r?: boolean; title?: string }[] = [];
-	export let rows: Row[] = [];
-	export let tong: Cell[] | null = null;
-	export let empty = '';
-	export let cls = '';
+	const i18n: Writable<i18nType> = getContext('i18n');
 
-	const o = (c: Cell): CellObj => (c !== null && typeof c === 'object' ? c : { v: c });
-	const hien = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : String(v));
-	const trong = (v: unknown) => v === null || v === undefined || v === '';
+	export let headers: TableHeader[] = [];
+	export let rows: TableRow[] = [];
+	export let totals: TableCell[] | null = null;
+
+	const toObject = (cell: TableCell): TableCellObject =>
+		cell !== null && typeof cell === 'object' ? cell : { value: cell };
+	const display = (value: unknown) => (isBlank(value) ? '—' : String(value));
 </script>
 
-<div class="tw {cls}">
+<div class="tw">
 	<div class="tbox">
 		<table>
 			<thead>
 				<tr>
-					{#each heads as h}<th class:r={h.r} title={h.title}>{h.t}</th>{/each}
+					{#each headers as header}<th class:r={header.alignRight} title={header.title}
+							>{header.label}</th
+						>{/each}
 				</tr>
 			</thead>
 			<tbody>
@@ -43,56 +49,51 @@
 					<tr
 						class:rc={!!row.onClick}
 						tabindex={row.onClick ? 0 : undefined}
-						title={row.onClick ? row.title || 'Bấm để mở' : undefined}
+						title={row.onClick ? row.title || $i18n.t('Click to open') : undefined}
 						on:click={row.onClick}
-						on:keydown={(e) => {
-							if (row.onClick && e.key === 'Enter') row.onClick();
+						on:keydown={(event) => {
+							if (row.onClick && event.key === 'Enter') row.onClick();
 						}}
 					>
-						{#each row.cells as c, i}
-							{@const x = o(c)}
+						{#each row.cells as rawCell, index}
+							{@const cell = toObject(rawCell)}
 							<td
-								class="{heads[i]?.r ? 'r ' : ''}{x.cls ?? ''}"
-								class:muted={trong(x.v) && !x.badge && !x.link}
+								class="{headers[index]?.alignRight ? 'r ' : ''}{cell.className ?? ''}"
+								class:muted={isBlank(cell.value) && !cell.badge && !cell.action}
 							>
-								{#if x.badge}
-									<Badge t={x.badge[0]} k={x.badge[1]} />
-								{:else if x.link && x.tep}
+								{#if cell.badge}
+									<Badge label={cell.badge.label} tone={cell.badge.tone} />
+								{:else if cell.action && cell.file}
 									<button
 										type="button"
 										class="link"
 										style="font-weight:400;word-break:break-word;display:inline-flex;gap:6px;align-items:flex-start;min-width:150px"
-										title={x.linkTitle}
-										on:click|stopPropagation={x.link}><Icon name="doc" size={14} stroke={1.8} /><span>{hien(x.v)}</span></button
+										title={cell.actionTitle}
+										on:click|stopPropagation={cell.action}
+										><Icon name="doc" size={14} stroke={1.8} /><span>{display(cell.value)}</span
+										></button
 									>
-								{:else if x.link}
+								{:else if cell.action}
 									<button
 										type="button"
 										class="num-link"
-										title={x.linkTitle}
-										on:click|stopPropagation={x.link}>{hien(x.v)}</button
+										title={cell.actionTitle}
+										on:click|stopPropagation={cell.action}>{display(cell.value)}</button
 									>
-								{:else if x.bold}
-									<b>{hien(x.v)}</b>
-								{:else if x.mono}
-									<span class="mono">{hien(x.v)}</span>
+								{:else if cell.bold}
+									<b>{display(cell.value)}</b>
 								{:else}
-									{hien(x.v)}
+									{display(cell.value)}
 								{/if}
-								{#if x.sub}<div class="sub">{x.sub}</div>{/if}
+								{#if cell.subtitle}<div class="sub">{cell.subtitle}</div>{/if}
 							</td>
 						{/each}
 					</tr>
-				{:else}
-					{#if empty}
-						<tr><td colspan={heads.length} style="text-align:center;color:var(--muted);padding:24px">{empty}</td></tr>
-					{/if}
 				{/each}
-				{#if tong}
-					<tr class="tong">
-						{#each tong as c, i}
-							{@const x = o(c)}
-							<td class:r={heads[i]?.r}>{x.v ?? ''}</td>
+				{#if totals}
+					<tr class="total">
+						{#each totals as rawCell, index}
+							<td class:r={headers[index]?.alignRight}>{toObject(rawCell).value ?? ''}</td>
 						{/each}
 					</tr>
 				{/if}

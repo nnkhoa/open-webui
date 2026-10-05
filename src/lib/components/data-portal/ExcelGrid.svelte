@@ -1,7 +1,16 @@
+<script context="module" lang="ts">
+	export type ExcelRow = { rowNumber: number; cells: (string | null)[]; hidden?: boolean };
+</script>
+
 <script lang="ts">
-	// Lưới kiểu Excel (đặc tả 12.14).
-	export let cols: string[] = []; // A, B, C…
-	export let rows: { rn: number; cells: (string | null)[]; an?: boolean }[] = [];
+	import { getContext } from 'svelte';
+	import type { Writable } from 'svelte/store';
+	import type { i18n as i18nType } from 'i18next';
+
+	const i18n: Writable<i18nType> = getContext('i18n');
+
+	export let columns: string[] = [];
+	export let rows: ExcelRow[] = [];
 </script>
 
 <div class="xl-wrap">
@@ -9,14 +18,17 @@
 		<thead>
 			<tr>
 				<th class="rn"></th>
-				{#each cols as c}<th>{c}</th>{/each}
+				{#each columns as column}<th>{column}</th>{/each}
 			</tr>
 		</thead>
 		<tbody>
-			{#each rows as r}
-				<tr class:an={r.an} title={r.an ? 'Dòng đang bị ẩn trong Excel (bộ lọc)' : undefined}>
-					<td class="rn">{r.rn}</td>
-					{#each r.cells as v}<td title={v ?? ''}>{v ?? ''}</td>{/each}
+			{#each rows as row}
+				<tr
+					class:hidden-row={row.hidden}
+					title={row.hidden ? $i18n.t('Row is hidden in Excel (filter)') : undefined}
+				>
+					<td class="rn">{row.rowNumber}</td>
+					{#each row.cells as value}<td title={value ?? ''}>{value ?? ''}</td>{/each}
 				</tr>
 			{/each}
 		</tbody>

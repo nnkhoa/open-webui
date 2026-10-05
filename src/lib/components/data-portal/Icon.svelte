@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { ICON } from './icons';
+	import { ICON_PATHS } from './icons';
+
 	export let name: string;
 	export let size = 18;
 	export let stroke = 2;
@@ -16,5 +17,5 @@
 	stroke-width={stroke}
 	aria-hidden="true"
 	style="flex-shrink:0"
-	><path stroke-linecap="round" stroke-linejoin="round" d={ICON[name]} /></svg
+	><path stroke-linecap="round" stroke-linejoin="round" d={ICON_PATHS[name]} /></svg
 >

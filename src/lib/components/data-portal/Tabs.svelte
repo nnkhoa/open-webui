@@ -1,8 +1,17 @@
+<script context="module" lang="ts">
+	export type Tab = { id: string; label: string; count?: string | number; hidden?: boolean };
+</script>
+
 <script lang="ts">
-	// Tab trong màn (đặc tả 12.12).
-	import { createEventDispatcher } from 'svelte';
-	export let tabs: { id: string; t: string; n?: string | number; an?: boolean }[] = [];
+	import { createEventDispatcher, getContext } from 'svelte';
+	import type { Writable } from 'svelte/store';
+	import type { i18n as i18nType } from 'i18next';
+
+	const i18n: Writable<i18nType> = getContext('i18n');
+
+	export let tabs: Tab[] = [];
 	export let active = '';
+
 	const dispatch = createEventDispatcher<{ change: string }>();
 </script>
 
@@ -17,9 +26,9 @@
 				aria-selected={tab.id === active}
 				on:click={() => dispatch('change', tab.id)}
 			>
-				{tab.t}
-				{#if tab.n !== undefined && tab.n !== ''}<span class="count">{tab.n}</span>{/if}
-				{#if tab.an}<span class="an-tag">ẩn</span>{/if}
+				{tab.label}
+				{#if tab.count !== undefined && tab.count !== ''}<span class="count">{tab.count}</span>{/if}
+				{#if tab.hidden}<span class="hidden-tag">{$i18n.t('hidden')}</span>{/if}
 			</button>
 		{/each}
 	</div>

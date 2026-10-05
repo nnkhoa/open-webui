@@ -1,31 +1,35 @@
 <script lang="ts">
-	// Nhóm "Data Portal" trên thanh bên Open WebUI (đặc tả 14.1). Chỉ Admin và Data Loader thấy.
 	import { getContext } from 'svelte';
+	import type { Writable } from 'svelte/store';
+	import type { i18n as i18nType } from 'i18next';
 	import { page } from '$app/stores';
+
 	import { user } from '$lib/stores';
-	import { DP_ROLES, dpNap, NAP_TRONG } from '$lib/stores/dataPortal';
+	import { DATA_PORTAL_ROLES, resetUploadDraft } from '$lib/stores/dataPortal';
+
 	import Icon from './Icon.svelte';
 	import './tokens.css';
 
-	const i18n = getContext('i18n');
+	const i18n: Writable<i18nType> = getContext('i18n');
 
-	export let onNavigate: () => void = () => {};
-
-	const MUC = [
-		{ href: '/data-portal/upload', label: 'Upload data', icon: 'up', adminOnly: false },
+	const UPLOAD_PATH = '/data-portal/upload';
+	const ITEMS = [
+		{ href: UPLOAD_PATH, label: 'Upload data', icon: 'up', adminOnly: false },
 		{ href: '/data-portal/history', label: 'Upload history', icon: 'list', adminOnly: false },
 		{ href: '/data-portal/data', label: 'Data', icon: 'layers', adminOnly: false },
 		{ href: '/data-portal/admin', label: 'Database configuration', icon: 'db', adminOnly: true }
 	];
 
-	// Mặc định đóng; bấm dòng "Data Portal" mới hiện các mục con.
+	export let onNavigate: () => void = () => {};
+
 	let open = false;
+
 	const toggle = () => {
 		open = !open;
 	};
 
-	$: visible = DP_ROLES.includes($user?.role ?? '');
-	$: items = MUC.filter((m) => !m.adminOnly || $user?.role === 'admin');
+	$: visible = DATA_PORTAL_ROLES.includes($user?.role ?? '');
+	$: items = ITEMS.filter((item) => !item.adminOnly || $user?.role === 'admin');
 	$: path = $page.url.pathname;
 </script>
 
@@ -44,21 +48,20 @@
 
 		{#if open}
 			<div class="dp-sub">
-				{#each items as m (m.href)}
-					{@const on = path === m.href || path.startsWith(m.href + '/')}
+				{#each items as item (item.href)}
+					{@const on = path === item.href || path.startsWith(item.href + '/')}
 					<a
-						href={m.href}
+						href={item.href}
 						class="dp-link {on ? 'on' : ''}"
 						aria-current={on ? 'page' : undefined}
 						draggable="false"
 						on:click={() => {
-							// Mỗi lần mở mục Nạp dữ liệu, mọi ô trở lại trống (đặc tả 15.1).
-							if (m.href === '/data-portal/upload') dpNap.set({ ...NAP_TRONG });
+							if (item.href === UPLOAD_PATH) resetUploadDraft();
 							onNavigate();
 						}}
 					>
-						<Icon name={m.icon} size={16} stroke={1.8} />
-						<span>{$i18n.t(m.label)}</span>
+						<Icon name={item.icon} size={16} stroke={1.8} />
+						<span>{$i18n.t(item.label)}</span>
 					</a>
 				{/each}
 			</div>

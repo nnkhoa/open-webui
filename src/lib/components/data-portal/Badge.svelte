@@ -1,6 +1,8 @@
 <script lang="ts">
-	export let t: string;
-	export let k: string = 'muted';
+	import type { Tone } from './format';
+
+	export let label: string;
+	export let tone: Tone | string = 'muted';
 </script>
 
-<span class="badge b-{k}">{t}</span>
+<span class="badge b-{tone}">{label}</span>

@@ -43,7 +43,6 @@
 	export let align = 'end';
 
 	export let showActiveUsers = true;
-	// Minimal mode hides settings, archived chats and the admin links.
 	export let minimal = false;
 
 	let showUserStatusModal = false;

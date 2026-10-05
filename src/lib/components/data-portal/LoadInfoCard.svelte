@@ -1,29 +1,44 @@
 <script lang="ts">
-	// Thẻ "Thông tin lần nạp" (đặc tả 15.4, 16.2).
-	import ReadonlyCard from './ReadonlyCard.svelte';
-	import { dpDomains } from '$lib/stores/dataPortal';
-	import { so, thoiGian } from './fmt';
-	import type { LanNap } from '$lib/apis/data-portal/types';
-	export let L: LanNap;
-	export let day = false; // Chi tiết lần nạp: thêm Tháng / Lấy từ sheet và Tổng số dòng
+	import { getContext } from 'svelte';
+	import type { Writable } from 'svelte/store';
+	import type { i18n as i18nType } from 'i18next';
 
-	$: dom = $dpDomains.find((d) => d.code === L.nhom);
-	$: gc = (dom?.loai_tep?.length ?? 0) > 1;
+	import { hasMultipleFileTypes, portalDomains } from '$lib/stores/dataPortal';
+	import type { Load } from '$lib/apis/data-portal/types';
+
+	import ReadonlyCard, { type ReadonlyField } from './ReadonlyCard.svelte';
+	import { formatDateTime, formatNumber } from './format';
+
+	const i18n: Writable<i18nType> = getContext('i18n');
+
+	export let load: Load;
+	export let detailed = false;
+
+	$: domain = $portalDomains.find((item) => item.code === load.domain);
+	$: multipleFileTypes = hasMultipleFileTypes(domain);
 	$: fields = [
-		{ l: 'Nhóm thông tin', v: `${L.nhom} · ${dom?.name ?? ''}` },
-		{ l: 'Năm dữ liệu', v: L.nam },
-		...(gc ? [{ l: 'Loại tệp', v: L.loai?.ten ?? '' }] : []),
-		{ l: 'Người nạp', v: L.nguoi },
-		{ l: 'Thời gian nạp', v: thoiGian(L.luc) },
-		...(day
-			? [
-					gc
-						? { l: 'Lấy từ sheet', v: L.status === 'rejected' ? '—' : (L.sheet ?? '—') }
-						: { l: 'Tháng', v: L.status === 'success' ? (L.thang ?? '—') : '—' },
-					{ l: 'Tổng số dòng', v: so(L.tong_so_dong) }
-				]
-			: [])
+		{ label: $i18n.t('Information group'), value: `${load.domain} · ${domain?.name ?? ''}` },
+		{ label: $i18n.t('Data year'), value: load.year },
+		...(multipleFileTypes
+			? [{ label: $i18n.t('File type'), value: load.file_type.name ?? '' }]
+			: []),
+		{ label: $i18n.t('Uploaded by'), value: load.user },
+		{ label: $i18n.t('Upload time'), value: formatDateTime(load.created_at) },
+		...(detailed ? detailFields() : [])
+	] as ReadonlyField[];
+
+	const detailFields = (): ReadonlyField[] => [
+		multipleFileTypes
+			? {
+					label: $i18n.t('Taken from sheet'),
+					value: load.status === 'rejected' ? '—' : (load.sheet ?? '—')
+				}
+			: {
+					label: $i18n.t('Data month'),
+					value: load.status === 'success' ? (load.months ?? '—') : '—'
+				},
+		{ label: $i18n.t('Total rows'), value: formatNumber(load.total_rows) }
 	];
 </script>
 
-<ReadonlyCard title="Thông tin lần nạp" {fields} />
+<ReadonlyCard title={$i18n.t('Upload record information')} {fields} />

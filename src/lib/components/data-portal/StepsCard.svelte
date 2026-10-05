@@ -1,22 +1,49 @@
 <script lang="ts">
-	// Thẻ "Các bước xử lý" dựng từ dữ liệu lần nạp (đặc tả mục 17).
-	import StepTimeline from './StepTimeline.svelte';
-	import { mauKetLuan } from './fmt';
-	export let buoc: { ma: string; ten: string; ket_qua: string; ket_luan: string; trang_thai: 'ok' | 'err' | 'skip' }[] = [];
-	export let nut: Record<string, { t: string; onClick: () => void }> = {};
+	import { getContext } from 'svelte';
+	import type { Writable } from 'svelte/store';
+	import type { i18n as i18nType } from 'i18next';
 
-	const doi = (b: (typeof buoc)[number]) => ({
-		ma: b.ma,
-		ten: b.ten,
-		ket_qua: b.ket_qua,
-		trang_thai: b.trang_thai,
-		ket_luan: [b.ket_luan, mauKetLuan(b.ket_luan, b.trang_thai === 'skip')] as [string, string],
-		nut: nut[b.ma] ?? null
-	});
-	$: nhom = [
-		{ h: 'A. Kiểm tra trước khi ghi', buoc: buoc.filter((b) => b.ma.startsWith('A')).map(doi) },
-		{ h: 'B. Ghi vào database và đối chiếu lại', buoc: buoc.filter((b) => b.ma.startsWith('B')).map(doi) }
+	import type { Step } from '$lib/apis/data-portal/types';
+
+	import Badge from './Badge.svelte';
+	import { verdictTone } from './format';
+
+	const i18n: Writable<i18nType> = getContext('i18n');
+
+	export let steps: Step[] = [];
+
+	$: groups = [
+		{
+			title: $i18n.t('A. Checks before writing'),
+			steps: steps.filter((step) => step.code.startsWith('A'))
+		},
+		{
+			title: $i18n.t('B. Write to the database and reconcile'),
+			steps: steps.filter((step) => step.code.startsWith('B'))
+		}
 	];
+
+	const statusMarker = (step: Step) =>
+		step.status === 'ok' ? '✓' : step.status === 'err' ? '!' : '–';
 </script>
 
-<StepTimeline {nhom} />
+<section class="card">
+	<div class="card-h"><div><h2>{$i18n.t('Processing steps')}</h2></div></div>
+	{#each groups as group}
+		<div class="tl-g"><h3>{group.title}</h3></div>
+		<div class="tl">
+			{#each group.steps as step}
+				<div class="tl-i {step.status}">
+					<span class="n">{statusMarker(step)}</span>
+					<div style="min-width:0">
+						<h4>{step.code}. {step.name}</h4>
+						<p class="step-result">{step.result}</p>
+					</div>
+					<div class="tl-r">
+						<Badge label={step.verdict} tone={verdictTone(step.verdict, step.status === 'skip')} />
+					</div>
+				</div>
+			{/each}
+		</div>
+	{/each}
+</section>

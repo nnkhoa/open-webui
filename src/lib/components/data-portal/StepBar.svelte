@@ -1,30 +1,53 @@
 <script lang="ts">
-	// Thanh các bước nạp (đặc tả 12.10). i = bước đang làm (4 = xong hết); loi = bước bị lỗi.
-	export let i = 0;
-	export let loi = -1;
-	export let gc = false;
-	export let quay: Record<number, { title: string; onClick: () => void }> = {};
+	import { getContext } from 'svelte';
+	import type { Writable } from 'svelte/store';
+	import type { i18n as i18nType } from 'i18next';
 
-	$: ten = [
-		gc ? 'Chọn nhóm, năm, loại tệp và tệp' : 'Chọn nhóm, năm và tệp',
-		'Kiểm tra tệp',
-		'Xác nhận thêm mới dữ liệu',
-		'Kết quả'
+	const i18n: Writable<i18nType> = getContext('i18n');
+
+	export let current = 0;
+	export let failedStep = -1;
+	export let withFileType = false;
+	export let backLinks: Record<number, { title: string; onClick: () => void }> = {};
+
+	$: labels = [
+		withFileType
+			? $i18n.t('Select group, year, file type and file')
+			: $i18n.t('Select group, year and file'),
+		$i18n.t('Check file'),
+		$i18n.t('Confirm adding new data'),
+		$i18n.t('Result')
 	];
-	const tt = (k: number) =>
-		loi >= 0 ? (k < loi ? 'done' : k === loi ? 'err' : '') : k < i ? 'done' : k === i ? 'on' : '';
+
+	const stepState = (index: number) => {
+		if (failedStep >= 0) return index < failedStep ? 'done' : index === failedStep ? 'err' : '';
+		return index < current ? 'done' : index === current ? 'on' : '';
+	};
+
+	const stepMarker = (index: number) => {
+		const state = stepState(index);
+		return state === 'done' ? '✓' : state === 'err' ? '!' : String(index + 1);
+	};
 </script>
 
-<section class="card flowbar" aria-label="Các bước nạp">
-	{#each ten as t, k}
-		{#if k}<span class="fs-line" aria-hidden="true"></span>{/if}
-		{#if quay[k]}
-			<button type="button" class="fs {tt(k)} fs-back" title={quay[k].title} on:click={quay[k].onClick}>
-				<span class="n">{tt(k) === 'done' ? '✓' : tt(k) === 'err' ? '!' : k + 1}</span>{t}
+<section class="card flowbar" aria-label={$i18n.t('Upload steps')}>
+	{#each labels as label, index}
+		{#if index}<span class="fs-line" aria-hidden="true"></span>{/if}
+		{#if backLinks[index]}
+			<button
+				type="button"
+				class="fs {stepState(index)} fs-back"
+				title={backLinks[index].title}
+				on:click={backLinks[index].onClick}
+			>
+				<span class="n">{stepMarker(index)}</span>{label}
 			</button>
 		{:else}
-			<span class="fs {tt(k)}" aria-current={tt(k) === 'on' || tt(k) === 'err' ? 'step' : undefined}>
-				<span class="n">{tt(k) === 'done' ? '✓' : tt(k) === 'err' ? '!' : k + 1}</span>{t}
+			<span
+				class="fs {stepState(index)}"
+				aria-current={stepState(index) === 'on' || stepState(index) === 'err' ? 'step' : undefined}
+			>
+				<span class="n">{stepMarker(index)}</span>{label}
 			</span>
 		{/if}
 	{/each}

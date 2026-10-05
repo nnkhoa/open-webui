@@ -1,112 +1,176 @@
 <script lang="ts">
-	// Tệp gốc của một lần nạp (đặc tả 16.3).
-	import { onMount } from 'svelte';
+	import { getContext, onMount } from 'svelte';
+	import type { Writable } from 'svelte/store';
+	import type { i18n as i18nType } from 'i18next';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
-	import { dpDomains } from '$lib/stores/dataPortal';
-	import { dpGet, dpDownload, luuTep } from '$lib/apis/data-portal';
-	import type { LanNap } from '$lib/apis/data-portal/types';
+
+	import { hasMultipleFileTypes, loadPortalDomains, portalDomains } from '$lib/stores/dataPortal';
+	import {
+		downloadLoadFile,
+		getLoad,
+		getLoadFileSheet,
+		getLoadFileSheets
+	} from '$lib/apis/data-portal';
+	import type { Load, SourceSheet, SourceSheetPage } from '$lib/apis/data-portal/types';
+
 	import HeaderCard from '$lib/components/data-portal/HeaderCard.svelte';
 	import ReadonlyCard from '$lib/components/data-portal/ReadonlyCard.svelte';
 	import Banner from '$lib/components/data-portal/Banner.svelte';
 	import ExcelGrid from '$lib/components/data-portal/ExcelGrid.svelte';
 	import Pager from '$lib/components/data-portal/Pager.svelte';
 	import Icon from '$lib/components/data-portal/Icon.svelte';
-	import { so, thoiGian } from '$lib/components/data-portal/fmt';
+	import { formatDateTime, formatNumber } from '$lib/components/data-portal/format';
+	import { saveFile } from '$lib/components/data-portal/download';
 
-	type Sheet = { so: number; ten: string; so_dong: number; an: boolean; so_dong_an: number };
-	type NoiDung = { cot: string[]; tong: number; dong: { rn: number; o: (string | null)[]; an: boolean }[] };
+	const i18n: Writable<i18nType> = getContext('i18n');
 
-	let L: LanNap | null = null;
-	let sheets: Sheet[] = [];
-	let nd: NoiDung | null = null;
-	let loi = '';
-	let trang = 1;
-	let moi = 50;
-	let dangMo = false;
+	let load: Load | null = null;
+	let sheets: SourceSheet[] = [];
+	let sheetPage: SourceSheetPage | null = null;
+	let errorMessage = '';
+	let currentPage = 1;
+	let pageSize = 50;
+	let opening = false;
 
-	$: id = Number($page.params.id);
-	$: sheet = Number($page.url.searchParams.get('sheet') ?? '-1');
-	$: gc = ($dpDomains.find((d) => d.code === L?.nhom)?.loai_tep?.length ?? 0) > 1;
-	$: dom = $dpDomains.find((d) => d.code === L?.nhom);
-	$: cur = sheets.find((s) => s.so === sheet) ?? sheets.find((s) => s.ten === L?.sheet) ?? sheets.find((s) => !s.an) ?? sheets[0];
+	$: loadId = Number($page.params.id);
+	$: requestedSheet = Number($page.url.searchParams.get('sheet') ?? '-1');
+	$: domain = $portalDomains.find((item) => item.code === load?.domain);
+	$: multipleFileTypes = hasMultipleFileTypes(domain);
+	$: currentSheet =
+		sheets.find((sheet) => sheet.index === requestedSheet) ??
+		sheets.find((sheet) => sheet.name === load?.sheet) ??
+		sheets.find((sheet) => !sheet.hidden) ??
+		sheets[0];
 
 	onMount(async () => {
 		try {
-			if (!$dpDomains.length) dpDomains.set(await dpGet('domains'));
-			[L, sheets] = await Promise.all([dpGet<LanNap>(`loads/${id}`), dpGet<Sheet[]>(`loads/${id}/file/sheets`)]);
-		} catch (e) {
-			loi = (e as Error).message;
+			await loadPortalDomains();
+			[load, sheets] = await Promise.all([
+				getLoad(localStorage.token, loadId),
+				getLoadFileSheets(localStorage.token, loadId)
+			]);
+		} catch (error) {
+			errorMessage = (error as Error).message;
 		}
 	});
 
-	const taiSheet = async (s: Sheet | undefined, t: number, m: number) => {
-		if (!s) return;
-		dangMo = true;
+	const loadSheet = async (sheet: SourceSheet | undefined, pageNumber: number, size: number) => {
+		if (!sheet) return;
+		opening = true;
 		try {
-			nd = await dpGet<NoiDung>(`loads/${id}/file/sheets/${s.so}`, { trang: t, moi: m });
-		} catch (e) {
-			loi = (e as Error).message;
+			sheetPage = await getLoadFileSheet(localStorage.token, loadId, sheet.index, pageNumber, size);
+		} catch (error) {
+			errorMessage = (error as Error).message;
 		} finally {
-			dangMo = false;
+			opening = false;
 		}
 	};
-	$: taiSheet(cur, trang, moi);
 
-	const chonSheet = (s: Sheet) => {
-		trang = 1;
-		goto(`/data-portal/history/${id}/file?sheet=${s.so}`, { replaceState: true, noScroll: true });
+	$: loadSheet(currentSheet, currentPage, pageSize);
+
+	const selectSheet = (sheet: SourceSheet) => {
+		currentPage = 1;
+		goto(`/data-portal/history/${loadId}/file?sheet=${sheet.index}`, {
+			replaceState: true,
+			noScroll: true
+		});
 	};
-	const taiTep = async () => {
-		const { blob, ten } = await dpDownload(`loads/${id}/file`, undefined, L?.ten_tep ?? 'tep.xlsx');
-		luuTep(blob, ten);
+
+	const downloadSourceFile = async () => {
+		const { blob, fileName } = await downloadLoadFile(
+			localStorage.token,
+			loadId,
+			load?.file_name ?? 'tep.xlsx'
+		);
+		saveFile(blob, fileName);
 	};
 </script>
 
-{#if loi}
-	<Banner k="err" icon="x" title={loi} />
-{:else if !L}
-	<p class="desc">Đang mở tệp…</p>
+{#if errorMessage}
+	<Banner tone="err" icon="x" title={errorMessage} />
+{:else if !load}
+	<p class="desc">{$i18n.t('Opening file…')}</p>
 {:else}
-	<HeaderCard title="Tệp gốc · lần nạp #{L.id}" desc={L.ten_tep} back={() => history.back()}>
+	<HeaderCard
+		title={$i18n.t('Source file · upload #{{id}}', { id: load.id })}
+		description={load.file_name}
+		back={() => history.back()}
+	>
 		<svelte:fragment slot="actions">
-			<button type="button" class="btn" on:click={taiTep}><Icon name="down" size={16} />Tải tệp gốc</button>
-			<button type="button" class="btn primary" on:click={() => goto(`/data-portal/history/${id}`)}>Xem chi tiết lần nạp</button>
+			<button type="button" class="btn" on:click={downloadSourceFile}
+				><Icon name="down" size={16} />{$i18n.t('Download source file')}</button
+			>
+			<button
+				type="button"
+				class="btn primary"
+				on:click={() => goto(`/data-portal/history/${loadId}`)}
+				>{$i18n.t('View upload details')}</button
+			>
 		</svelte:fragment>
 	</HeaderCard>
 
 	<ReadonlyCard
-		title="Thông tin tệp"
+		title={$i18n.t('File information')}
 		fields={[
-			{ l: 'Nhóm thông tin', v: `${L.nhom} · ${dom?.name ?? ''}` },
-			{ l: 'Năm dữ liệu', v: L.nam },
-			...(gc ? [{ l: 'Loại tệp', v: L.loai?.ten ?? '' }] : []),
-			{ l: 'Người nạp', v: L.nguoi },
-			{ l: 'Thời gian nạp', v: thoiGian(L.luc) },
-			{ l: 'Số sheet', v: so(sheets.length) }
+			{ label: $i18n.t('Information group'), value: `${load.domain} · ${domain?.name ?? ''}` },
+			{ label: $i18n.t('Data year'), value: load.year },
+			...(multipleFileTypes ? [{ label: $i18n.t('File type'), value: load.file_type.name }] : []),
+			{ label: $i18n.t('Uploaded by'), value: load.user },
+			{ label: $i18n.t('Upload time'), value: formatDateTime(load.created_at) },
+			{ label: $i18n.t('Sheet count'), value: formatNumber(sheets.length) }
 		]}
 	/>
 
 	<section class="card">
-		<div class="card-h"><div><h2>Nội dung tệp</h2></div></div>
+		<div class="card-h">
+			<div><h2>{$i18n.t('File contents')}</h2></div>
+		</div>
 		<div class="subtabs" role="tablist">
-			{#each sheets as s (s.so)}
-				<button type="button" role="tab" class="subtab" class:on={s.so === cur?.so} aria-selected={s.so === cur?.so} on:click={() => chonSheet(s)}>
-					{s.ten} <span class="count">{so(s.so_dong)}</span>
-					{#if s.an}<span class="an-tag">ẩn</span>{/if}
+			{#each sheets as sheet (sheet.index)}
+				<button
+					type="button"
+					role="tab"
+					class="subtab"
+					class:on={sheet.index === currentSheet?.index}
+					aria-selected={sheet.index === currentSheet?.index}
+					on:click={() => selectSheet(sheet)}
+				>
+					{sheet.name} <span class="count">{formatNumber(sheet.row_count)}</span>
+					{#if sheet.hidden}<span class="hidden-tag">{$i18n.t('hidden')}</span>{/if}
 				</button>
 			{/each}
 		</div>
-		{#if cur?.so_dong_an}
-			<p class="hint" style="padding:10px 24px 0;margin:0">{so(cur.so_dong_an)} dòng đang bị ẩn trong Excel (chữ nhạt). Portal đọc cả dòng ẩn.</p>
+		{#if currentSheet?.hidden_row_count}
+			<p class="hint" style="padding:10px 24px 0;margin:0">
+				{$i18n.t(
+					'{{rows}} rows are hidden in Excel (faded text). The portal reads hidden rows too.',
+					{ rows: formatNumber(currentSheet.hidden_row_count) }
+				)}
+			</p>
 		{/if}
-		{#if dangMo && !nd}
-			<p class="desc" style="padding:16px 24px">Đang mở tệp…</p>
-		{:else if nd}
+		{#if opening && !sheetPage}
+			<p class="desc" style="padding:16px 24px">{$i18n.t('Opening file…')}</p>
+		{:else if sheetPage}
 			<div style="padding:12px 0 0">
-				<ExcelGrid cols={nd.cot} rows={nd.dong.map((d) => ({ rn: d.rn, cells: d.o, an: d.an }))} />
+				<ExcelGrid
+					columns={sheetPage.columns}
+					rows={sheetPage.rows.map((row) => ({
+						rowNumber: row.row_number,
+						cells: row.cells,
+						hidden: row.hidden
+					}))}
+				/>
 			</div>
-			<Pager tong={nd.tong} {trang} {moi} on:change={(e) => { trang = e.detail.trang; moi = e.detail.moi; }} />
+			<Pager
+				total={sheetPage.total}
+				page={currentPage}
+				{pageSize}
+				on:change={(event) => {
+					currentPage = event.detail.page;
+					pageSize = event.detail.pageSize;
+				}}
+			/>
 		{/if}
 	</section>
 {/if}

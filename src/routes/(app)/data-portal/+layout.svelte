@@ -1,41 +1,50 @@
 <script lang="ts">
-	// Khung Data Portal: kiểm vai trò (đặc tả 3.4), thanh "Data Portal › {mục}" (14.2), vùng nội dung (14.3).
 	import { getContext } from 'svelte';
+	import type { Writable } from 'svelte/store';
+	import type { i18n as i18nType } from 'i18next';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { toast } from 'svelte-sonner';
+
 	import { user, showSidebar, mobile, WEBUI_NAME } from '$lib/stores';
-	import { DP_ROLES } from '$lib/stores/dataPortal';
+	import { DATA_PORTAL_ROLES } from '$lib/stores/dataPortal';
+
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
 	import SidebarIcon from '$lib/components/icons/Sidebar.svelte';
 	import Icon from '$lib/components/data-portal/Icon.svelte';
 	import '$lib/components/data-portal/tokens.css';
 	import '$lib/components/data-portal/dp.css';
 
-	const i18n = getContext('i18n');
+	const i18n: Writable<i18nType> = getContext('i18n');
 
-	const MUC: [string, string][] = [
-		['/data-portal/upload', 'Upload data'],
-		['/data-portal/history', 'Upload history'],
-		['/data-portal/data', 'Data'],
-		['/data-portal/admin', 'Database configuration']
+	const ADMIN_PATH = '/data-portal/admin';
+	const SECTIONS = [
+		{ href: '/data-portal/upload', label: 'Upload data' },
+		{ href: '/data-portal/history', label: 'Upload history' },
+		{ href: '/data-portal/data', label: 'Data' },
+		{ href: ADMIN_PATH, label: 'Database configuration' }
 	];
+
+	let warned = false;
 
 	$: path = $page.url.pathname;
 	$: role = $user?.role ?? '';
-	$: allowed = DP_ROLES.includes(role) && (role === 'admin' || !path.startsWith('/data-portal/admin'));
-	$: muc = MUC.find(([href]) => path === href || path.startsWith(href + '/'))?.[1] ?? '';
+	$: allowed =
+		DATA_PORTAL_ROLES.includes(role) && (role === 'admin' || !path.startsWith(ADMIN_PATH));
+	$: section =
+		SECTIONS.find(({ href }) => path === href || path.startsWith(href + '/'))?.label ?? '';
 
-	let warned = false;
-	$: if ($user && !DP_ROLES.includes(role)) {
+	$: if ($user && !DATA_PORTAL_ROLES.includes(role)) {
 		if (!warned) {
 			warned = true;
 			toast.error(
-				$i18n.t('You do not have permission to access Data Portal. Contact Admin if you need to upload data.')
+				$i18n.t(
+					'You do not have permission to access Data Portal. Contact Admin if you need to upload data.'
+				)
 			);
 		}
 		goto('/');
-	} else if ($user && role !== 'admin' && path.startsWith('/data-portal/admin')) {
+	} else if ($user && role !== 'admin' && path.startsWith(ADMIN_PATH)) {
 		goto('/data-portal/upload');
 	}
 </script>
@@ -66,7 +75,7 @@
 			<nav class="dp-crumb" aria-label={$i18n.t('Data Portal')}>
 				<span>{$i18n.t('Data Portal')}</span>
 				<Icon name="fwd" size={14} />
-				<b>{muc ? $i18n.t(muc) : ''}</b>
+				<b>{section ? $i18n.t(section) : ''}</b>
 			</nav>
 		</header>
 		<main class="dp-main">

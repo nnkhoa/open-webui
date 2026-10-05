@@ -85,6 +85,7 @@
 	import HotkeyHint from '../common/HotkeyHint.svelte';
 	import DataPortalSidebarGroup from '../data-portal/SidebarGroup.svelte';
 	import DataPortalIcon from '../data-portal/Icon.svelte';
+	import { DATA_PORTAL_ROLES } from '$lib/stores/dataPortal';
 
 	const BREAKPOINT = 768;
 	const DEFAULT_PINNED_ITEMS = ['notes', 'workspace'];
@@ -971,7 +972,7 @@
 					{/if}
 				{/each}
 
-				{#if ['admin', 'data_uploader'].includes($user?.role)}
+				{#if DATA_PORTAL_ROLES.includes($user?.role ?? '')}
 					<div class="">
 						<Tooltip content={$i18n.t('Data Portal')} placement="right">
 							<a
@@ -1027,9 +1028,7 @@
 										<div class="absolute -bottom-0.5 -right-0.5">
 											<span class="relative flex size-2.5">
 												<span
-													class="relative inline-flex size-2.5 rounded-full {true
-														? 'bg-green-500'
-														: 'bg-gray-300 dark:bg-gray-700'} border-2 border-white dark:border-gray-900"
+													class="relative inline-flex size-2.5 rounded-full bg-green-500 border-2 border-white dark:border-gray-900"
 												></span>
 											</span>
 										</div>
@@ -1648,9 +1647,7 @@
 										<div class="absolute -bottom-0.5 -right-0.5">
 											<span class="relative flex size-2.5">
 												<span
-													class="relative inline-flex size-2.5 rounded-full {true
-														? 'bg-green-500'
-														: 'bg-gray-300 dark:bg-gray-700'} border-2 border-white dark:border-gray-900"
+													class="relative inline-flex size-2.5 rounded-full bg-green-500 border-2 border-white dark:border-gray-900"
 												></span>
 											</span>
 										</div>

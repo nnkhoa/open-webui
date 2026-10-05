@@ -1,84 +1,100 @@
+<script context="module" lang="ts">
+	export type DropdownOption = {
+		value: string;
+		label: string;
+		subtitle?: string | null;
+		code?: string;
+	};
+</script>
+
 <script lang="ts">
-	// Ô chọn dùng chung — một kiểu cho mọi danh sách chọn (đặc tả 12.3).
 	import { createEventDispatcher, onDestroy } from 'svelte';
+
 	import Icon from './Icon.svelte';
 
-	export let value: string = '';
-	export let options: { v: string; t: string; phu?: string; ma?: string }[] = [];
+	export let value = '';
+	export let options: DropdownOption[] = [];
 	export let placeholder = '';
 	export let title = '';
-	export let chip = ''; // nhãn dạng chip "Nhãn: giá trị"
-	export let mac = ''; // giá trị mặc định của chip (khác thì tô tím)
-	export let up = false; // xổ lên trên (ô "Số dòng / trang")
+	export let chipLabel = '';
+	export let defaultValue = '';
+	export let dropUp = false;
 	export let disabled = false;
 	export let id = '';
 
 	const dispatch = createEventDispatcher<{ change: string }>();
+
 	let open = false;
-	let el: HTMLDivElement;
+	let container: HTMLDivElement;
 
-	$: cur = options.find((o) => o.v === value);
-	$: set = !!chip && value !== mac;
+	$: current = options.find((option) => option.value === value);
+	$: changed = !!chipLabel && value !== defaultValue;
 
-	const chon = (v: string) => {
+	const select = (optionValue: string) => {
 		open = false;
-		if (v !== value) {
-			value = v;
-			dispatch('change', v);
+		if (optionValue !== value) {
+			value = optionValue;
+			dispatch('change', optionValue);
 		}
 	};
-	const ngoai = (e: MouseEvent) => {
-		if (open && el && !el.contains(e.target as Node)) open = false;
+
+	const onDocumentMousedown = (event: MouseEvent) => {
+		if (open && container && !container.contains(event.target as Node)) open = false;
 	};
-	const phim = (e: KeyboardEvent) => {
-		if (open && e.key === 'Escape') open = false;
+
+	const onDocumentKeydown = (event: KeyboardEvent) => {
+		if (open && event.key === 'Escape') open = false;
 	};
+
 	if (typeof document !== 'undefined') {
-		document.addEventListener('mousedown', ngoai);
-		document.addEventListener('keydown', phim);
+		document.addEventListener('mousedown', onDocumentMousedown);
+		document.addEventListener('keydown', onDocumentKeydown);
 	}
+
 	onDestroy(() => {
 		if (typeof document !== 'undefined') {
-			document.removeEventListener('mousedown', ngoai);
-			document.removeEventListener('keydown', phim);
+			document.removeEventListener('mousedown', onDocumentMousedown);
+			document.removeEventListener('keydown', onDocumentKeydown);
 		}
 	});
 </script>
 
-<div class="dom" class:f={!chip && !up} bind:this={el}>
+<div class="dropdown" class:f={!chipLabel && !dropUp} bind:this={container}>
 	<button
 		type="button"
 		{id}
-		class="dom-pill"
-		class:chip={!!chip}
-		class:set
+		class="dropdown-pill"
+		class:chip={!!chipLabel}
+		class:set={changed}
 		aria-haspopup="listbox"
 		aria-expanded={open}
 		{disabled}
 		on:click={() => (open = !open)}
 	>
-		{#if chip}<span class="k">{chip}:</span>{/if}
-		{#if cur?.ma}<b>{cur.ma}</b><span class="sep">·</span>{/if}
-		<span class="nm" style={cur ? '' : 'color:var(--faint)'}>{cur ? cur.t : placeholder}</span>
+		{#if chipLabel}<span class="k">{chipLabel}:</span>{/if}
+		{#if current?.code}<b>{current.code}</b><span class="sep">·</span>{/if}
+		<span class="nm" style={current ? '' : 'color:var(--faint)'}
+			>{current ? current.label : placeholder}</span
+		>
 		<Icon name="chev" size={14} stroke={2.5} />
 	</button>
 	{#if open}
-		<div class="panel" role="listbox" style={up ? 'top:auto;bottom:calc(100% + 6px)' : ''}>
+		<div class="panel" role="listbox" style={dropUp ? 'top:auto;bottom:calc(100% + 6px)' : ''}>
 			{#if title}<div class="panel-h">{title}</div>{/if}
-			{#each options as o (o.v)}
+			{#each options as option (option.value)}
 				<button
 					type="button"
 					class="dd-item"
-					class:on={o.v === value}
+					class:on={option.value === value}
 					role="option"
-					aria-selected={o.v === value}
-					on:click={() => chon(o.v)}
+					aria-selected={option.value === value}
+					on:click={() => select(option.value)}
 				>
-					<span class="dom-t" style="flex:1">
-						{#if o.phu}<small>{o.phu}</small>{/if}
-						<b>{o.t}</b>
+					<span class="dropdown-option" style="flex:1">
+						{#if option.subtitle}<small>{option.subtitle}</small>{/if}
+						<b>{option.label}</b>
 					</span>
-					{#if o.v === value}<Icon name="check" size={18} className="i-ok" />{/if}
+					{#if option.value === value}<Icon name="check" size={18} className="i-ok" />{/if}
 				</button>
 			{/each}
 		</div>

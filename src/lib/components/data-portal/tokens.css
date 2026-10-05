@@ -1,17 +1,15 @@
-/* Data Portal — biến màu (đặc tả mục 11.2). Chế độ tối theo lớp `dark` của Open WebUI. */
 :root {
-	--dp-sans: 'Be Vietnam Pro', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+	--dp-sans:
+		'Be Vietnam Pro', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 	--mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 	--page: #f4f5f9;
 	--surface: #ffffff;
-	--sb: #fbfbfb;
 	--line: #ececf1;
 	--line2: #dedee6;
 	--th-bg: #ebebef;
 	--field: #f7f7fa;
 	--hover: #f2f2f6;
 	--ro: #fbfbfd;
-	--muted-bg: #f0f0f4;
 	--text: #1f2233;
 	--strong: #11131c;
 	--body: #3d4152;
@@ -40,14 +38,12 @@
 html.dark {
 	--page: #0f1117;
 	--surface: #181b24;
-	--sb: #0f0f0f;
 	--line: #262a36;
 	--line2: #343948;
 	--th-bg: #222633;
 	--field: #1f2330;
 	--hover: #232736;
 	--ro: #1c1f2a;
-	--muted-bg: #262a36;
 	--text: #eceef5;
 	--strong: #ffffff;
 	--body: #c9ccd8;

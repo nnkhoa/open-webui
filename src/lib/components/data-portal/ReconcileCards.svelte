@@ -1,118 +1,166 @@
 <script lang="ts">
-	// Các thẻ "Đối chiếu tệp gốc ↔ database" (đặc tả mục 18). Dữ liệu và tiêu đề do API trả.
+	import { getContext } from 'svelte';
+	import type { Writable } from 'svelte/store';
+	import type { i18n as i18nType } from 'i18next';
 	import { goto } from '$app/navigation';
+
+	import { getLoadReconciliation } from '$lib/apis/data-portal';
+	import type {
+		CardCell,
+		CardLink,
+		CardOption,
+		ReconcileCard,
+		ReconcileQuery
+	} from '$lib/apis/data-portal/types';
+
 	import Card from './Card.svelte';
-	import DataTable, { type Row, type Cell } from './DataTable.svelte';
+	import DataTable, { type TableCell, type TableRow } from './DataTable.svelte';
 	import Dropdown from './Dropdown.svelte';
 	import Pager from './Pager.svelte';
-	import { dpGet } from '$lib/apis/data-portal';
-	import { soTien, mauKetLuan } from './fmt';
+	import { formatAmount, verdictTone } from './format';
 
-	type Mo = { bang?: string; lop?: string; nam?: string; ky?: string; tim?: string; sheet?: number };
-	type O = string | number | null | { v: string | number | null; mo?: Mo; phu?: string };
-	type The = {
-		ma: string;
-		tieu_de: string;
-		so?: string | number;
-		thong_bao?: string;
-		cot: { t: string; r?: boolean }[];
-		dong: { o: O[]; ket_luan?: string; ket_luan_phu?: string; phu?: string; mo?: Mo }[];
-		tong?: O[];
-		tuy_chon?: { ten: string; nhan: string; gia_tri: string; mac?: string; lua_chon: { v: string; t: string; phu?: string }[] }[];
-		trang?: { trang: number; moi: number; tong: number };
-	};
+	const i18n: Writable<i18nType> = getContext('i18n');
+
+	const REJECTED_CARD = 'rejected';
+	const DEFAULT_LAYER = 'gold';
 
 	export let loadId: number;
-	export let nam: string | number = '';
+	export let year: string | number | null = '';
 
-	let the: The[] = [];
-	let dangTai = true;
-	let loi = '';
-	let thamSo: Record<string, Record<string, string | number>> = {};
+	let cards: ReconcileCard[] = [];
+	let loading = true;
+	let errorMessage = '';
+	let queries: Record<string, ReconcileQuery> = {};
 
-	const tai = async (ma?: string) => {
+	$: loadCards(loadId);
+
+	const loadCards = async (id: number) => {
+		loading = true;
 		try {
-			if (ma) {
-				const kq = await dpGet<{ the: The[] }>(`loads/${loadId}/reconcile`, { the: ma, ...thamSo[ma] });
-				the = the.map((t) => kq.the.find((k) => k.ma === t.ma) ?? t);
-			} else {
-				dangTai = true;
-				the = (await dpGet<{ the: The[] }>(`loads/${loadId}/reconcile`)).the;
-			}
-		} catch (e) {
-			loi = (e as Error).message;
+			cards = (await getLoadReconciliation(localStorage.token, id)).cards;
+		} catch (error) {
+			errorMessage = (error as Error).message;
 		} finally {
-			dangTai = false;
+			loading = false;
 		}
 	};
-	$: loadId, tai();
 
-	const moToi = (m?: Mo) => {
-		if (!m) return undefined;
-		if (m.sheet !== undefined) return () => goto(`/data-portal/history/${loadId}/file?sheet=${m.sheet}`);
-		if (m.bang) {
-			const q = new URLSearchParams();
-			q.set('lop', m.lop ?? 'gold');
-			if (m.nam ?? nam) q.set('nam', String(m.nam ?? nam));
-			if (m.ky) q.set('ky', m.ky);
-			if (m.tim) q.set('tim', m.tim);
-			return () => goto(`/data-portal/data/${m.bang}?${q.toString()}`);
+	const reloadCard = async (key: string) => {
+		try {
+			const result = await getLoadReconciliation(localStorage.token, loadId, {
+				card: key,
+				...queries[key]
+			});
+			cards = cards.map((card) => result.cards.find((updated) => updated.key === card.key) ?? card);
+		} catch (error) {
+			errorMessage = (error as Error).message;
+		} finally {
+			loading = false;
+		}
+	};
+
+	const updateQuery = (key: string, changes: ReconcileQuery) => {
+		queries[key] = { ...(queries[key] ?? {}), ...changes };
+		reloadCard(key);
+	};
+
+	const openLink = (link?: CardLink) => {
+		if (!link) return undefined;
+		if ('sheet' in link) {
+			return () => goto(`/data-portal/history/${loadId}/file?sheet=${link.sheet}`);
+		}
+		if (link.table) {
+			const params = new URLSearchParams();
+			params.set('layer', link.layer ?? DEFAULT_LAYER);
+			const linkYear = link.year ?? year;
+			if (linkYear) params.set('year', String(linkYear));
+			if (link.period) params.set('period', String(link.period));
+			if (link.query) params.set('query', link.query);
+			return () => goto(`/data-portal/data/${link.table}?${params.toString()}`);
 		}
 		return undefined;
 	};
-	const hien = (v: unknown) => (typeof v === 'number' ? soTien(v) : (v ?? '—'));
-	const o2c = (o: O, i: number, phu?: string): Cell => {
-		if (o !== null && typeof o === 'object') {
-			return { v: hien(o.v) as string, link: moToi(o.mo), sub: o.phu, bold: i === 0, cls: 's' };
+
+	const display = (value: unknown) =>
+		typeof value === 'number' ? formatAmount(value) : String(value ?? '—');
+
+	const toTableCell = (cell: CardCell, index: number, note?: string): TableCell => {
+		if (cell !== null && typeof cell === 'object') {
+			return {
+				value: display(cell.value),
+				action: openLink(cell.link),
+				bold: index === 0,
+				className: 's'
+			};
 		}
-		return i === 0 ? { v: hien(o) as string, bold: true, sub: phu, cls: 's' } : (hien(o) as string);
+		return index === 0
+			? { value: display(cell), bold: true, subtitle: note, className: 's' }
+			: display(cell);
 	};
-	const rows = (t: The): Row[] =>
-		t.dong.map((d) => ({
+
+	const tableRows = (card: ReconcileCard): TableRow[] =>
+		card.rows.map((row) => ({
 			cells: [
-				...d.o.map((o, i) => o2c(o, i, i === 0 ? d.phu : undefined)),
-				...(d.ket_luan !== undefined ? [{ badge: [d.ket_luan, mauKetLuan(d.ket_luan)] as [string, string], sub: d.ket_luan_phu }] : [])
+				...row.cells.map((cell, index) =>
+					toTableCell(cell, index, index === 0 ? row.note : undefined)
+				),
+				...(row.verdict !== undefined
+					? [
+							{
+								badge: { label: row.verdict, tone: verdictTone(row.verdict) },
+								subtitle: row.verdict_note
+							}
+						]
+					: [])
 			],
-			onClick: moToi(d.mo)
+			onClick: openLink(row.link)
 		}));
+
+	const optionDefault = (option: CardOption) =>
+		option.default ?? option.choices[0]?.value ?? option.value;
 </script>
 
-{#if dangTai}
-	<p class="desc" style="padding:0 24px 20px">Đang tải…</p>
-{:else if loi}
-	<p class="desc" style="padding:0 24px 20px">{loi}</p>
+{#if loading}
+	<p class="desc" style="padding:0 24px 20px">{$i18n.t('Loading…')}</p>
+{:else if errorMessage}
+	<p class="desc" style="padding:0 24px 20px">{errorMessage}</p>
 {:else}
-	{#each the as t (t.ma)}
-		{#if t.thong_bao}
-			<Card title={t.ma === 'tu_choi' ? '' : t.tieu_de}><p class="desc">{t.thong_bao}</p></Card>
+	{#each cards as card (card.key)}
+		{#if card.message}
+			<Card title={card.key === REJECTED_CARD ? '' : card.title}
+				><p class="desc">{card.message}</p></Card
+			>
 		{:else}
-			<Card title={t.tieu_de} count={t.so ?? ''} pad={false}>
-				{#if t.tuy_chon?.length}
+			<Card title={card.title} count={card.count ?? ''} padded={false}>
+				{#if card.options?.length}
 					<div class="chiprow" style="padding:0 24px 14px">
-						{#each t.tuy_chon as c (c.ten)}
+						{#each card.options as option (option.name)}
 							<Dropdown
-								chip={c.nhan}
-								value={c.gia_tri}
-								mac={c.mac ?? c.lua_chon[0]?.v ?? c.gia_tri}
-								options={c.lua_chon}
-								on:change={(e) => {
-									thamSo[t.ma] = { ...(thamSo[t.ma] ?? {}), [c.ten]: e.detail, trang: 1 };
-									tai(t.ma);
-								}}
+								chipLabel={option.label}
+								value={option.value}
+								defaultValue={optionDefault(option)}
+								options={option.choices}
+								on:change={(event) =>
+									updateQuery(card.key, { [option.name]: event.detail, page: 1 })}
 							/>
 						{/each}
 					</div>
 				{/if}
-				<DataTable heads={t.cot} rows={rows(t)} tong={t.tong ? t.tong.map((o, i) => o2c(o, i)) : null} />
-				{#if t.trang && t.trang.tong > t.trang.moi}
+				<DataTable
+					headers={card.columns.map((column) => ({
+						label: column.label,
+						alignRight: column.align_right
+					}))}
+					rows={tableRows(card)}
+					totals={card.totals ? card.totals.map((cell, index) => toTableCell(cell, index)) : null}
+				/>
+				{#if card.pagination && card.pagination.total > card.pagination.page_size}
 					<Pager
-						tong={t.trang.tong}
-						trang={t.trang.trang}
-						moi={t.trang.moi}
-						on:change={(e) => {
-							thamSo[t.ma] = { ...(thamSo[t.ma] ?? {}), trang: e.detail.trang, moi: e.detail.moi };
-							tai(t.ma);
-						}}
+						total={card.pagination.total}
+						page={card.pagination.page}
+						pageSize={card.pagination.page_size}
+						on:change={(event) =>
+							updateQuery(card.key, { page: event.detail.page, page_size: event.detail.pageSize })}
 					/>
 				{/if}
 			</Card>
