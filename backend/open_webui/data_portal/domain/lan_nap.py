@@ -104,8 +104,8 @@ def so_dong_ghi(lan_nap: dict) -> int:
 def bang_chinh(registry: FormRegistry, form_code: str) -> str | None:
     """Bảng mở bằng nút "Xem dữ liệu vừa nạp": bảng số liệu đầu tiên của loại tệp."""
     form = registry.form(form_code)
-    fact = [t for t in form.tables_hien_thi if not t.is_dim]
-    return (fact or form.tables_hien_thi)[0].name
+    fact = [t for t in form.tables_by_display_order if not t.is_dim]
+    return (fact or form.tables_by_display_order)[0].name
 
 
 def danh_sach_loi(lan_nap: dict) -> list[dict]:

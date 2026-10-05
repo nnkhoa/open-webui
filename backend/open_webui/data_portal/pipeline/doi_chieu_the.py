@@ -78,9 +78,9 @@ def _pham_vi(ctx: LoadContext, table: FormTable, goc: list[dict]) -> tuple[sql.C
     """Điều kiện chọn dòng lớp phân tích thuộc phạm vi lần nạp."""
     dk = [sql.SQL("t.domain_id = %s"), sql.SQL("t.is_current")]
     tham: list = [ctx.domain_id]
-    if table.cot_nam is not None:
+    if table.year_column is not None:
         dk.append(sql.SQL("t.{} IS NOT DISTINCT FROM %s").format(
-            sql.Identifier(table.cot_nam.name)))
+            sql.Identifier(table.year_column.name)))
         tham.append(ctx.nam)
     if table.partition_by:
         cot = table.partition_column.name
@@ -123,7 +123,7 @@ def chup_truoc(ctx: LoadContext) -> dict:
     """
     ra: dict[str, dict] = {}
     for table in ctx.form.tables:
-        if table.is_dim or table.cot_nam is None:
+        if table.is_dim or table.year_column is None:
             continue
         ra[table.name] = _theo_thang_db(ctx, table)
     if la_theo_tieu_de(ctx):
@@ -159,7 +159,7 @@ def _so_dong_nhom(ctx: LoadContext) -> dict[str, int]:
 def _theo_thang_db(ctx: LoadContext, table: FormTable) -> dict[str, dict]:
     """`{kỳ: {so_dong, tong}}` của năm đang nạp ở lớp phân tích; không có cột kỳ
     thì một mục `*` cho cả năm."""
-    cot_tien = [c.name for c in table.cot_tien]
+    cot_tien = [c.name for c in table.amount_columns]
     tong = sql.SQL(" + ").join(
         sql.SQL("coalesce(sum(t.{}), 0)").format(sql.Identifier(c)) for c in cot_tien
     ) if cot_tien else sql.SQL("0")
@@ -171,7 +171,7 @@ def _theo_thang_db(ctx: LoadContext, table: FormTable) -> dict[str, dict]:
         "SELECT {ky} AS ky, count(*) AS so_dong, {tong} AS tong FROM {bang} t "
         " WHERE t.domain_id = %s AND t.is_current AND t.{nam} IS NOT DISTINCT FROM %s "
         " GROUP BY 1").format(ky=ky, tong=tong, bang=sql.Identifier("gold", table.name),
-                              nam=sql.Identifier(table.cot_nam.name)),
+                              nam=sql.Identifier(table.year_column.name)),
         (ctx.domain_id, ctx.nam))
     return {r["ky"]: {"so_dong": r["so_dong"], "tong": str(r["tong"])} for r in hang if r["ky"]}
 
@@ -228,7 +228,7 @@ def tinh(ctx: LoadContext, truoc: dict, kt: dict) -> dict:
 
 def _mo_bang(ctx: LoadContext, table: FormTable, lop: str, **them) -> dict:
     mo = {"bang": table.name, "lop": lop}
-    if table.cot_nam is not None and ctx.nam is not None:
+    if table.year_column is not None and ctx.nam is not None:
         mo["nam"] = ctx.nam
     mo.update({k: v for k, v in them.items() if v is not None})
     return mo
@@ -237,7 +237,7 @@ def _mo_bang(ctx: LoadContext, table: FormTable, lop: str, **them) -> dict:
 def _the_so_dong(ctx: LoadContext, sheet_so: dict, sheet_bang: dict) -> dict:
     """a) Số dòng qua từng lớp của mỗi bảng."""
     dong, tong = [], [0, 0, 0, 0, 0]
-    for table in ctx.form.tables_hien_thi:
+    for table in ctx.form.tables_by_display_order:
         k = ctx.bang(table)
         chuan_hoa = k.rows_silver + k.rows_unchanged
         phan_tich = k.rows_gold + k.rows_unchanged
@@ -279,9 +279,9 @@ def _the_so_dong(ctx: LoadContext, sheet_so: dict, sheet_bang: dict) -> dict:
 def _the_tong(ctx: LoadContext, goc: dict, db: dict) -> dict:
     """b) Tổng mọi cột tiền của từng bảng số liệu."""
     dong = []
-    for table in sorted((t for t in ctx.form.tables if t.cot_tien and not t.is_dim),
+    for table in sorted((t for t in ctx.form.tables if t.amount_columns and not t.is_dim),
                         key=lambda t: t.name):
-        cot = [c.name for c in table.cot_tien]
+        cot = [c.name for c in table.amount_columns]
         tep, trong_db = _tong(goc[table.name], cot), _tong(db[table.name], cot)
         dong.append({"o": [table.label, so(tep), so(trong_db), so(trong_db - tep)],
                      "ket_luan": "Đúng" if tep == trong_db else "Lệch",
@@ -308,10 +308,10 @@ def _ma_tran_tien(ctx: LoadContext, goc: dict, db: dict) -> dict:
     bang: dict[str, dict] = {}
     thu_tu: list[str] = []
     co_lech = False
-    for table in ctx.form.tables_hien_thi:
-        if table.is_dim or not table.cot_tien:
+    for table in ctx.form.tables_by_display_order:
+        if table.is_dim or not table.amount_columns:
             continue
-        cot = [c.name for c in table.cot_tien]
+        cot = [c.name for c in table.amount_columns]
         chia: dict[str, dict] = {}
         for ten_chia in CHIA_THEO:
             if ten_chia not in table.column_names:
@@ -336,7 +336,7 @@ def _ma_tran_tien(ctx: LoadContext, goc: dict, db: dict) -> dict:
                               for k, v in nhom.items()}
         # jsonb không giữ thứ tự khoá, nên thứ tự bảng và cách chia cất riêng.
         bang[table.name] = {"ten": table.label,
-                            "cot": [{"v": c.name, "t": c.label} for c in table.cot_tien],
+                            "cot": [{"v": c.name, "t": c.label} for c in table.amount_columns],
                             "chia": chia, "thu_tu_chia": list(chia)}
         thu_tu.append(table.name)
     return {"ma": "tien_theo_nhom", "bang": bang, "thu_tu": thu_tu, "ten_khoan": ten_khoan,
@@ -510,8 +510,8 @@ def _ghi_nhan(the: dict, noi_dung: str, mo_ta: str, so: int) -> None:
 
 def _the_truoc_sau(ctx: LoadContext, truoc: dict, goc: dict) -> dict:
     """e) Đủ 12 tháng của năm: số dòng trước / sau lần nạp, cách ghi, kết luận."""
-    bang = [t for t in ctx.form.tables_hien_thi
-            if not t.is_dim and t.cot_nam is not None and t.partition_by]
+    bang = [t for t in ctx.form.tables_by_display_order
+            if not t.is_dim and t.year_column is not None and t.partition_by]
     the = {"ma": "truoc_sau", "tieu_de": TIEU_DE["truoc_sau"].format(nam=ctx.nam or ""),
            "cot": [{"t": "Tháng"}, {"t": "Có trong tệp"},
                    {"t": "Số dòng trước lần nạp", "r": True},

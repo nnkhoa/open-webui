@@ -9,7 +9,7 @@
 #
 #  Cột theo phiếu khảo sát 20260915_NBC-QTTM_Bieu_mau_du_lieu_va_Khao_sat sheet
 #  "4. May mau" (Bảng C) và đặc tả mục 10.3. Cột trong phiếu mà tệp không có thì
-#  giữ cột, để trống (`lay_tu: trong`, QT-21). Cột của tệp không có trong phiếu
+#  giữ cột, để trống (`value_from: trong`, QT-21). Cột của tệp không có trong phiếu
 #  không nạp (10.4).
 #
 #  Nạp lại cùng năm: ghi đè toàn bộ (`merge: replace_all`, QT-10) — tệp là bản
@@ -20,19 +20,19 @@ form:
   code: LICH_MAY_MAU
   version: 1
   label: Lịch may mẫu
-  chu_phu: SAMPLE MAKING SCHEDULE
+  subtitle: SAMPLE MAKING SCHEDULE
   description: Lịch may mẫu chào hàng — từng lần may mẫu, số lượng và đơn giá.
   policy:
     unknown_sheet: ignore
     unknown_column: ignore
   source:
     kind: bang_theo_tieu_de
-    dong_du_lieu: 3          # dữ liệu bắt đầu ở dòng tiêu đề + 3 (dòng 14 khi tiêu đề ở dòng 11)
-    o_tong: P10              # ô SUBTOTAL — chỉ cộng dòng đang hiện, chỉ ghi nhận (QT-14)
-    o_tong_ghi_nhan: true
-    o_ngay_ban: A4           # "DATE : 30 Sep 2026" — ngày của bản theo dõi
+    data_row_offset: 3           # dữ liệu bắt đầu ở dòng tiêu đề + 3 (dòng 14 khi tiêu đề ở dòng 11)
+    total_cell: P10              # ô SUBTOTAL — chỉ cộng dòng đang hiện, chỉ ghi nhận (QT-14)
+    total_cell_informational: true
+    report_date_cell: A4         # "DATE : 30 Sep 2026" — ngày của bản theo dõi
     # Thứ tự cột cần lấy như trong tệp — dùng ở câu báo lỗi (đặc tả 5.1, 15.5).
-    cot_can: [KHÁCH HÀNG, MÃ HÀNG, LOẠI MẪU, SALE, SỐ LƯỢNG, NGÀY GIAO MẪU (QC), GIÁ TIỀN (USD)]
+    required_headers: [KHÁCH HÀNG, MÃ HÀNG, LOẠI MẪU, SALE, SỐ LƯỢNG, NGÀY GIAO MẪU (QC), GIÁ TIỀN (USD)]
 
 tables:
   - name: fact_may_mau
@@ -53,13 +53,13 @@ tables:
     columns:
       - name: nam
         type: int
-        lay_tu: nam_du_lieu
+        value_from: nam_du_lieu
         label: Không có trong tệp — lấy từ ô Năm dữ liệu chọn lúc nạp
         meaning: Năm của số liệu, chọn ở ô Năm dữ liệu lúc nạp.
         example: "2026"
       - name: ma_lan_may
         type: text
-        lay_tu: trong
+        value_from: trong
         label: Không có trong tệp — để trống
         meaning: Mã riêng của một lần may mẫu. Tệp không có cột này (STT và #ID của tệp đều có số lặp) nên để trống.
       - name: ngay_giao_mau
@@ -70,7 +70,7 @@ tables:
         example: "01/06/2026"
       - name: ma_khach
         type: text
-        lay_tu: trong
+        value_from: trong
         label: Không có trong tệp — để trống
         meaning: Mã khách hàng mà mẫu được chào cho. Tệp chỉ có tên khách nên để trống.
       - name: ten_khach
@@ -115,13 +115,13 @@ tables:
         example: "37.5"
       - name: ma_tien_te
         type: text
-        lay_tu: tieu_de
+        value_from: tieu_de
         header: GIÁ TIỀN (USD)
         label: Tiêu đề cột GIÁ TIỀN (USD)
         meaning: Đơn vị tiền của đơn giá, lấy trong tiêu đề cột GIÁ TIỀN (USD) — luôn là USD.
         example: USD
       - name: ma_po_phat_sinh
         type: text
-        lay_tu: trong
+        value_from: trong
         label: Không có trong tệp — để trống
         meaning: Mã đơn hàng phát sinh từ mẫu này. Tệp không có cột này nên để trống.

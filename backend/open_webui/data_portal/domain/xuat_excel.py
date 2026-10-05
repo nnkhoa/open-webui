@@ -20,7 +20,7 @@ COT_THONG_TIN = ("ten_cot", "ten_trong_tep_nbc", "kieu_du_lieu", "bat_buoc", "y_
 
 def ten_tep(ma_nhom: str, table: FormTable, lop: str, nam: int | None) -> str:
     """`{NHÓM}-{bảng}-{lớp}[-{năm}].xlsx`."""
-    duoi = f"-{nam}" if nam is not None and table.cot_nam is not None else ""
+    duoi = f"-{nam}" if nam is not None and table.year_column is not None else ""
     return f"{ma_nhom}-{table.name}-{lop}{duoi}.xlsx"
 
 

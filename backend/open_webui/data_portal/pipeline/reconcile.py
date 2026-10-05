@@ -133,7 +133,7 @@ def r1(ctx: LoadContext, table: FormTable, table_id: int) -> bool:
 
     theo_cot = {chuan_ten(ten): chi_so for chi_so, ten in tieu_de.items()}
     # Cột `nam` và cột để trống không có trong tệp — không có gì để đọc lại.
-    can = {c.name: theo_cot.get(chuan_ten(c.tieu_de)) for c in table.cot_tu_tep}
+    can = {c.name: theo_cot.get(chuan_ten(c.file_header)) for c in table.file_columns}
 
     goc = q.query(
         ctx.conn,
@@ -348,7 +348,7 @@ def _tong_dong_khong_doi(ctx: LoadContext, table: FormTable, cot_tien: list[str]
 def chay(ctx: LoadContext, table_id_theo_ten: dict[str, int]) -> list[dict]:
     """Chạy R1–R4 cho mọi bảng. Trả danh sách bước lệch — rỗng nghĩa là khớp hết."""
     lech: list[dict] = []
-    for table in ctx.form.tables_theo_thu_tu:
+    for table in ctx.form.tables_by_dependency:
         table_id = table_id_theo_ten[table.name]
         if ctx.bang(table).rows_bronze == 0:
             continue

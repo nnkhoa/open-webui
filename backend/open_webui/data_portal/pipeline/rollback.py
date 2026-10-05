@@ -65,7 +65,7 @@ def go(conn, registry: FormRegistry, load_id: int) -> dict:
     da_go = 0
     da_tra_lai = 0
 
-    for table in reversed(form.tables_theo_thu_tu):     # số liệu trước, danh mục sau
+    for table in reversed(form.tables_by_dependency):     # số liệu trước, danh mục sau
         bronze_t = sql.Identifier("bronze", table.name)
         silver_t = sql.Identifier("silver", table.name)
         gold_t = sql.Identifier("gold", table.name)

@@ -17,15 +17,15 @@ form:
   code: DON_GIA_CONG
   version: 1
   label: Đơn gia công ngoài
-  chu_phu: TOTAL PO SUBCON
+  subtitle: TOTAL PO SUBCON
   description: Đơn giao xưởng gia công ngoài — đơn vị gia công, mã hàng, đơn hàng, màu, sản lượng.
   policy:
     unknown_sheet: ignore
     unknown_column: ignore
   source:
     kind: bang_theo_tieu_de
-    dong_du_lieu: 1
-    o_tong: P1               # ô SUBTOTAL của cột Order qty — phải bằng tổng so_luong
+    data_row_offset: 1
+    total_cell: P1               # ô SUBTOTAL của cột Order qty — phải bằng tổng so_luong
 
 tables:
   - name: fact_gia_cong
@@ -45,18 +45,18 @@ tables:
     columns:
       - name: nam
         type: int
-        lay_tu: nam_du_lieu
+        value_from: nam_du_lieu
         label: Không có trong tệp — lấy từ ô Năm dữ liệu chọn lúc nạp
         meaning: Năm của số liệu, chọn ở ô Năm dữ liệu lúc nạp.
         example: "2026"
       - name: ma_dong
         type: text
-        lay_tu: trong
+        value_from: trong
         label: Không có trong tệp — để trống
         meaning: Mã riêng của một dòng đơn. Tệp không có cột này nên để trống.
       - name: ky_thang
         type: text
-        lay_tu: trong
+        value_from: trong
         label: Không có trong tệp — để trống
         meaning: Kỳ mà dòng đơn thuộc về. Mốc xác định kỳ chưa thống nhất (phiếu khảo sát sheet 7, mục 6) nên để trống.
       - name: ma_don_vi_gc
@@ -74,7 +74,7 @@ tables:
         example: HA NAM
       - name: ma_khach
         type: text
-        lay_tu: trong
+        value_from: trong
         label: Không có trong tệp — để trống
         meaning: Mã khách hàng của đơn hàng. Tệp chỉ có tên khách nên để trống.
       - name: ten_khach
@@ -85,7 +85,7 @@ tables:
         example: FAM
       - name: ma_nhom_kd
         type: text
-        lay_tu: trong
+        value_from: trong
         label: Không có trong tệp — để trống
         meaning: Nhóm kinh doanh phụ trách. Cột SALES của tệp ghi tên người nên để trống.
       - name: ma_hang
@@ -116,21 +116,21 @@ tables:
         example: "2802"
       - name: don_gia_gia_cong
         type: number
-        lay_tu: trong
+        value_from: trong
         label: Không có trong tệp — để trống
         meaning: Đơn giá trả cho đơn vị gia công, tính trên một sản phẩm. Tệp không có cột này nên để trống.
       - name: don_gia_chao_hang
         type: number
-        lay_tu: trong
+        value_from: trong
         label: Không có trong tệp — để trống
         meaning: Đơn giá chào khách của cùng mã hàng. Tệp không có cột này nên để trống.
       - name: ma_tien_te
         type: text
-        lay_tu: trong
+        value_from: trong
         label: Không có trong tệp — để trống
         meaning: Đơn vị tiền của hai đơn giá. Tệp không có nên để trống.
       - name: loai_ban_ghi
         type: text
-        lay_tu: trong
+        value_from: trong
         label: Không có trong tệp — để trống
         meaning: Dòng này là số kế hoạch hay số thực hiện. Tệp không có nên để trống.

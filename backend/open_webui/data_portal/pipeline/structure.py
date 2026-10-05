@@ -65,7 +65,7 @@ def _kiem_tra_sheet(reader, form: Form, table) -> list[dict]:
     vi_tri, khong_ten, lap = reader.vi_tri_cot(table.sheet)
 
     # Cột `nam` và cột để trống không có trong tệp nên không đòi ở dòng tiêu đề.
-    can = {chuan_ten(c.tieu_de): c.tieu_de for c in table.cot_tu_tep}
+    can = {chuan_ten(c.file_header): c.file_header for c in table.file_columns}
 
     for ten in lap:
         loi.append(dong_loi(table.label, "Dòng 1", "DUPLICATE_COLUMN", ten=ten))

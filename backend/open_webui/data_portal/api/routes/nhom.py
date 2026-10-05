@@ -10,7 +10,7 @@ router = APIRouter()
 
 
 def loai_tep_json(form) -> dict:
-    return {"ma": form.code, "ten": form.label, "phu": form.chu_phu}
+    return {"ma": form.code, "ten": form.label, "phu": form.subtitle}
 
 
 @router.get("/domains")

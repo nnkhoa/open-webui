@@ -40,7 +40,7 @@ def load_settings() -> Settings:
         default_database_url=os.getenv('DATA_PORTAL_DATABASE_URL') or None,
         catalog_path=data_dir / 'so-tay.db',
         catalog_migrations_dir=PACKAGE_DIR / 'migrations' / 'catalog',
-        registry_dir=PACKAGE_DIR / 'khai_bao',
+        registry_dir=PACKAGE_DIR / 'definitions',
         warehouse_migrations_dir=PACKAGE_DIR / 'migrations' / 'warehouse',
         upload_dir=data_dir / 'uploads',
     )

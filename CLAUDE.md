@@ -79,7 +79,7 @@ reconcile, roll back, browse data. The spec is
   the form registry, connects to the warehouse, applies migrations).
 - Storage: `{DATA_DIR}/data_portal/so-tay.db` and `uploads/`; the warehouse
   address lives in the notebook, seeded once from `DATA_PORTAL_DATABASE_URL`.
-- Forms and groups: `data_portal/khai_bao/`; migrations:
+- Forms and groups: `data_portal/definitions/`; migrations:
   `data_portal/migrations/`. After editing a form run
   `python -m open_webui.data_portal.manage makemigration` from `backend/`.
 - Frontend: `src/routes/(app)/data-portal/`, `src/lib/components/data-portal/`,

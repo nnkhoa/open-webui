@@ -4,7 +4,7 @@ from pathlib import Path
 
 from .. import messages
 from ..errors import MigrationError
-from ..registry.khac_biet import so_sanh
+from ..registry.diff import compare
 from ..registry.schema import Form
 
 
@@ -15,17 +15,17 @@ def next_version(migrations_dir: Path) -> int:
 
 
 def generate_migration(conn, form: Form, migrations_dir: Path) -> Path | None:
-    plan = so_sanh(conn, form)
-    if plan.bi_chan:
+    plan = compare(conn, form)
+    if plan.blocked:
         items = '\n'.join(
-            messages.MIGRATION_BLOCKED_ITEM.format(description=change.mo_ta, reason=change.ly_do)
-            for change in plan.bi_chan
+            messages.MIGRATION_BLOCKED_ITEM.format(description=change.description, reason=change.reason)
+            for change in plan.blocked
         )
         raise MigrationError(messages.MIGRATION_BLOCKED + items)
-    if not plan.can_ddl:
+    if not plan.ddl_changes:
         return None
     auto_dir = migrations_dir / 'auto'
     auto_dir.mkdir(parents=True, exist_ok=True)
     target = auto_dir / f'{next_version(migrations_dir):04d}_form_{form.code.lower()}_v{form.version}.sql'
-    target.write_text(plan.sinh_ddl(), encoding='utf-8')
+    target.write_text(plan.to_sql(), encoding='utf-8')
     return target

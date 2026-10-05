@@ -37,7 +37,7 @@ def loai_tong(table: FormTable) -> str | None:
     (HQKD), hoặc không có (danh mục)."""
     if any(c.name == "so_luong" and c.role == "measure" for c in table.columns):
         return "so_luong"
-    if table.cot_tien:
+    if table.amount_columns:
         return "tien"
     return None
 
@@ -48,7 +48,7 @@ def cot_cong_tong(table: FormTable) -> list[str]:
     if kieu == "so_luong":
         return ["so_luong"]
     if kieu == "tien":
-        return [c.name for c in table.cot_tien]
+        return [c.name for c in table.amount_columns]
     return []
 
 
@@ -72,11 +72,11 @@ def kiem_tra(form: Form, duong_dan: Path, nam: int | None) -> dict:
             if any(e.get("reason_code") == "NO_DATA_SHEET" for e in loi):
                 # "Không sheet nào có đủ 7 cột của Lịch may mẫu. Cả tệp bị từ chối."
                 ket_qua["cau_loi_a2"] = (
-                    f"Không sheet nào có đủ {len(form.tables[0].cot_tu_tep)} cột của "
+                    f"Không sheet nào có đủ {len(form.tables[0].file_columns)} cột của "
                     f"{form.label}. Cả tệp bị từ chối.")
             return ket_qua
         loi_dong: list[dict] = []
-        for table in form.tables_hien_thi:
+        for table in form.tables_by_display_order:
             ket_qua["bang"].append(_kiem_tra_bang(reader, table, nam, loi_dong))
         if loi_dong:
             ket_qua["loi"], ket_qua["buoc_loi"] = loi_dong, "A3"
@@ -103,7 +103,7 @@ def _sheet_du_lieu(reader, form: Form) -> str | None:
 
 def _kiem_tra_bang(reader, table: FormTable, nam: int | None, loi: list[dict]) -> dict:
     hang = []
-    for dong in reader.rows(table.sheet, table.anh_xa_tieu_de):
+    for dong in reader.rows(table.sheet, table.header_map):
         dong = dien_ngoai_tep(table, dong, nam, reader)
         hang.append((0, dong.number, bam_dong(table.sheet, dong.values, table.column_names),
                      dong.values))
@@ -137,7 +137,7 @@ def _kiem_tra_bang(reader, table: FormTable, nam: int | None, loi: list[dict]) -
         "se_ghi": len(giu),
         "loai_tong": loai_tong(table),
         "tong": str(tong) if cot_tong else None,
-        "so_cot_tong": len(table.cot_tu_tep),
+        "so_cot_tong": len(table.file_columns),
         "ket_luan": KHONG_HOP_LE if thieu else HOP_LE,
     }
     if table.partition_by:
@@ -186,7 +186,7 @@ def _theo_nhom(table: FormTable, hang: list, giu: list) -> dict:
 def _theo_ky(table: FormTable, dong: list, cot_tong: list[str]) -> dict[str, dict]:
     """Số dòng, số cột có giá trị và tổng theo từng kỳ của tệp."""
     cot_ky = table.partition_column
-    tu_tep = [c.name for c in table.cot_tu_tep]
+    tu_tep = [c.name for c in table.file_columns]
     ra: dict[str, dict] = {}
     cot_dung: dict[str, set[str]] = {}
     for d in dong:

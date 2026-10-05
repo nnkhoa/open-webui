@@ -30,10 +30,10 @@ def dien_ngoai_tep(table: FormTable, dong: SourceRow, nam: int | None,
     """
     them: dict[str, str | None] = {}
     for c in table.columns:
-        if c.la_nam:
+        if c.is_year:
             them[c.name] = None if nam is None else str(nam)
-        elif c.tu_tieu_de and reader is not None and hasattr(reader, "gia_tri_tieu_de"):
-            them[c.name] = reader.gia_tri_tieu_de(c.tieu_de)
+        elif c.from_header and reader is not None and hasattr(reader, "gia_tri_tieu_de"):
+            them[c.name] = reader.gia_tri_tieu_de(c.file_header)
     return SourceRow(dong.number, {**dong.values, **them}) if them else dong
 
 
@@ -45,7 +45,7 @@ def ghi(ctx: LoadContext, table: FormTable) -> list[tuple[int, int, str, dict]]:
     """
     cot = table.column_names
     hang = [dien_ngoai_tep(table, r, ctx.nam, ctx.reader)
-            for r in ctx.reader.rows(table.sheet, table.anh_xa_tieu_de)]
+            for r in ctx.reader.rows(table.sheet, table.header_map)]
     ket_qua = ctx.bang(table)
     ket_qua.rows_file = len(hang)
 

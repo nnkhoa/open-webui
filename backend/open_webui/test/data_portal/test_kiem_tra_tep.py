@@ -7,10 +7,10 @@ from decimal import Decimal
 import openpyxl
 
 from open_webui.data_portal.pipeline import cac_buoc, kiem_tra_tep
-from open_webui.data_portal.registry.loader import doc_thu_muc
-from .conftest import KHAI_BAO, can_tep_mau
+from open_webui.data_portal.registry.loader import load_definitions
+from .conftest import DEFINITIONS_DIR, can_tep_mau
 
-FORM = doc_thu_muc(KHAI_BAO).form("BAO_CAO_HQKH")
+FORM = load_definitions(DEFINITIONS_DIR).form("BAO_CAO_HQKH")
 
 
 def test_tep_nbc_t1_t7_dung_so_cua_dac_ta():
@@ -70,7 +70,7 @@ def test_bo_doc_theo_dong_tieu_de_hq_mau_gc():
     from open_webui.data_portal.sources import base
     from .conftest import TEP_GIA_CONG, TEP_MAY_MAU
 
-    registry = doc_thu_muc(KHAI_BAO)
+    registry = load_definitions(DEFINITIONS_DIR)
     form = registry.form("LICH_MAY_MAU")
     doc = base.mo(form.source_kind, can_tep_mau(TEP_MAY_MAU), 1, form)
     assert doc.loi_nguon() == []
@@ -92,9 +92,9 @@ def test_doc_lai_doc_lap_khop_bo_doc_chinh():
     from open_webui.data_portal.sources.bang_theo_tieu_de_verify import BangTheoTieuDeDocLai
     from .conftest import TEP_MAY_MAU
 
-    form = doc_thu_muc(KHAI_BAO).form("LICH_MAY_MAU")
+    form = load_definitions(DEFINITIONS_DIR).form("LICH_MAY_MAU")
     tep = can_tep_mau(TEP_MAY_MAU)
     chinh = {r.number for r in base.mo(form.source_kind, tep, 1, form).rows(
-        "LICH_MAY_MAU", form.tables[0].anh_xa_tieu_de)}
+        "LICH_MAY_MAU", form.tables[0].header_map)}
     _, hang = BangTheoTieuDeDocLai(tep, form).doc_sheet("LICH_MAY_MAU")
     assert set(hang) == chinh and len(chinh) == 1703

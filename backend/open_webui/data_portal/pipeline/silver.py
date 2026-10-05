@@ -67,7 +67,7 @@ def dieu_kien_nam(table: FormTable, nam: int | None, bi_danh: str
                   ) -> tuple[sql.Composable, list]:
     """` AND s.nam IS NOT DISTINCT FROM %s` với bảng có cột năm (QT-02): tháng 1/2026
     và tháng 1/2027 là hai kỳ khác nhau, nạp lại chỉ thay kỳ của đúng năm đã chọn."""
-    cot = table.cot_nam
+    cot = table.year_column
     if cot is None:
         return sql.SQL(""), []
     return (sql.SQL(" AND {}.{} IS NOT DISTINCT FROM %s").format(

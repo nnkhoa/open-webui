@@ -10,7 +10,7 @@ from .container import Container, build_container
 from .errors import PortalError, WarehouseNotConfigured
 from .migrate import ledger, planner
 from .registry import sync
-from .registry.ddl import ddl_form
+from .registry.ddl import form_ddl
 
 
 def run_migrate(container: Container, _args: argparse.Namespace) -> int:
@@ -46,7 +46,7 @@ def run_registry(container: Container, args: argparse.Namespace) -> int:
     if not args.code:
         _echo(messages.CLI_MISSING_FORM_CODE)
         return 2
-    _echo(ddl_form(container.registry.form(args.code)))
+    _echo(form_ddl(container.registry.form(args.code)))
     return 0
 
 
@@ -54,9 +54,9 @@ def run_sync_registry(container: Container, _args: argparse.Namespace) -> int:
     with container.catalog.transaction() as catalog_conn:
         if container.warehouse.is_configured:
             with container.warehouse.transaction() as conn:
-                sync.dong_bo(catalog_conn, conn, container.registry)
+                sync.sync_definitions(catalog_conn, conn, container.registry)
         else:
-            sync.dong_bo(catalog_conn, None, container.registry)
+            sync.sync_definitions(catalog_conn, None, container.registry)
             _echo(messages.CLI_CATALOG_ONLY)
     _echo(
         messages.CLI_SYNCED,
@@ -112,7 +112,7 @@ def _print_registry(container: Container) -> None:
             )
         )
     for domain in container.registry.domains:
-        forms = ', '.join(domain.cac_bo_bang) or messages.CLI_NO_FORMS
+        forms = ', '.join(domain.forms) or messages.CLI_NO_FORMS
         _echo(messages.CLI_DOMAIN_VALID.format(code=domain.code, name=domain.name, forms=forms))
     _echo(messages.CLI_DEFINITIONS_VALID)
 

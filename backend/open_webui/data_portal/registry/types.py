@@ -1,43 +1,26 @@
-"""Sổ đăng ký kiểu cột.
-
-Thêm một kiểu cột mới = thêm một lớp con `ColumnType` và gắn `@register`.
-Không sửa đường xử lý, không sửa bộ sinh DDL, không sửa giao diện.
-
-Mỗi kiểu trả lời bốn câu:
-  · lưu ở lớp chuẩn hoá bằng kiểu SQL nào  (`silver_sql_type`)
-  · một giá trị văn bản có hợp lệ không    (`parse`)
-  · hiển thị ra màn hình thế nào           (`display`)
-  · căn trái hay căn phải trên màn hình    (`align`)
-
-Lớp gốc luôn là `text` — lưu y nguyên như tệp.
-"""
-
 from __future__ import annotations
 
+import datetime as dt
 import re
 from dataclasses import dataclass
-from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any, ClassVar
 
+from .. import messages
 from ..errors import RegistryError
+from ..formatting import EMPTY, format_amount, format_date, format_integer, format_percent
 
-# Mã kết quả ép kiểu không thành.
-CODE_VALUE_UNPARSABLE = "VALUE_UNPARSABLE"
-CODE_MONTH_UNPARSABLE = "MONTH_UNPARSABLE"
-CODE_ENUM_UNKNOWN = "ENUM_UNKNOWN"
+CODE_VALUE_UNPARSABLE = 'VALUE_UNPARSABLE'
+CODE_MONTH_UNPARSABLE = 'MONTH_UNPARSABLE'
+CODE_ENUM_UNKNOWN = 'ENUM_UNKNOWN'
+
+NUMBER_PATTERN = re.compile(r'^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$')
+INTEGER_PATTERN = re.compile(r'^[+-]?\d+$')
+MONTH_PATTERN = re.compile(r'^(\d{4})-(\d{2})$')
 
 
 @dataclass(frozen=True)
 class Verdict:
-    """Kết quả đọc một ô.
-
-    `ok=True` ⇒ `value` dùng được ở lớp chuẩn hoá.
-    `ok=False` ⇒ `code` là mã lý do, `value` là None. Dòng đi đâu tuỳ cột đó có
-    phải khoá nghiệp vụ hay không — quyết định ở `pipeline/validate.py`, không
-    quyết định ở đây.
-    """
-
     ok: bool
     value: Any = None
     code: str | None = None
@@ -52,15 +35,11 @@ class Verdict:
 
 
 class ColumnType:
-    """Giao diện một kiểu cột."""
-
-    name: ClassVar[str] = ""
-    silver_sql_type: ClassVar[str] = "text"
-    align: ClassVar[str] = "left"          # 'left' | 'right'
-    label_vi: ClassVar[str] = "Văn bản"    # nhãn ở ngăn Giải thích các cột (P08)
-    summable: ClassVar[bool] = False       # có cộng được ở hàng Tổng không
-
-    bronze_sql_type: ClassVar[str] = "text"
+    name: ClassVar[str] = ''
+    silver_sql_type: ClassVar[str] = 'text'
+    align: ClassVar[str] = 'left'
+    label: ClassVar[str] = messages.REGISTRY_TYPE_TEXT
+    summable: ClassVar[bool] = False
 
     def __init__(self, column: Any = None) -> None:
         self.column = column
@@ -69,8 +48,6 @@ class ColumnType:
         raise NotImplementedError
 
     def display(self, value: Any) -> str:
-        from ..formatting import EMPTY
-
         return EMPTY if value is None else str(value)
 
 
@@ -86,45 +63,33 @@ def build(type_name: str, column: Any = None) -> ColumnType:
     cls = TYPES.get(type_name)
     if cls is None:
         raise RegistryError(
-            f"Kiểu cột {type_name!r} chưa được đăng ký. "
-            f"Các kiểu có sẵn: {', '.join(sorted(TYPES))}."
+            messages.REGISTRY_TYPE_NOT_REGISTERED.format(type=type_name, available=', '.join(sorted(TYPES)))
         )
     return cls(column)
 
 
-# --------------------------------------------------------------------------- #
-#  Các kiểu có sẵn
-# --------------------------------------------------------------------------- #
-
-_NUMBER = re.compile(r"^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$")
-_INT = re.compile(r"^[+-]?\d+$")
-_MONTH = re.compile(r"^(\d{4})-(\d{2})$")
-
-
 @register
 class TextType(ColumnType):
-    name = "text"
-    silver_sql_type = "text"
-    label_vi = "Văn bản"
+    name = 'text'
+    silver_sql_type = 'text'
+    label = messages.REGISTRY_TYPE_TEXT
 
     def parse(self, raw: str | None) -> Verdict:
         return Verdict.good(raw)
 
 
 class _NumericType(ColumnType):
-    """Nền chung cho money / ratio / currency."""
-
-    silver_sql_type = "numeric"
-    align = "right"
+    silver_sql_type = 'numeric'
+    align = 'right'
     summable = True
 
     def parse(self, raw: str | None) -> Verdict:
         if raw is None:
             return Verdict.good(None)
-        text = raw.strip().replace(" ", "")
+        text = raw.strip().replace(' ', '')
         if not text:
             return Verdict.good(None)
-        if not _NUMBER.match(text):
+        if not NUMBER_PATTERN.match(text):
             return Verdict.bad(CODE_VALUE_UNPARSABLE)
         try:
             return Verdict.good(Decimal(text))
@@ -134,166 +99,148 @@ class _NumericType(ColumnType):
 
 @register
 class MoneyType(_NumericType):
-    name = "money"
-    label_vi = "Số, có thể âm"
+    name = 'money'
+    label = messages.REGISTRY_TYPE_MONEY
 
     def display(self, value: Any) -> str:
-        from ..formatting import format_amount
-
         return format_amount(value)
 
 
 @register
 class NumberType(_NumericType):
-    """Số đo không phải tiền (số lượng, đơn giá USD) — không cộng vào tổng tiền."""
-
-    name = "number"
-    label_vi = "Số"
+    name = 'number'
+    label = messages.REGISTRY_TYPE_NUMBER
 
     def display(self, value: Any) -> str:
-        from ..formatting import format_amount
-
         return format_amount(value)
 
 
 @register
 class CurrencyType(MoneyType):
-    name = "currency"
-    label_vi = "Số tiền kèm đơn vị"
+    name = 'currency'
+    label = messages.REGISTRY_TYPE_CURRENCY
 
 
 @register
 class RatioType(_NumericType):
-    name = "ratio"
-    label_vi = "Tỷ lệ"
-    summable = False          # cộng tỷ lệ lại là vô nghĩa
+    name = 'ratio'
+    label = messages.REGISTRY_TYPE_RATIO
+    summable = False
 
-    # Excel ghi "#DIV/0!" khi mẫu số bằng 0 (khách không có doanh thu trong
-    # tháng). NBC xác nhận kế toán để các ô này bằng 0 — lớp gốc vẫn giữ nguyên.
-    LOI_CHIA_0 = "#DIV/0!"
+    DIVISION_BY_ZERO = '#DIV/0!'
 
     def parse(self, raw: str | None) -> Verdict:
-        if raw is not None and raw.strip().upper() == self.LOI_CHIA_0:
+        if raw is not None and raw.strip().upper() == self.DIVISION_BY_ZERO:
             return Verdict.good(Decimal(0))
         return super().parse(raw)
 
     def display(self, value: Any) -> str:
-        from ..formatting import format_percent
-
         return format_percent(value)
 
 
 @register
 class IntType(ColumnType):
-    name = "int"
-    silver_sql_type = "bigint"
-    align = "right"
+    name = 'int'
+    silver_sql_type = 'bigint'
+    align = 'right'
     summable = True
-    label_vi = "Số nguyên"
+    label = messages.REGISTRY_TYPE_INT
 
     def parse(self, raw: str | None) -> Verdict:
         if raw is None or not raw.strip():
             return Verdict.good(None)
         text = raw.strip()
-        if not _INT.match(text):
+        if not INTEGER_PATTERN.match(text):
             return Verdict.bad(CODE_VALUE_UNPARSABLE)
         return Verdict.good(int(text))
 
     def display(self, value: Any) -> str:
-        from ..formatting import format_integer
-
         return format_integer(value)
 
 
 @register
 class MonthType(ColumnType):
-    name = "month"
-    silver_sql_type = "date"
-    label_vi = "Văn bản (YYYY-MM)"
+    name = 'month'
+    silver_sql_type = 'date'
+    label = messages.REGISTRY_TYPE_MONTH
 
     def parse(self, raw: str | None) -> Verdict:
         if raw is None or not raw.strip():
             return Verdict.good(None)
-        text = raw.strip()
-        match = _MONTH.match(text)
+        match = MONTH_PATTERN.match(raw.strip())
         if not match:
             return Verdict.bad(CODE_MONTH_UNPARSABLE)
         year, month = int(match.group(1)), int(match.group(2))
         if not 1 <= month <= 12:
             return Verdict.bad(CODE_MONTH_UNPARSABLE)
-        return Verdict.good(date(year, month, 1))
+        return Verdict.good(dt.date(year, month, 1))
 
     def display(self, value: Any) -> str:
-        from ..formatting import EMPTY
-
         if value is None:
             return EMPTY
-        if isinstance(value, (date, datetime)):
-            return f"{value.year:04d}-{value.month:02d}"
+        if isinstance(value, (dt.date, dt.datetime)):
+            return f'{value.year:04d}-{value.month:02d}'
         return str(value)
 
 
 @register
 class DateType(ColumnType):
-    name = "date"
-    silver_sql_type = "date"
-    label_vi = "Ngày"
+    name = 'date'
+    silver_sql_type = 'date'
+    label = messages.REGISTRY_TYPE_DATE
 
     def parse(self, raw: str | None) -> Verdict:
         if raw is None or not raw.strip():
             return Verdict.good(None)
         try:
-            return Verdict.good(date.fromisoformat(raw.strip()[:10]))
+            return Verdict.good(dt.date.fromisoformat(raw.strip()[:10]))
         except ValueError:
             return Verdict.bad(CODE_VALUE_UNPARSABLE)
 
     def display(self, value: Any) -> str:
-        from ..formatting import format_date
-
         return format_date(value)
 
 
 @register
 class EnumType(ColumnType):
-    name = "enum"
-    silver_sql_type = "text"
-    label_vi = "Danh sách giá trị"
+    name = 'enum'
+    silver_sql_type = 'text'
+    label = messages.REGISTRY_TYPE_ENUM
 
     def parse(self, raw: str | None) -> Verdict:
         if raw is None or not raw.strip():
             return Verdict.good(None)
         text = raw.strip()
-        allowed = getattr(self.column, "values", None) or []
+        allowed = getattr(self.column, 'values', None) or []
         if not allowed:
             return Verdict.good(text)
-        lowered = {str(v).strip().lower(): str(v) for v in allowed}
-        hit = lowered.get(text.lower())
-        if hit is None:
-            # Ngoài danh sách: lớp chuẩn hoá giữ nguyên văn bản gốc.
+        by_lowercase = {str(value).strip().lower(): str(value) for value in allowed}
+        match = by_lowercase.get(text.lower())
+        if match is None:
             return Verdict.bad(CODE_ENUM_UNKNOWN)
-        return Verdict.good(hit)
+        return Verdict.good(match)
 
 
 @register
 class BoolType(ColumnType):
-    name = "bool"
-    silver_sql_type = "boolean"
-    label_vi = "Có / Không"
+    name = 'bool'
+    silver_sql_type = 'boolean'
+    label = messages.REGISTRY_TYPE_BOOL
 
-    _TRUE: ClassVar[set[str]] = {"true", "1", "có", "co", "yes", "x"}
-    _FALSE: ClassVar[set[str]] = {"false", "0", "không", "khong", "no"}
+    TRUE_VALUES: ClassVar[set[str]] = {'true', '1', 'có', 'co', 'yes', 'x'}
+    FALSE_VALUES: ClassVar[set[str]] = {'false', '0', 'không', 'khong', 'no'}
 
     def parse(self, raw: str | None) -> Verdict:
         if raw is None or not raw.strip():
             return Verdict.good(None)
         text = raw.strip().lower()
-        if text in self._TRUE:
+        if text in self.TRUE_VALUES:
             return Verdict.good(True)
-        if text in self._FALSE:
+        if text in self.FALSE_VALUES:
             return Verdict.good(False)
         return Verdict.bad(CODE_VALUE_UNPARSABLE)
 
     def display(self, value: Any) -> str:
-        from ..formatting import EMPTY
-
-        return EMPTY if value is None else ("Có" if value else "Không")
+        if value is None:
+            return EMPTY
+        return messages.REGISTRY_BOOL_TRUE if value else messages.REGISTRY_BOOL_FALSE
