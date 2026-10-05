@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-KIND = 'bao_cao_hieu_qua_kh'
+KIND = 'customer_report'
 
 SUMMARY_SHEET = 'TỔNG HỢP'
 CUSTOMER_LIST_SHEET = 'DANH SACH KHACH HANG THEO HDX'

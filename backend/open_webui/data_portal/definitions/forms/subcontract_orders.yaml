@@ -23,7 +23,7 @@ form:
     unknown_sheet: ignore
     unknown_column: ignore
   source:
-    kind: bang_theo_tieu_de
+    kind: header_table
     data_row_offset: 1
     total_cell: P1               # ô SUBTOTAL của cột Order qty — phải bằng tổng so_luong
 

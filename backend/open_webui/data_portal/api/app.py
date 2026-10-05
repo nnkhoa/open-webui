@@ -104,7 +104,7 @@ async def _registry_handler(request: Request, exc: RegistryError) -> JSONRespons
 
 async def _portal_error_handler(request: Request, exc: PortalError) -> JSONResponse:
     if exc.status_code >= 500:
-        log.exception('Unhandled portal error: %s', exc)
+        log.exception('Unhandled portal error [request_id=%s]: %s', REQUEST_ID.get(), exc)
         return _error_response(exc.status_code, messages.API_UNEXPECTED_ERROR, request_id=REQUEST_ID.get())
     return _error_response(exc.status_code, str(exc))
 
@@ -122,5 +122,5 @@ async def _http_exception_handler(request: Request, exc: StarletteHTTPException)
 
 
 async def _unexpected_error_handler(request: Request, exc: Exception) -> JSONResponse:
-    log.exception('Unexpected Data Portal API error: %s', exc)
+    log.exception('Unexpected Data Portal API error [request_id=%s]: %s', REQUEST_ID.get(), exc)
     return _error_response(500, messages.API_UNEXPECTED_ERROR, request_id=REQUEST_ID.get())
