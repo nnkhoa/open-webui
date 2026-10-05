@@ -32,6 +32,13 @@ export default defineConfig({
 		APP_BUILD_HASH: JSON.stringify(buildInfo.hash),
 		APP_BUILD_CHANNEL: JSON.stringify(buildInfo.channel)
 	},
+	// AI4BI: chỉ cho `vite dev` — đường dẫn tương đối /api/... (link tệp tool trả về, FilePreview…)
+	// tới backend :8080 như ở bản build, nơi frontend và backend chung một origin.
+	server: {
+		proxy: {
+			'/api': 'http://localhost:8080'
+		}
+	},
 	build: {
 		sourcemap: true
 	},
