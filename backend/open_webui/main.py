@@ -415,9 +415,7 @@ async def lifespan(app: FastAPI):
             log.warning(f'Failed to initialize terminal servers at startup: {e}')
 
     # Data Portal mở sổ tay và nối kho trong luồng riêng: kho tắt hay chậm không giữ Open WebUI lại.
-    app.state.data_portal_khoi_dong = asyncio.create_task(
-        asyncio.to_thread(khoi_dong_data_portal, data_portal_api)
-    )
+    app.state.data_portal_khoi_dong = asyncio.create_task(asyncio.to_thread(khoi_dong_data_portal, data_portal_api))
 
     # Mark application as ready to accept traffic from a startup perspective.
     app.state.startup_complete = True

@@ -68,6 +68,7 @@ async def _user_principal_ids(user) -> set[str]:
         ids.add(user_id)
     try:
         from open_webui.models.groups import Groups  # lazy import tránh circular
+
         for g in await Groups.get_groups_by_member_id(user_id) or []:
             gid = getattr(g, 'id', None)
             if gid:
@@ -85,11 +86,7 @@ def _has_access(conn: dict, user_principal_ids: set[str], user_role: Optional[st
     if not grants:
         # Không khai báo grant → coi như public (giống behavior của Open WebUI cho tool)
         return True
-    grant_ids = {
-        g.get('principal_id')
-        for g in grants
-        if isinstance(g, dict) and g.get('permission') == 'read'
-    }
+    grant_ids = {g.get('principal_id') for g in grants if isinstance(g, dict) and g.get('permission') == 'read'}
     return bool(user_principal_ids & grant_ids)
 
 
@@ -120,11 +117,13 @@ async def _discover_dbhubs(user=None) -> list[dict]:
         if not _has_access(conn, principal_ids, user_role):
             continue
         info = conn.get('info') or {}
-        servers.append({
-            'url': url,
-            'name': info.get('name') or info.get('id') or url,
-            'id': info.get('id') or url,
-        })
+        servers.append(
+            {
+                'url': url,
+                'name': info.get('name') or info.get('id') or url,
+                'id': info.get('id') or url,
+            }
+        )
     return servers
 
 
@@ -140,15 +139,16 @@ async def _mcp_call(url: str, tool: str, args: dict, timeout: float = 15.0) -> O
         'Accept': 'application/json, text/event-stream',
     }
     try:
-        async with aiohttp.ClientSession(
-            timeout=aiohttp.ClientTimeout(total=timeout), trust_env=True
-        ) as session:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout), trust_env=True) as session:
             async with session.post(url, json=payload, headers=headers) as resp:
                 text = await resp.text()
                 if resp.status != 200:
                     log.warning(
                         'schema_context: %s %s HTTP %s: %s',
-                        url, tool, resp.status, text[:200],
+                        url,
+                        tool,
+                        resp.status,
+                        text[:200],
                     )
                     return None
     except Exception as e:
@@ -187,10 +187,7 @@ def _extract_result(obj: dict) -> Optional[Any]:
         return None
     content = result.get('content') if isinstance(result, dict) else None
     if isinstance(content, list):
-        texts = [
-            c.get('text', '') for c in content
-            if isinstance(c, dict) and c.get('type') == 'text'
-        ]
+        texts = [c.get('text', '') for c in content if isinstance(c, dict) and c.get('type') == 'text']
         merged = '\n'.join(t for t in texts if t)
         if merged:
             try:
@@ -288,7 +285,8 @@ async def _fetch_server(server: dict) -> Optional[dict]:
         )
 
     discovery = await _mcp_call(
-        url, 'search_objects',
+        url,
+        'search_objects',
         {'object_type': 'table', 'pattern': METADATA_PATTERN, 'detail_level': 'names'},
     )
     meta_tables = _extract_meta_tables(discovery)
@@ -305,7 +303,9 @@ async def _fetch_server(server: dict) -> Optional[dict]:
         if not qualified:
             continue
         resp = await _mcp_call(
-            url, 'execute_sql', {'sql': f'SELECT * FROM {qualified}'},
+            url,
+            'execute_sql',
+            {'sql': f'SELECT * FROM {qualified}'},
         )
         rows = _extract_rows(resp)
         if not rows:
@@ -327,14 +327,10 @@ def _format_combined(server_blocks: list[dict]) -> str:
     sections: list[str] = []
     for sb in server_blocks:
         for namespace, tables in sb['schemas'].items():
-            lines: list[str] = [
-                f'## Metadata cho database `{namespace}` (DBHub: {sb["name"]})'
-            ]
+            lines: list[str] = [f'## Metadata cho database `{namespace}` (DBHub: {sb["name"]})']
             for table_name, rows in tables.items():
                 lines.append('')
-                lines.append(
-                    f'### Nguồn `{namespace}.{table_name}` ({len(rows)} dòng)'
-                )
+                lines.append(f'### Nguồn `{namespace}.{table_name}` ({len(rows)} dòng)')
                 for row in rows:
                     lines.append(f'- {_format_row(row)}')
             sections.append('\n'.join(lines))
@@ -402,9 +398,7 @@ async def get_schema_block(request=None, user=None) -> Optional[str]:
             *[_fetch_server(s) for s in servers],
             return_exceptions=True,
         )
-        parts = [
-            f for f in fragments if isinstance(f, dict) and f.get('schemas')
-        ]
+        parts = [f for f in fragments if isinstance(f, dict) and f.get('schemas')]
         if not parts:
             log.info('schema_context: không server nào trả về metadata')
             return None
@@ -420,12 +414,15 @@ async def get_schema_block(request=None, user=None) -> Optional[str]:
         schema_count = sum(len(p.get('schemas', {})) for p in parts)
         server_names = ', '.join(p.get('name', '?') for p in parts)
         # Log id chứ không log email — dòng này chạy ở mức INFO.
-        user_label = (
-            f'{user_role or "anon"}:{getattr(user, "id", "?")}' if user else 'anon'
-        )
+        user_label = f'{user_role or "anon"}:{getattr(user, "id", "?")}' if user else 'anon'
         log.info(
             'AI4BI schema injected: %d chars | %d server(s) [%s] | %d schema(s) | user=%s | TTL=%ds',
-            len(block), len(parts), server_names, schema_count, user_label, TTL_SECONDS,
+            len(block),
+            len(parts),
+            server_names,
+            schema_count,
+            user_label,
+            TTL_SECONDS,
         )
         return block
 

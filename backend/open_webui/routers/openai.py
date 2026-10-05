@@ -1159,9 +1159,7 @@ async def generate_chat_completion(
             # theo access_grants của user.
             schema_block = await get_schema_block(request, user)
             if system or schema_block:
-                payload = await apply_system_prompt_to_body(
-                    system, payload, metadata, user, schema_block=schema_block
-                )
+                payload = await apply_system_prompt_to_body(system, payload, metadata, user, schema_block=schema_block)
 
         await check_model_access(user, model_info, bypass_filter)
     else:
