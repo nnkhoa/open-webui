@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from .. import messages
@@ -41,6 +41,7 @@ class LoadRequest:
     file_check: dict | None = None
     a4_result: str | None = None
     actor_user_id: int | None = None
+    year_columns: dict[str, str] = field(default_factory=dict)
 
 
 def run_load(conn, form: Form, request: LoadRequest) -> int:
@@ -95,6 +96,7 @@ def _open_load(conn, form: Form, request: LoadRequest) -> LoadContext:
         actor_username=request.actor_username,
         request_id=request.request_id,
         year=request.year,
+        year_columns=request.year_columns,
     )
 
 
@@ -120,10 +122,7 @@ def _run_locked(
     cards = reconcile_cards.build_cards(ctx, before, file_check)
     load_steps = _load_steps(ctx, file_check, a4_result, cards, mismatches)
     if mismatches or cards.mismatched:
-        mismatches += [
-            Mismatch('B4', None, reconcile_cards.mismatch_label(key), messages.RECONCILE_STEP_CARDS)
-            for key in cards.mismatched
-        ]
+        mismatches += [Mismatch('B4', None, title, messages.RECONCILE_STEP_CARDS) for title in cards.mismatch_titles]
         raise ReconcileError(mismatches, steps=load_steps, reconciliation=cards.to_json())
 
     _commit(ctx, started, file_check, load_steps, cards.to_json())

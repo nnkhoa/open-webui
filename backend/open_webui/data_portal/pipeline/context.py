@@ -50,6 +50,7 @@ class LoadContext:
     actor_username: str
     request_id: str
     year: int | None = None
+    year_columns: dict[str, str] = field(default_factory=dict)
     reader: Any = None
     sheets_count: int = 0
     clean_rows: dict[str, list[CleanRow]] = field(default_factory=dict)
