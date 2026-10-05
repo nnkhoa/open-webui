@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -90,6 +91,20 @@ def table_stats(conn, table: FormTable, domain_id: int, year: int | None) -> Tab
             [domain_id, *year_params],
         )
     return TableStats(row['row_count'], periods, updated_at)
+
+
+def latest_year(conn, table: FormTable, domain_id: int, years: Sequence[int]) -> int | None:
+    column = table.year_column
+    if column is None:
+        return None
+    year = warehouse_sql.scalar(
+        conn,
+        sql.SQL(
+            'SELECT max(t.{column}) FROM {source} t WHERE t.domain_id = %s AND t.is_current AND t.{column} = ANY(%s)'
+        ).format(column=sql.Identifier(column.name), source=sql.Identifier('gold', table.name)),
+        [domain_id, list(years)],
+    )
+    return None if year is None else int(year)
 
 
 def latest_load_id(conn, domain_id: int, form_id: int, year: int | None) -> int | None:

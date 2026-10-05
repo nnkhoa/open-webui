@@ -163,11 +163,7 @@ def _identical_load(conn, domain_id: int, form_id: int, year: int | None, file_s
 
 
 def _existing_periods(conn, table: FormTable, domain_id: int, year: int | None) -> dict[str, dict]:
-    year_condition = sql.SQL('')
-    params: list = [domain_id]
-    if table.year_column is not None:
-        year_condition = sql.SQL(' AND s.{} IS NOT DISTINCT FROM %s').format(sql.Identifier(table.year_column.name))
-        params.append(year)
+    year_condition, year_params = _silver_year_condition(table, year)
     rows = warehouse_sql.query(
         conn,
         sql.SQL(
@@ -178,19 +174,20 @@ def _existing_periods(conn, table: FormTable, domain_id: int, year: int | None) 
             source=sql.Identifier('silver', table.name),
             year=year_condition,
         ),
-        params,
+        [domain_id, *year_params],
     )
     return _with_load_summaries(conn, rows, 'period')
 
 
 def _existing_data(conn, table: FormTable, domain_id: int, year: int | None) -> dict | None:
+    year_condition, year_params = _silver_year_condition(table, year)
     row = warehouse_sql.query_one(
         conn,
         sql.SQL(
-            'SELECT count(*) AS row_count, max(load_id) AS load_id FROM {} '
-            ' WHERE domain_id = %s AND is_current AND nam IS NOT DISTINCT FROM %s'
-        ).format(sql.Identifier('silver', table.name)),
-        (domain_id, year),
+            'SELECT count(*) AS row_count, max(s.load_id) AS load_id FROM {source} s '
+            ' WHERE s.domain_id = %s AND s.is_current{year}'
+        ).format(source=sql.Identifier('silver', table.name), year=year_condition),
+        [domain_id, *year_params],
     )
     if not row or not row['row_count']:
         return None
@@ -336,6 +333,7 @@ def _write_claimed(
                 year=metadata.year,
                 file_check=metadata.file_check,
                 a4_result=_a4_result(conn, form, metadata.domain_id, metadata.year),
+                year_columns=_year_columns(container),
             )
             load_id = orchestrator.run_load(conn, form, load_request)
     except StructureError as exc:
@@ -436,14 +434,14 @@ def _existing_groups(conn, table: FormTable, domain_id: int, year: int | None, g
     expression = (
         sql.SQL("coalesce(to_char(s.{}, 'YYYY-MM'), '')") if by_month else sql.SQL("coalesce(s.{}::text, '')")
     ).format(sql.Identifier(grouping['column']))
+    year_condition, year_params = _silver_year_condition(table, year)
     rows = warehouse_sql.query(
         conn,
         sql.SQL(
             'SELECT {expression} AS group_key, count(*) AS row_count, max(s.load_id) AS load_id FROM {source} s '
-            ' WHERE s.domain_id = %s AND s.is_current AND s.nam IS NOT DISTINCT FROM %s '
-            ' GROUP BY 1'
-        ).format(expression=expression, source=sql.Identifier('silver', table.name)),
-        (domain_id, year),
+            ' WHERE s.domain_id = %s AND s.is_current{year} GROUP BY 1'
+        ).format(expression=expression, source=sql.Identifier('silver', table.name), year=year_condition),
+        [domain_id, *year_params],
     )
     return _with_load_summaries(conn, rows, 'group_key')
 
@@ -497,6 +495,12 @@ def _period_row(period: str, year: int | None, table: FormTable, check: dict, ex
     }
 
 
+def _silver_year_condition(table: FormTable, year: int | None) -> tuple[sql.Composable, list]:
+    if table.year_column is None:
+        return sql.SQL(''), []
+    return sql.SQL(' AND s.{} IS NOT DISTINCT FROM %s').format(sql.Identifier(table.year_column.name)), [year]
+
+
 def _with_load_summaries(conn, rows: list[dict], key_column: str) -> dict[str, dict]:
     summaries = _load_summaries(conn, [row['load_id'] for row in rows])
     return {row[key_column]: {'row_count': row['row_count'], **(summaries.get(row['load_id']) or {})} for row in rows}
@@ -526,3 +530,7 @@ def _number(value) -> int | float | None:
 
 def _json(value) -> str | None:
     return None if value is None else json.dumps(value, ensure_ascii=False, default=str)
+
+
+def _year_columns(container) -> dict[str, str]:
+    return {table.name: table.year_column.name for table in container.registry.tables if table.year_column is not None}

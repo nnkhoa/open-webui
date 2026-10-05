@@ -101,6 +101,10 @@ class GroupCounts:
     file_quantity: int | float
     db_quantity: int | float
 
+    @property
+    def has_mismatch(self) -> bool:
+        return self.file_rows != self.db_rows or Decimal(str(self.file_quantity)) != Decimal(str(self.db_quantity))
+
     def to_json(self) -> dict:
         return {
             'key': self.key,
@@ -135,6 +139,13 @@ class DimensionMatrix:
     dimensions: dict[str, DimensionGroups]
     order: list[str]
     has_mismatch: bool
+
+    @property
+    def title(self) -> str:
+        if not self.order:
+            return ''
+        mismatched = (column for column in self.order if _has_mismatched_group(self.dimensions[column]))
+        return _dimension_title(self.dimensions[next(mismatched, self.order[0])].label)
 
     def to_json(self) -> dict:
         return {
@@ -240,7 +251,7 @@ def dimension_card(stored: dict, *, group_by: str | None, page: int, page_size: 
     choices = [OptionChoice(choice, matrix.dimensions[choice].label) for choice in matrix.order]
     return Card(
         BY_DIMENSION_CARD,
-        messages.CARD_TITLE_BY_DIMENSION.format(dimension=label[0].lower() + label[1:]),
+        _dimension_title(label),
         group_count_columns(label, messages.CARD_COLUMN_FILE_QUANTITY, messages.CARD_COLUMN_DB_QUANTITY),
         [_dimension_row(matrix, column, group) for group in groups[start : start + page_size]],
         count=len(groups),
@@ -284,10 +295,7 @@ def before_after_card(
     return Card(BEFORE_AFTER_CARD, title, before_after_columns(messages.CARD_COLUMN_TABLE), rows)
 
 
-def b4_result(cards: dict, mismatched: list[str], file_check: dict, table_name: str) -> str:
-    if mismatched:
-        titles = '; '.join(cards[key].title for key in mismatched if key in cards)
-        return messages.CARD_B4_MISMATCH.format(cards=titles)
+def b4_result(cards: dict, file_check: dict, table_name: str) -> str:
     parts = _total_parts(cards[TOTALS_CARD], file_check)
     names = [code.short_name for code in CODE_COUNTS.get(table_name, []) if code.short_name]
     if names:
@@ -304,21 +312,21 @@ def domain_tables(ctx: LoadContext) -> list[DomainTable]:
           LEFT JOIN ctl.domain_form df ON df.domain_id = ds.domain_id
                                       AND df.form_id = ft.form_id
          WHERE ds.domain_id = %s AND ft.kind = 'fact' AND ds.is_visible
-           AND EXISTS (SELECT 1 FROM ctl.form_column c
-                        WHERE c.table_id = ft.table_id AND c.name = 'nam')
          ORDER BY df.position, ds.display_order, ft.name
         """,
         (ctx.domain_id,),
     )
-    return [DomainTable(row['name'], row['label']) for row in rows]
+    return [DomainTable(row['name'], row['label']) for row in rows if row['name'] in ctx.year_columns]
 
 
 def domain_row_counts(ctx: LoadContext) -> dict[str, int]:
-    statement = 'SELECT count(*) FROM {} WHERE domain_id = %s AND is_current AND nam = %s'
+    statement = 'SELECT count(*) FROM {table} WHERE domain_id = %s AND is_current AND {year} = %s'
     return {
         table.name: warehouse_sql.scalar(
             ctx.conn,
-            sql.SQL(statement).format(sql.Identifier('gold', table.name)),
+            sql.SQL(statement).format(
+                table=sql.Identifier('gold', table.name), year=sql.Identifier(ctx.year_columns[table.name])
+            ),
             (ctx.domain_id, ctx.year),
         )
         for table in domain_tables(ctx)
@@ -391,6 +399,14 @@ def _tally_groups(column: str, file_rows: list[dict], db_rows: list[dict]) -> di
     return tallies
 
 
+def _dimension_title(label: str) -> str:
+    return messages.CARD_TITLE_BY_DIMENSION.format(dimension=label[0].lower() + label[1:])
+
+
+def _has_mismatched_group(dimension: DimensionGroups) -> bool:
+    return any(group.has_mismatch for group in dimension.groups)
+
+
 def _sorted_groups(column: str, groups: list[GroupCounts]) -> list[GroupCounts]:
     if column == DELIVERY_DATE_COLUMN:
         return sorted(groups, key=lambda group: (group.key == '', group.key))
@@ -399,7 +415,6 @@ def _sorted_groups(column: str, groups: list[GroupCounts]) -> list[GroupCounts]:
 
 def _dimension_row(matrix: DimensionMatrix, column: str, group: GroupCounts) -> CardRow:
     difference = Decimal(str(group.db_quantity)) - Decimal(str(group.file_quantity))
-    matches = group.file_rows == group.db_rows and difference == 0
     row = CardRow(
         [
             _group_label(column, group.key),
@@ -409,7 +424,7 @@ def _dimension_row(matrix: DimensionMatrix, column: str, group: GroupCounts) -> 
             group.db_quantity,
             as_number(difference),
         ],
-        verdict(matches),
+        verdict(not group.has_mismatch),
     )
     if group.key:
         row.link = gold_link(matrix.table, matrix.year, query=_search_text(column, group.key))

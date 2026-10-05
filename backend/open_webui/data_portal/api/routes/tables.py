@@ -154,12 +154,10 @@ def _parse_filters(layer: str, year: str, table: FormTable) -> tuple[str, int | 
 def _latest_month(conn, table: FormTable, domain: dict, year: int | None, periods: list) -> str | None:
     if not periods or table.year_column is None:
         return None
-    last_year = year if year is not None else _latest_year(conn, table, domain)
-    return f'{periods[-1]}/{last_year}' if last_year else None
-
-
-def _latest_year(conn, table: FormTable, domain: dict) -> int | None:
-    for year in reversed(YEARS):
-        if tables.table_stats(conn, table, domain['domain_id'], year).row_count:
-            return year
-    return None
+    if year is not None:
+        return f'{periods[-1]}/{year}'
+    last_year = tables.latest_year(conn, table, domain['domain_id'], YEARS)
+    if last_year is None:
+        return None
+    last_year_periods = tables.table_stats(conn, table, domain['domain_id'], last_year).periods
+    return f'{last_year_periods[-1]}/{last_year}' if last_year_periods else None

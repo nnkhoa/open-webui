@@ -59,17 +59,6 @@ CUSTOMER_NAME_COLUMN = 'ten_khach'
 COST_ITEM_CODE_COLUMN = 'ma_khoan_cp'
 COST_ITEM_NAME_COLUMN = 'ten_khoan'
 
-CARD_TITLES = {
-    ROW_COUNT_CARD: messages.CARD_TITLE_ROW_COUNT,
-    TOTALS_CARD: messages.CARD_TITLE_AMOUNT_TOTALS,
-    EMPTY_CELLS_CARD: messages.CARD_TITLE_EMPTY_CELLS,
-    BY_DIMENSION_CARD: messages.CARD_TITLE_BY_DIMENSION,
-    CODES_CARD: messages.CARD_TITLE_CODES,
-    BEFORE_AFTER_CARD: messages.CARD_TITLE_MONTHS_BEFORE_AFTER,
-    AMOUNT_BY_GROUP_CARD: messages.CARD_TITLE_AMOUNT_BY_GROUP,
-}
-UNFILLED_TITLE_PLACEHOLDERS = {'year': '{nam}', 'dimension': '{chia_theo}'}
-
 GROUP_BY_LABELS = {
     MONTH_COLUMN: messages.CARD_GROUP_MONTH,
     'ma_nhom_kd': messages.CARD_GROUP_BUSINESS_GROUP,
@@ -165,6 +154,10 @@ class AmountMatrix:
     has_mismatch: bool
     year: int | None
 
+    @property
+    def title(self) -> str:
+        return messages.CARD_TITLE_AMOUNT_BY_GROUP
+
     def to_json(self) -> dict:
         return {
             'key': AMOUNT_BY_GROUP_CARD,
@@ -192,6 +185,10 @@ class ReconcileCards:
     cards: dict[str, Card | AmountMatrix | DimensionMatrix]
     mismatched: list[str]
     b4_result: str
+
+    @property
+    def mismatch_titles(self) -> list[str]:
+        return [self.cards[key].title for key in self.mismatched]
 
     def to_json(self) -> dict:
         return {key: card.to_json() for key, card in self.cards.items()}
@@ -261,16 +258,13 @@ def build_cards(ctx: LoadContext, before: LoadSnapshot, file_check: dict) -> Rec
         cards[CODES_CARD] = _codes_card(ctx, file_rows, db_rows)
         cards[BEFORE_AFTER_CARD] = _months_before_after_card(ctx, before, file_rows)
     mismatched = [key for key, card in cards.items() if card.has_mismatch]
-    if _is_header_table(ctx):
-        result = sample_subcon_cards.b4_result(cards, mismatched, file_check, ctx.form.tables[0].name)
+    if mismatched:
+        result = messages.CARD_B4_MISMATCH.format(cards='; '.join(cards[key].title for key in mismatched))
+    elif _is_header_table(ctx):
+        result = sample_subcon_cards.b4_result(cards, file_check, ctx.form.tables[0].name)
     else:
-        result = _amounts_b4_result(cards, mismatched)
+        result = _amounts_b4_result(cards)
     return ReconcileCards(cards, mismatched, result)
-
-
-def mismatch_label(card_key: str) -> str:
-    title = CARD_TITLES.get(card_key)
-    return card_key if title is None else title.format(**UNFILLED_TITLE_PLACEHOLDERS)
 
 
 def render_cards(stored: dict, selection: CardSelection, *, cancelled: bool) -> list[dict]:
@@ -783,10 +777,7 @@ def _month_row(ctx: LoadContext, sides: _MonthSides, month: int) -> CardRow:
     return CardRow(cells, row_verdict, link=link)
 
 
-def _amounts_b4_result(cards: dict, mismatched: list[str]) -> str:
-    if mismatched:
-        titles = '; '.join(CARD_TITLES[key].format(year='') if key in CARD_TITLES else key for key in mismatched)
-        return messages.CARD_B4_MISMATCH.format(cards=titles)
+def _amounts_b4_result(cards: dict) -> str:
     totals = cards[TOTALS_CARD].rows if TOTALS_CARD in cards else []
     details = '; '.join(f'{row.cells[0]} {format_amount(Decimal(str(row.cells[1])))}' for row in totals)
     return messages.CARD_B4_AMOUNTS_MATCH.format(count=len(totals), details=details)
