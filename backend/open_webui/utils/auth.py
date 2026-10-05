@@ -18,7 +18,7 @@ import requests
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from fastapi import BackgroundTasks, Depends, HTTPException, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from open_webui.constants import ERROR_MESSAGES
+from open_webui.constants import ERROR_MESSAGES, VERIFIED_ROLES
 from open_webui.env import (
     ENABLE_OTEL,
     ENABLE_PASSWORD_VALIDATION,
@@ -561,8 +561,8 @@ async def get_current_user_by_api_key(request, api_key: str):
     return user
 
 
-# AI4BI: data_uploader (Data Loader của Data Portal) được coi là user đã xác thực
-VERIFIED_USER_ROLES = {'user', 'data_uploader', 'admin'}
+# AI4BI: data_uploader (Data Loader của Data Portal) được coi là user đã xác thực — xem constants.VERIFIED_ROLES
+VERIFIED_USER_ROLES = VERIFIED_ROLES
 
 
 def get_verified_user(user=Depends(get_current_user)):

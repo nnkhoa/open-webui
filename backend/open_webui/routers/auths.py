@@ -20,7 +20,8 @@ from open_webui.config import (
     ENABLE_PASSWORD_AUTH,
     OAUTH_PROVIDERS,
 )
-from open_webui.constants import ERROR_MESSAGES
+from open_webui.constants import ERROR_MESSAGES, ROLES
+from open_webui.events import EVENTS, publish_event
 from open_webui.env import (
     AIOHTTP_CLIENT_SESSION_SSL,
     ENABLE_INITIAL_ADMIN_SIGNUP,
@@ -709,7 +710,7 @@ async def signin(
 
             if WEBUI_AUTH_TRUSTED_ROLE_HEADER:
                 trusted_role = request.headers.get(WEBUI_AUTH_TRUSTED_ROLE_HEADER, '').lower().strip()
-                if trusted_role in {'admin', 'user', 'data_uploader', 'pending'}:
+                if trusted_role in ROLES:
                     if user.role != trusted_role:
                         updated_user = await Users.update_user_role_by_id(user.id, trusted_role, db=db)
                         if updated_user:

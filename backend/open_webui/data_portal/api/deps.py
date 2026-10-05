@@ -7,6 +7,8 @@ from typing import TypeVar
 
 from fastapi import Depends, Request
 
+from open_webui.constants import ADMIN_ROLE, DATA_PORTAL_ROLES
+
 from .. import messages
 from ..config import Settings
 from ..container import Container
@@ -17,8 +19,6 @@ from ..registry.loader import FormRegistry
 from ..registry.schema import Form
 from ..security.rbac import Domain, active_domains
 
-PORTAL_ROLES = ('admin', 'data_uploader')
-ADMIN_ROLE = 'admin'
 PAGE_SIZES = (25, 50, 100)
 
 T = TypeVar('T')
@@ -102,7 +102,7 @@ def get_current_user():
 
 
 def get_portal_user(user=Depends(get_current_user)) -> PortalUser:
-    if user.role not in PORTAL_ROLES:
+    if user.role not in DATA_PORTAL_ROLES:
         raise PermissionDenied(messages.API_NO_PORTAL_ACCESS)
     return PortalUser(user_id=str(user.id), user_name=user.name or user.email or '', role=user.role)
 
