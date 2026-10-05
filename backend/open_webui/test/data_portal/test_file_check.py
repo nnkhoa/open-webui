@@ -15,40 +15,40 @@ FORM = load_definitions(DEFINITIONS_DIR).form("BAO_CAO_HQKH")
 
 def test_tep_nbc_t1_t7_dung_so_cua_dac_ta():
     kt = file_check.check_file(FORM, can_tep_mau(), 2026)
-    assert kt["loi"] == [] and kt["buoc_loi"] is None
-    assert kt["so_sheet"] == 3
-    bang = {b["bang"]: b for b in kt["bang"]}
-    assert [b["bang"] for b in kt["bang"]] == [
+    assert kt["errors"] == [] and kt["failed_step"] is None
+    assert kt["sheet_count"] == 3
+    bang = {b["table"]: b for b in kt["tables"]}
+    assert [b["table"] for b in kt["tables"]] == [
         "fact_ket_qua_kd", "fact_chi_phi", "dim_khach_hang", "dim_khoan_cp"]
-    assert (bang["fact_ket_qua_kd"]["doc"], bang["fact_ket_qua_kd"]["se_ghi"]) == (348, 348)
-    assert (bang["fact_chi_phi"]["doc"], bang["fact_chi_phi"]["se_ghi"]) == (6960, 6960)
-    assert (bang["dim_khach_hang"]["doc"], bang["dim_khach_hang"]["trung_bo"],
-            bang["dim_khach_hang"]["se_ghi"]) == (227, 90, 137)
-    assert bang["dim_khoan_cp"]["se_ghi"] == 26
+    assert (bang["fact_ket_qua_kd"]["read"], bang["fact_ket_qua_kd"]["to_write"]) == (348, 348)
+    assert (bang["fact_chi_phi"]["read"], bang["fact_chi_phi"]["to_write"]) == (6960, 6960)
+    assert (bang["dim_khach_hang"]["read"], bang["dim_khach_hang"]["duplicates"],
+            bang["dim_khach_hang"]["to_write"]) == (227, 90, 137)
+    assert bang["dim_khoan_cp"]["to_write"] == 26
     assert bang["dim_khach_hang"]["sheet"] == "DANH SACH KHACH HANG THEO HDX"
     assert bang["fact_chi_phi"]["sheet"] == "TỔNG HỢP"
-    assert round(Decimal(bang["fact_chi_phi"]["tong"]), 2) == Decimal("122689472100.65")
-    assert round(Decimal(bang["fact_ket_qua_kd"]["tong"]), 2) == Decimal("3193114446744.50")
-    assert bang["dim_khach_hang"]["tong"] is None
-    thang = bang["fact_ket_qua_kd"]["theo_ky"]
+    assert round(Decimal(bang["fact_chi_phi"]["total"]), 2) == Decimal("122689472100.65")
+    assert round(Decimal(bang["fact_ket_qua_kd"]["total"]), 2) == Decimal("3193114446744.50")
+    assert bang["dim_khach_hang"]["total"] is None
+    thang = bang["fact_ket_qua_kd"]["by_period"]
     assert sorted(thang, key=int) == ["1", "2", "3", "4", "5", "6", "7"]
-    assert thang["1"]["so_dong"] == 50 and thang["1"]["so_cot"] == 15
-    assert bang["fact_chi_phi"]["theo_ky"]["1"]["so_dong"] == 1000
+    assert thang["1"]["row_count"] == 50 and thang["1"]["column_count"] == 15
+    assert bang["fact_chi_phi"]["by_period"]["1"]["row_count"] == 1000
 
 
 def test_cau_a3_va_a2_theo_dac_ta():
     kt = file_check.check_file(FORM, can_tep_mau(), 2026)
     buoc = steps.check_steps(kt, user="admin", a4_result=None)
-    theo_ma = {b["ma"]: b for b in buoc}
-    assert theo_ma["A1"]["ket_qua"] == "Đúng định dạng .xlsx, đọc được 3 sheet."
-    assert theo_ma["A2"]["ket_qua"] == (
+    theo_ma = {b["code"]: b for b in buoc}
+    assert theo_ma["A1"]["result"] == "Đúng định dạng .xlsx, đọc được 3 sheet."
+    assert theo_ma["A2"]["result"] == (
         "Đủ 3 sheet TỔNG HỢP, DANH SACH KHACH HANG THEO HDX, DANH MỤC CHI PHÍ; "
         "đúng tên cột.")
-    assert theo_ma["A3"]["ket_qua"] == (
+    assert theo_ma["A3"]["result"] == (
         "Đọc 7.561 dòng, không thiếu giá trị bắt buộc. 90 dòng trùng ở Danh mục khách "
         "hàng sẽ bỏ (227 → 137). Sẽ ghi 7.471 dòng.")
-    assert theo_ma["A5"]["ket_qua"] == "admin đã bấm xác nhận."
-    assert [b["ket_luan"] for b in buoc] == ["Đúng", "Đúng", "Hợp lệ", "Xong", "Đã xác nhận"]
+    assert theo_ma["A5"]["result"] == "admin đã bấm xác nhận."
+    assert [b["verdict"] for b in buoc] == ["Đúng", "Đúng", "Hợp lệ", "Xong", "Đã xác nhận"]
 
 
 def test_thieu_sheet_bi_tu_choi_o_a2(tmp_path):
@@ -57,13 +57,13 @@ def test_thieu_sheet_bi_tu_choi_o_a2(tmp_path):
     tep = tmp_path / "thieu-sheet.xlsx"
     so.save(tep)
     kt = file_check.check_file(FORM, tep, 2026)
-    assert kt["buoc_loi"] == "A2"
-    assert [e["reason_code"] for e in kt["loi"]] == ["MISSING_SHEET"]
+    assert kt["failed_step"] == "A2"
+    assert [e["reason_code"] for e in kt["errors"]] == ["MISSING_SHEET"]
     buoc = steps.check_steps(kt, user="admin", a4_result=None) + steps.rejected_write_steps("A2", "B4")
-    assert buoc[1]["ket_qua"] == "Có 1 lỗi (thiếu sheet). Cả tệp bị từ chối."
-    assert buoc[1]["trang_thai"] == "err"
-    assert all(b["ket_luan"] == "Không chạy" for b in buoc[2:])
-    assert buoc[2]["ket_qua"] == "Không chạy vì tệp bị từ chối ở bước A2."
+    assert buoc[1]["result"] == "Có 1 lỗi (thiếu sheet). Cả tệp bị từ chối."
+    assert buoc[1]["status"] == "err"
+    assert all(b["verdict"] == "Không chạy" for b in buoc[2:])
+    assert buoc[2]["result"] == "Không chạy vì tệp bị từ chối ở bước A2."
 
 
 def test_bo_doc_theo_dong_tieu_de_hq_mau_gc():

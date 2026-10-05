@@ -103,16 +103,16 @@ class GroupCounts:
 
     def to_json(self) -> dict:
         return {
-            'khoa': self.key,
-            'tep': self.file_rows,
-            'db': self.db_rows,
-            'sl_tep': self.file_quantity,
-            'sl_db': self.db_quantity,
+            'key': self.key,
+            'file_rows': self.file_rows,
+            'db_rows': self.db_rows,
+            'file_quantity': self.file_quantity,
+            'db_quantity': self.db_quantity,
         }
 
     @classmethod
     def from_json(cls, data: dict) -> GroupCounts:
-        return cls(data['khoa'], data['tep'], data['db'], data['sl_tep'], data['sl_db'])
+        return cls(data['key'], data['file_rows'], data['db_rows'], data['file_quantity'], data['db_quantity'])
 
 
 @dataclass
@@ -121,11 +121,11 @@ class DimensionGroups:
     groups: list[GroupCounts]
 
     def to_json(self) -> dict:
-        return {'nhan': self.label, 'nhom': [group.to_json() for group in self.groups]}
+        return {'label': self.label, 'groups': [group.to_json() for group in self.groups]}
 
     @classmethod
     def from_json(cls, data: dict) -> DimensionGroups:
-        return cls(data['nhan'], [GroupCounts.from_json(group) for group in data['nhom']])
+        return cls(data['label'], [GroupCounts.from_json(group) for group in data['groups']])
 
 
 @dataclass
@@ -138,23 +138,25 @@ class DimensionMatrix:
 
     def to_json(self) -> dict:
         return {
-            'ma': BY_DIMENSION_CARD,
-            'bang': self.table,
-            'nam': self.year,
-            'chia': {column: groups.to_json() for column, groups in self.dimensions.items()},
-            'thu_tu_chia': list(self.order),
-            'lech': self.has_mismatch,
+            'key': BY_DIMENSION_CARD,
+            'table': self.table,
+            'year': self.year,
+            'dimensions': {column: groups.to_json() for column, groups in self.dimensions.items()},
+            'order': list(self.order),
+            'has_mismatch': self.has_mismatch,
         }
 
     @classmethod
     def from_json(cls, data: dict) -> DimensionMatrix:
-        dimensions = {column: DimensionGroups.from_json(groups) for column, groups in data.get('chia', {}).items()}
+        dimensions = {
+            column: DimensionGroups.from_json(groups) for column, groups in data.get('dimensions', {}).items()
+        }
         return cls(
-            data.get('bang'),
-            data.get('nam'),
+            data.get('table'),
+            data.get('year'),
             dimensions,
-            data.get('thu_tu_chia') or list(dimensions),
-            data.get('lech', False),
+            data.get('order') or list(dimensions),
+            data.get('has_mismatch', False),
         )
 
 
@@ -187,10 +189,10 @@ def totals_card(
 
 def empty_cells_card(file_check: dict) -> Card | None:
     rows = [
-        CardRow([column['cot'], value['gia_tri'], value['so_o'], None], messages.CARD_VERDICT_NOTED)
-        for table in file_check.get('bang', [])
-        for column in table['o_trong_chi_tiet']
-        for value in sorted(column['gia_tri'], key=lambda value: -value['so_o'])
+        CardRow([column['column'], value['value'], value['cell_count'], None], messages.CARD_VERDICT_NOTED)
+        for table in file_check.get('tables', [])
+        for column in table['empty_cell_details']
+        for value in sorted(column['values'], key=lambda value: -value['cell_count'])
     ]
     if not rows:
         return None
@@ -304,7 +306,7 @@ def domain_tables(ctx: LoadContext) -> list[DomainTable]:
          WHERE ds.domain_id = %s AND ft.kind = 'fact' AND ds.is_visible
            AND EXISTS (SELECT 1 FROM ctl.form_column c
                         WHERE c.table_id = ft.table_id AND c.name = 'nam')
-         ORDER BY df.thu_tu, ds.display_order, ft.name
+         ORDER BY df.position, ds.display_order, ft.name
         """,
         (ctx.domain_id,),
     )
@@ -351,25 +353,25 @@ def _column_total_row(
 
 
 def _total_cell_row(db_rows: list[dict], file_check: dict) -> CardRow | None:
-    total_cell = file_check.get('o_tong')
-    if not total_cell or total_cell.get('gia_tri') is None:
+    total_cell = file_check.get('total_cell')
+    if not total_cell or total_cell.get('value') is None:
         return None
     try:
-        file_total = Decimal(total_cell['gia_tri'])
+        file_total = Decimal(total_cell['value'])
     except ArithmeticError:
         return None
     db_total = column_total(db_rows, [QUANTITY_COLUMN])
     cells = [
-        messages.CARD_TOTAL_CELL.format(cell=total_cell['o'], header=total_cell['tieu_de']),
+        messages.CARD_TOTAL_CELL.format(cell=total_cell['reference'], header=total_cell['header']),
         as_number(file_total),
         as_number(db_total),
         as_number(db_total - file_total),
     ]
-    if not total_cell.get('ghi_nhan'):
+    if not total_cell.get('informational'):
         return CardRow(cells, verdict(file_total == db_total))
     note = messages.CARD_TOTAL_CELL_VISIBLE_ONLY.format(
-        visible=format_integer(file_check.get('so_dong_hien', 0)),
-        hidden=format_integer(file_check.get('so_dong_an', 0)),
+        visible=format_integer(file_check.get('visible_row_count', 0)),
+        hidden=format_integer(file_check.get('hidden_row_count', 0)),
     )
     return CardRow(cells, messages.CARD_VERDICT_NOTED, note=note)
 
@@ -470,6 +472,6 @@ def _total_parts(card: Card, file_check: dict) -> list[str]:
             )
             parts.append(part if parts else part[0].upper() + part[1:])
         elif row.verdict != messages.CARD_VERDICT_NOTED and parts:
-            total_cell = file_check.get('o_tong') or {}
-            parts[0] += messages.CARD_B4_EQUALS_TOTAL_CELL.format(cell=total_cell.get('o', ''))
+            total_cell = file_check.get('total_cell') or {}
+            parts[0] += messages.CARD_B4_EQUALS_TOTAL_CELL.format(cell=total_cell.get('reference', ''))
     return parts

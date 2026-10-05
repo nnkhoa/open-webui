@@ -99,9 +99,9 @@ def _tai_khoan_thu(request: Request):
 @pytest.fixture
 def client(sach):
     from fastapi.testclient import TestClient
-    from open_webui.data_portal.api.app import tao_api
+    from open_webui.data_portal.api.app import create_api
 
-    return TestClient(tao_api(_tai_khoan_thu, container=sach))
+    return TestClient(create_api(_tai_khoan_thu, container=sach))
 
 
 class Goi:
@@ -137,7 +137,7 @@ def can_tep_mau(tep: Path = TEP_HQKD) -> Path:
 def tai_len(goi, tep: Path, *, nhom: str = "HQKD", nam: str = "2026", loai: str = "",
             ten: str | None = None):
     with tep.open("rb") as f:
-        return goi("POST", "/uploads", data={"nhom": nhom, "nam": nam, "loai": loai},
+        return goi("POST", "/uploads", data={"domain": nhom, "year": nam, "file_type": loai},
                    files={"file": (ten or tep.name, f,
                                    "application/vnd.openxmlformats-officedocument."
                                    "spreadsheetml.sheet")})

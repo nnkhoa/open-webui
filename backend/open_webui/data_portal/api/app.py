@@ -1,16 +1,3 @@
-"""API JSON của Data Portal (mục 9 đặc tả) — gắn vào Open WebUI ở `/api/v1/data-portal`.
-
-Ứng dụng FastAPI con, chạy ngay trong process Open WebUI, có bộ bắt lỗi riêng: mọi
-lỗi trả JSON `{"detail": "<câu tiếng Việt>"}` với mã 401 / 403 / 404 / 409 / 422 /
-503, không lẫn với cách trả lỗi của phần còn lại của Open WebUI.
-
-Người gọi là tài khoản Open WebUI đang đăng nhập: `tao_api` nhận hàm xác thực của
-Open WebUI và gắn vào `nguoi_dung_hien_tai`.
-
-Tầng này không chạm thẳng psycopg hay openpyxl: dữ liệu đi qua `domain`,
-`pipeline`, `sources`.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -22,6 +9,7 @@ from fastapi.responses import JSONResponse
 from starlette.datastructures import State
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from .. import messages
 from ..container import Container, build_container
 from ..errors import (
     InvalidInput,
@@ -33,104 +21,106 @@ from ..errors import (
     WarehouseNotConfigured,
 )
 from ..logs import REQUEST_ID
-from .deps import NguoiGoi, nguoi_dung_hien_tai, nguoi_goi
-from .routes import bang, cau_hinh_db, lan_nap, nap, nhom
+from .deps import PortalUser, get_current_user, get_portal_user
+from .routes import db_config, domains, loads, tables, uploads
 
-DANG_KY = [nhom, nap, lan_nap, bang, cau_hinh_db]
+log = logging.getLogger(__name__)
 
-LOI_CHUNG = ("Hệ thống gặp sự cố. Yêu cầu chưa được thực hiện và dữ liệu không bị thay "
-             "đổi. Hãy thử lại; nếu vẫn lỗi, gửi mã yêu cầu cho quản trị.")
-
-log = logging.getLogger("data_portal")
+ROUTERS = (domains, uploads, loads, tables, db_config)
+CATCH_ALL_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
 
 
-def _loi(ma_http: int, thong_diep: str, **them) -> JSONResponse:
-    return JSONResponse({"detail": thong_diep, **them}, status_code=ma_http)
-
-
-def tao_api(xac_thuc: Callable, state: State | None = None,
-            container: Container | None = None) -> FastAPI:
-    """`xac_thuc`: phụ thuộc FastAPI trả tài khoản đang đăng nhập (có `id`, `name`,
-    `email`, `role`). `state`: dùng chung `app.state` của Open WebUI, để hàm xác thực
-    thấy đúng những gì nó thấy ở các API khác (Redis kiểm token đã thu hồi…).
-    `container` để trống thì gọi `khoi_dong` lúc Open WebUI lên."""
-    api = FastAPI(title="Data Portal API", docs_url=None, redoc_url=None, openapi_url=None)
+def create_api(get_user: Callable, state: State | None = None, container: Container | None = None) -> FastAPI:
+    api = FastAPI(title='Data Portal API', docs_url=None, redoc_url=None, openapi_url=None)
     if state is not None:
         api.state = state
     api.state.data_portal = container
-    api.dependency_overrides[nguoi_dung_hien_tai] = xac_thuc
-    for mo_dun in DANG_KY:
-        api.include_router(mo_dun.router)
+    api.dependency_overrides[get_current_user] = get_user
+    for module in ROUTERS:
+        api.include_router(module.router)
 
-    # Đường dẫn không có: vẫn kiểm danh tính trước (401 / 403), rồi mới 404 — người
-    # gọi không đăng nhập hay không có quyền không dò được đường dẫn nào tồn tại.
-    @api.api_route("/{duong_dan:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-                   include_in_schema=False)
-    def _khong_co(duong_dan: str, nguoi: NguoiGoi = Depends(nguoi_goi)):
-        raise NotFound("Không tìm thấy.")
+    @api.api_route('/{path:path}', methods=CATCH_ALL_METHODS, include_in_schema=False)
+    def not_found(path: str, user: PortalUser = Depends(get_portal_user)):
+        raise NotFound(messages.API_NOT_FOUND)
 
-    _bat_loi(api)
+    _register_exception_handlers(api)
     return api
 
 
-def khoi_dong(api: FastAPI) -> None:
-    """Mở sổ tay, chép khai báo, nối kho. Chạy trong luồng riêng lúc Open WebUI lên;
-    kho chưa cấu hình hay đang tắt thì vẫn lên, màn Cấu hình database báo lý do."""
+def start(api: FastAPI) -> None:
     try:
         api.state.data_portal = build_container()
     except Exception:
-        log.exception("Data Portal không khởi động được")
+        log.exception('Data Portal failed to start')
 
 
-def dung_lai(api: FastAPI) -> None:
-    container = getattr(api.state, "data_portal", None)
+def stop(api: FastAPI) -> None:
+    container = getattr(api.state, 'data_portal', None)
     if container is not None:
         container.close()
         api.state.data_portal = None
 
 
-def _bat_loi(api: FastAPI) -> None:
-    @api.exception_handler(NotReady)
-    async def _chua_san_sang(request: Request, exc: NotReady):
-        return _loi(503, str(exc))
+def _error_response(status_code: int, detail: str, **extra) -> JSONResponse:
+    return JSONResponse({'detail': detail, **extra}, status_code=status_code)
 
-    @api.exception_handler(WarehouseNotConfigured)
-    async def _chua_kho(request: Request, exc: WarehouseNotConfigured):
-        return _loi(503, exc.reason or "Chưa cấu hình cơ sở dữ liệu.")
 
-    @api.exception_handler(InvalidInput)
-    async def _vao_sai(request: Request, exc: InvalidInput):
-        them = {"theo_o": exc.field_errors} if exc.field_errors else {}
-        return _loi(422, str(exc), **them)
+def _register_exception_handlers(api: FastAPI) -> None:
+    handlers = (
+        (NotReady, _not_ready_handler),
+        (WarehouseNotConfigured, _warehouse_not_configured_handler),
+        (InvalidInput, _invalid_input_handler),
+        (SourceFileError, _source_file_handler),
+        (RegistryError, _registry_handler),
+        (PortalError, _portal_error_handler),
+        (RequestValidationError, _request_validation_handler),
+        (StarletteHTTPException, _http_exception_handler),
+        (Exception, _unexpected_error_handler),
+    )
+    for exception_class, handler in handlers:
+        api.add_exception_handler(exception_class, handler)
 
-    @api.exception_handler(SourceFileError)
-    async def _nguon(request: Request, exc: SourceFileError):
-        return _loi(422, str(exc))
 
-    @api.exception_handler(RegistryError)
-    async def _registry(request: Request, exc: RegistryError):
-        return _loi(404, "Không tìm thấy.")
+async def _not_ready_handler(request: Request, exc: NotReady) -> JSONResponse:
+    return _error_response(503, str(exc))
 
-    @api.exception_handler(PortalError)
-    async def _portal(request: Request, exc: PortalError):
-        if exc.status_code >= 500:
-            log.exception("Lỗi nghiệp vụ chưa xử lý riêng: %s", exc)
-            return _loi(exc.status_code, LOI_CHUNG, ma_yeu_cau=REQUEST_ID.get())
-        return _loi(exc.status_code, str(exc))
 
-    @api.exception_handler(RequestValidationError)
-    async def _tham_so(request: Request, exc: RequestValidationError):
-        return _loi(422, "Dữ liệu gửi lên chưa hợp lệ.")
+async def _warehouse_not_configured_handler(request: Request, exc: WarehouseNotConfigured) -> JSONResponse:
+    return _error_response(503, exc.reason or messages.API_WAREHOUSE_NOT_CONFIGURED)
 
-    @api.exception_handler(StarletteHTTPException)
-    async def _http(request: Request, exc: StarletteHTTPException):
-        if exc.status_code == 404:
-            return _loi(404, "Không tìm thấy.")
-        if exc.status_code == 405:
-            return _loi(405, "Phương thức không được hỗ trợ.")
-        return _loi(exc.status_code, str(exc.detail))
 
-    @api.exception_handler(Exception)
-    async def _chung(request: Request, exc: Exception):
-        log.exception("Lỗi ngoài dự kiến ở API: %s", exc)
-        return _loi(500, LOI_CHUNG, ma_yeu_cau=REQUEST_ID.get())
+async def _invalid_input_handler(request: Request, exc: InvalidInput) -> JSONResponse:
+    extra = {'field_errors': exc.field_errors} if exc.field_errors else {}
+    return _error_response(422, str(exc), **extra)
+
+
+async def _source_file_handler(request: Request, exc: SourceFileError) -> JSONResponse:
+    return _error_response(422, str(exc))
+
+
+async def _registry_handler(request: Request, exc: RegistryError) -> JSONResponse:
+    return _error_response(404, messages.API_NOT_FOUND)
+
+
+async def _portal_error_handler(request: Request, exc: PortalError) -> JSONResponse:
+    if exc.status_code >= 500:
+        log.exception('Unhandled portal error: %s', exc)
+        return _error_response(exc.status_code, messages.API_UNEXPECTED_ERROR, request_id=REQUEST_ID.get())
+    return _error_response(exc.status_code, str(exc))
+
+
+async def _request_validation_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    return _error_response(422, messages.API_INVALID_REQUEST)
+
+
+async def _http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+    if exc.status_code == 404:
+        return _error_response(404, messages.API_NOT_FOUND)
+    if exc.status_code == 405:
+        return _error_response(405, messages.API_METHOD_NOT_ALLOWED)
+    return _error_response(exc.status_code, str(exc.detail))
+
+
+async def _unexpected_error_handler(request: Request, exc: Exception) -> JSONResponse:
+    log.exception('Unexpected Data Portal API error: %s', exc)
+    return _error_response(500, messages.API_UNEXPECTED_ERROR, request_id=REQUEST_ID.get())

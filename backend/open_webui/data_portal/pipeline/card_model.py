@@ -9,14 +9,14 @@ from .context import LoadContext
 
 ZERO = Decimal(0)
 
-ROW_COUNT_CARD = 'so_dong'
-TOTALS_CARD = 'tong'
-AMOUNT_BY_GROUP_CARD = 'tien_theo_nhom'
-EMPTY_CELLS_CARD = 'o_trong'
-BY_DIMENSION_CARD = 'theo_chieu'
-CODES_CARD = 'ma'
-BEFORE_AFTER_CARD = 'truoc_sau'
-REJECTED_CARD = 'tu_choi'
+ROW_COUNT_CARD = 'row_count'
+TOTALS_CARD = 'totals'
+AMOUNT_BY_GROUP_CARD = 'amount_by_group'
+EMPTY_CELLS_CARD = 'empty_cells'
+BY_DIMENSION_CARD = 'by_dimension'
+CODES_CARD = 'codes'
+BEFORE_AFTER_CARD = 'before_after'
+REJECTED_CARD = 'rejected'
 CARD_ORDER = (
     ROW_COUNT_CARD,
     TOTALS_CARD,
@@ -27,10 +27,10 @@ CARD_ORDER = (
     BEFORE_AFTER_CARD,
 )
 
-TABLE_OPTION = 'bang'
-COLUMN_OPTION = 'cot'
-GROUP_BY_OPTION = 'chia_theo'
-ALL_COLUMNS = 'tat_ca'
+TABLE_OPTION = 'table'
+COLUMN_OPTION = 'column'
+GROUP_BY_OPTION = 'group_by'
+ALL_COLUMNS = 'all'
 
 MISMATCH_VERDICTS = (messages.CARD_VERDICT_MISSING, messages.CARD_VERDICT_EXTRA, messages.CARD_VERDICT_MISMATCH)
 
@@ -46,13 +46,13 @@ class Link:
     query: str | None = None
 
     def to_json(self) -> dict:
-        link: dict = {'bang': self.table, 'lop': self.layer}
+        link: dict = {'table': self.table, 'layer': self.layer}
         if self.year is not None:
-            link['nam'] = self.year
+            link['year'] = self.year
         if self.period is not None:
-            link['ky'] = self.period
+            link['period'] = self.period
         if self.query is not None:
-            link['tim'] = self.query
+            link['query'] = self.query
         return link
 
 
@@ -70,9 +70,9 @@ class Cell:
     link: Link | SheetLink | None = None
 
     def to_json(self) -> dict:
-        cell: dict = {'v': self.value}
+        cell: dict = {'value': self.value}
         if self.link is not None:
-            cell['mo'] = self.link.to_json()
+            cell['link'] = self.link.to_json()
         return cell
 
 
@@ -82,7 +82,7 @@ class CardColumn:
     align_right: bool = False
 
     def to_json(self) -> dict:
-        return {'t': self.label, 'r': True} if self.align_right else {'t': self.label}
+        return {'label': self.label, 'align_right': True} if self.align_right else {'label': self.label}
 
 
 @dataclass
@@ -95,15 +95,15 @@ class CardRow:
 
     def to_json(self) -> dict:
         row: dict = {
-            'o': [cell.to_json() if isinstance(cell, Cell) else cell for cell in self.cells],
-            'ket_luan': self.verdict,
+            'cells': [cell.to_json() if isinstance(cell, Cell) else cell for cell in self.cells],
+            'verdict': self.verdict,
         }
         if self.note is not None:
-            row['phu'] = self.note
+            row['note'] = self.note
         if self.link is not None:
-            row['mo'] = self.link.to_json()
+            row['link'] = self.link.to_json()
         if self.verdict_note is not None:
-            row['ket_luan_phu'] = self.verdict_note
+            row['verdict_note'] = self.verdict_note
         return row
 
 
@@ -113,7 +113,7 @@ class OptionChoice:
     label: str
 
     def to_json(self) -> dict:
-        return {'v': self.value, 't': self.label}
+        return {'value': self.value, 'label': self.label}
 
 
 @dataclass
@@ -126,11 +126,11 @@ class CardOption:
 
     def to_json(self) -> dict:
         return {
-            'ten': self.name,
-            'nhan': self.label,
-            'gia_tri': self.value,
-            'mac': self.default,
-            'lua_chon': [choice.to_json() for choice in self.choices],
+            'name': self.name,
+            'label': self.label,
+            'value': self.value,
+            'default': self.default,
+            'choices': [choice.to_json() for choice in self.choices],
         }
 
 
@@ -141,7 +141,7 @@ class Pagination:
     total: int
 
     def to_json(self) -> dict:
-        return {'trang': self.page, 'moi': self.page_size, 'tong': self.total}
+        return {'page': self.page, 'page_size': self.page_size, 'total': self.total}
 
 
 @dataclass
@@ -155,36 +155,32 @@ class Card:
     options: list[CardOption] | None = None
     totals: list[CellValue] | None = None
     pagination: Pagination | None = None
-    table_labels: list[str] | None = None
 
     @property
     def has_mismatch(self) -> bool:
         return any(row.verdict in MISMATCH_VERDICTS for row in self.rows)
 
     def to_json(self) -> dict:
-        card: dict = {'ma': self.key, 'tieu_de': self.title}
+        card: dict = {'key': self.key, 'title': self.title}
         if self.message is not None:
-            card['thong_bao'] = self.message
-        card['cot'] = [column.to_json() for column in self.columns]
-        card['dong'] = [row.to_json() for row in self.rows]
+            card['message'] = self.message
+        card['columns'] = [column.to_json() for column in self.columns]
+        card['rows'] = [row.to_json() for row in self.rows]
         if self.count is not None:
-            card['so'] = self.count
+            card['count'] = self.count
         if self.options is not None:
-            card['tuy_chon'] = [option.to_json() for option in self.options]
+            card['options'] = [option.to_json() for option in self.options]
         if self.totals is not None:
-            card['tong'] = list(self.totals)
+            card['totals'] = list(self.totals)
         if self.pagination is not None:
-            card['trang'] = self.pagination.to_json()
-        if self.table_labels is not None:
-            card['cac_bang'] = list(self.table_labels)
+            card['pagination'] = self.pagination.to_json()
         return card
 
 
 def stored_card_view(card_json: dict, *, cancelled: bool) -> dict:
-    view = {key: value for key, value in card_json.items() if key != 'cac_bang'}
     if cancelled:
-        view = {**view, 'dong': [], 'thong_bao': messages.CARD_CANCELLED_NOTICE}
-    return view
+        return {**card_json, 'rows': [], 'message': messages.CARD_CANCELLED_NOTICE}
+    return card_json
 
 
 def rejected_card() -> dict:

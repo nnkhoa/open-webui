@@ -34,17 +34,17 @@ class StepOutcome(NamedTuple):
 
 
 def b4_name(file_check: dict) -> str:
-    if any(table.get('loai_tong') == TOTAL_KIND_QUANTITY for table in file_check['bang']):
+    if any(table.get('total_kind') == TOTAL_KIND_QUANTITY for table in file_check['tables']):
         return messages.STEP_NAME_B4_QUANTITY
     return STEP_NAMES['B4']
 
 
 def check_steps(file_check: dict, *, user: str, a4_result: str | None, single_table: bool = False) -> list[dict]:
-    failed_step = file_check.get('buoc_loi')
+    failed_step = file_check.get('failed_step')
     steps = [
         _step(
             'A1',
-            messages.STEP_A1_RESULT.format(count=format_integer(file_check['so_sheet'])),
+            messages.STEP_A1_RESULT.format(count=format_integer(file_check['sheet_count'])),
             messages.STEP_VERDICT_CORRECT,
             STATUS_OK,
         ),
@@ -104,18 +104,18 @@ def _errors_summary(errors: list[dict]) -> str:
 
 
 def _a3_result(file_check: dict, single_table: bool) -> str:
-    tables = file_check['bang']
+    tables = file_check['tables']
     parts = [_a3_single_table_read(file_check) if single_table else _a3_read(tables)]
-    empty_cells = sum(table['o_trong'] for table in tables)
+    empty_cells = sum(table['empty_cells'] for table in tables)
     if empty_cells:
         parts.append(messages.STEP_A3_EMPTY_CELLS.format(count=format_integer(empty_cells)))
-    to_write = sum(table['se_ghi'] for table in tables)
+    to_write = sum(table['to_write'] for table in tables)
     parts.append(messages.STEP_A3_TO_WRITE.format(count=format_integer(to_write)))
     return ' '.join(parts)
 
 
 def _step(code: str, result: str, verdict: str, status: str, name: str = '') -> dict:
-    return {'ma': code, 'ten': name or STEP_NAMES[code], 'ket_qua': result, 'ket_luan': verdict, 'trang_thai': status}
+    return {'code': code, 'name': name or STEP_NAMES[code], 'result': result, 'verdict': verdict, 'status': status}
 
 
 def _skipped(code: str, failed_step: str, name: str = '') -> dict:
@@ -133,40 +133,40 @@ def _error_kinds(errors: list[dict]) -> str:
 
 
 def _a2_step(file_check: dict) -> dict:
-    if file_check.get('buoc_loi') == 'A2':
-        result = file_check.get('cau_loi_a2') or _errors_summary(file_check['loi'])
+    if file_check.get('failed_step') == 'A2':
+        result = file_check.get('a2_error') or _errors_summary(file_check['errors'])
         return _step('A2', result, messages.STEP_VERDICT_WRONG, STATUS_ERROR)
-    if file_check.get('sheet_du_lieu') and file_check.get('dong_tieu_de'):
+    if file_check.get('data_sheet') and file_check.get('header_row'):
         result = messages.STEP_A2_HEADER_TABLE.format(
-            sheet=file_check['sheet_du_lieu'],
-            column_count=format_integer(file_check['so_cot_can']),
-            header_row=format_integer(file_check['dong_tieu_de']),
+            sheet=file_check['data_sheet'],
+            column_count=format_integer(file_check['required_column_count']),
+            header_row=format_integer(file_check['header_row']),
         )
         return _step('A2', result, messages.STEP_VERDICT_CORRECT, STATUS_OK)
-    table_sheets = {table['sheet'] for table in file_check['bang']}
-    sheets = [sheet for sheet in file_check['cac_sheet'] if sheet in table_sheets]
+    table_sheets = {table['sheet'] for table in file_check['tables']}
+    sheets = [sheet for sheet in file_check['sheets'] if sheet in table_sheets]
     result = messages.STEP_A2_SHEETS.format(count=format_integer(len(sheets)), sheets=', '.join(sheets))
     return _step('A2', result, messages.STEP_VERDICT_CORRECT, STATUS_OK)
 
 
 def _a3_step(file_check: dict, single_table: bool) -> dict:
-    failed_step = file_check.get('buoc_loi')
+    failed_step = file_check.get('failed_step')
     if failed_step == 'A2':
         return _skipped('A3', 'A2')
     if failed_step == 'A3':
-        return _step('A3', _errors_summary(file_check['loi']), messages.STEP_VERDICT_WRONG, STATUS_ERROR)
+        return _step('A3', _errors_summary(file_check['errors']), messages.STEP_VERDICT_WRONG, STATUS_ERROR)
     return _step('A3', _a3_result(file_check, single_table), messages.STEP_VERDICT_VALID, STATUS_OK)
 
 
 def _a3_single_table_read(file_check: dict) -> str:
-    tables = file_check['bang']
+    tables = file_check['tables']
     row_range = ''
-    if file_check.get('dong_tu') and file_check.get('dong_den'):
+    if file_check.get('first_row') and file_check.get('last_row'):
         row_range = messages.STEP_A3_ROW_RANGE.format(
-            first=format_integer(file_check['dong_tu']), last=format_integer(file_check['dong_den'])
+            first=format_integer(file_check['first_row']), last=format_integer(file_check['last_row'])
         )
-    read = format_integer(sum(table['doc'] for table in tables))
-    duplicates = sum(table['trung_bo'] for table in tables)
+    read = format_integer(sum(table['read'] for table in tables))
+    duplicates = sum(table['duplicates'] for table in tables)
     if not duplicates:
         return messages.STEP_A3_READ_NO_DUPLICATES.format(count=read, row_range=row_range)
     return messages.STEP_A3_READ_WITH_DUPLICATES.format(
@@ -175,15 +175,15 @@ def _a3_single_table_read(file_check: dict) -> str:
 
 
 def _a3_read(tables: list[dict]) -> str:
-    parts = [messages.STEP_A3_READ.format(count=format_integer(sum(table['doc'] for table in tables)))]
+    parts = [messages.STEP_A3_READ.format(count=format_integer(sum(table['read'] for table in tables)))]
     for table in tables:
-        if table['trung_bo']:
+        if table['duplicates']:
             parts.append(
                 messages.STEP_A3_TABLE_DUPLICATES.format(
-                    duplicates=format_integer(table['trung_bo']),
-                    table=table['ten_bang'],
-                    read=format_integer(table['doc']),
-                    to_write=format_integer(table['se_ghi']),
+                    duplicates=format_integer(table['duplicates']),
+                    table=table['table_name'],
+                    read=format_integer(table['read']),
+                    to_write=format_integer(table['to_write']),
                 )
             )
     return ' '.join(parts)

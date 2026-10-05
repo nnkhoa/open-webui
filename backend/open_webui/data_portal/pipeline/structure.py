@@ -12,10 +12,10 @@ def error_row(sheet: str | None, location: str, code: str, **params) -> dict:
     error = error_code(code)
     return {
         'sheet': sheet,
-        'position': location,
+        'location': location,
         'issue': error.message(**params),
         'reason_code': code,
-        'fix': error.resolution,
+        'resolution': error.resolution,
         'cell_ref': params.get('cell_ref'),
     }
 

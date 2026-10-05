@@ -11,7 +11,7 @@ from .conftest import can_tep_mau, dem, tai_len
 
 
 def test_hai_lan_xac_nhan_cung_luc(admin, sach):
-    ma = [tai_len(admin, can_tep_mau()).json()["ma_tep_cho"] for _ in range(2)]
+    ma = [tai_len(admin, can_tep_mau()).json()["pending_id"] for _ in range(2)]
     ket_qua: list[dict] = []
 
     def chay(m: str) -> None:
@@ -30,7 +30,7 @@ def test_hai_lan_xac_nhan_cung_luc(admin, sach):
 
 
 def test_xac_nhan_hai_lan_cung_tep_cho(admin, sach):
-    ma = tai_len(admin, can_tep_mau()).json()["ma_tep_cho"]
+    ma = tai_len(admin, can_tep_mau()).json()["pending_id"]
     assert admin("POST", f"/uploads/{ma}/confirm").json()["status"] == "success"
     r = admin("POST", f"/uploads/{ma}/confirm")
     assert r.status_code == 404
