@@ -489,10 +489,7 @@
 			}
 
 			if (tab.id === 'tools') {
-				return (
-					$user?.role === 'admin' ||
-					($user?.role !== 'admin' && $user?.permissions?.features?.direct_tool_servers)
-				);
+				return $user?.role === 'admin' || $user?.permissions?.features?.direct_tool_servers;
 			}
 
 			if (tab.id === 'interface') {
@@ -680,7 +677,7 @@
 								<div class=" self-center">{$i18n.t('Interface')}</div>
 							</button>
 						{:else if tabId === 'connections'}
-							{#if $user?.role === 'admin' || ($user?.role !== 'admin' && $config?.features?.enable_direct_connections)}
+							{#if $user?.role === 'admin' || $config?.features?.enable_direct_connections}
 								<button
 									role="tab"
 									aria-controls="tab-connections"
@@ -706,7 +703,7 @@
 								</button>
 							{/if}
 						{:else if tabId === 'tools'}
-							{#if $user?.role === 'admin' || ($user?.role !== 'admin' && $user?.permissions?.features?.direct_tool_servers)}
+							{#if $user?.role === 'admin' || $user?.permissions?.features?.direct_tool_servers}
 								<button
 									role="tab"
 									aria-controls="tab-tools"

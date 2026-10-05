@@ -7,6 +7,7 @@
 	import { goto } from '$app/navigation';
 
 	import { updateUserById, getUserGroupsById } from '$lib/apis/users';
+	import { DATA_UPLOADER_ROLE } from '$lib/constants';
 
 	import Modal from '$lib/components/common/Modal.svelte';
 	import localizedFormat from 'dayjs/plugin/localizedFormat';
@@ -147,7 +148,7 @@
 											>
 												<option value="admin">{$i18n.t('Admin')}</option>
 												<option value="user">{$i18n.t('User')}</option>
-												<option value="data_uploader">{$i18n.t('Data Loader')}</option>
+												<option value={DATA_UPLOADER_ROLE}>{$i18n.t('data_uploader')}</option>
 												<option value="pending">{$i18n.t('Pending')}</option>
 											</select>
 										</div>

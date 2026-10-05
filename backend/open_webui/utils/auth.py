@@ -20,7 +20,7 @@ from cryptography.hazmat.primitives.asymmetric import ed25519
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from fastapi import BackgroundTasks, Depends, HTTPException, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from open_webui.constants import ERROR_MESSAGES
+from open_webui.constants import ERROR_MESSAGES, VERIFIED_ROLES
 from open_webui.env import (
     ENABLE_OTEL,
     ENABLE_PASSWORD_VALIDATION,
@@ -476,7 +476,7 @@ async def get_current_user_by_api_key(request, api_key: str):
 
 
 def get_verified_user(user=Depends(get_current_user)):
-    if user.role not in {'user', 'data_uploader', 'admin'}:
+    if user.role not in VERIFIED_ROLES:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=ERROR_MESSAGES.ACCESS_PROHIBITED,

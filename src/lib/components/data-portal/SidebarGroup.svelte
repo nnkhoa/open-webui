@@ -5,7 +5,8 @@
 	import { page } from '$app/stores';
 
 	import { user } from '$lib/stores';
-	import { DATA_PORTAL_ROLES, resetUploadDraft } from '$lib/stores/dataPortal';
+	import { ADMIN_ROLE, DATA_PORTAL_ROLES } from '$lib/constants';
+	import { resetUploadDraft } from '$lib/stores/dataPortal';
 
 	import Icon from './Icon.svelte';
 	import './tokens.css';
@@ -29,7 +30,7 @@
 	};
 
 	$: visible = DATA_PORTAL_ROLES.includes($user?.role ?? '');
-	$: items = ITEMS.filter((item) => !item.adminOnly || $user?.role === 'admin');
+	$: items = ITEMS.filter((item) => !item.adminOnly || $user?.role === ADMIN_ROLE);
 	$: path = $page.url.pathname;
 </script>
 

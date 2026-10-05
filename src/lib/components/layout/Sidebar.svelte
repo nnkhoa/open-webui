@@ -58,7 +58,7 @@
 	import { updateUserSettings } from '$lib/apis/users';
 	import { checkActiveChats } from '$lib/apis/tasks';
 	import { createNoteHandler } from '$lib/components/notes/utils';
-	import { WEBUI_API_BASE_URL, WEBUI_BASE_URL } from '$lib/constants';
+	import { DATA_PORTAL_ROLES, WEBUI_API_BASE_URL, WEBUI_BASE_URL } from '$lib/constants';
 
 	import ArchivedChatsModal from './ArchivedChatsModal.svelte';
 	import UserMenu from './Sidebar/UserMenu.svelte';
@@ -85,7 +85,6 @@
 	import HotkeyHint from '../common/HotkeyHint.svelte';
 	import DataPortalSidebarGroup from '../data-portal/SidebarGroup.svelte';
 	import DataPortalIcon from '../data-portal/Icon.svelte';
-	import { DATA_PORTAL_ROLES } from '$lib/stores/dataPortal';
 
 	const BREAKPOINT = 768;
 	const DEFAULT_PINNED_ITEMS = ['notes', 'workspace'];

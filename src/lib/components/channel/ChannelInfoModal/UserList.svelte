@@ -16,6 +16,7 @@
 	import Pagination from '$lib/components/common/Pagination.svelte';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
 	import Badge from '$lib/components/common/Badge.svelte';
+	import { getRoleBadgeType } from '$lib/utils/roles';
 	import Plus from '$lib/components/icons/Plus.svelte';
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import ProfilePreview from '../Messages/Message/ProfilePreview.svelte';
@@ -241,16 +242,7 @@
 
 								<div class="px-2 py-1 flex items-center gap-1 translate-y-0.5">
 									<div class=" ">
-										<Badge
-											type={user.role === 'admin'
-												? 'info'
-												: user.role === 'user'
-													? 'success'
-													: user.role === 'data_uploader'
-														? 'warning'
-														: 'muted'}
-											content={$i18n.t(user.role)}
-										/>
+										<Badge type={getRoleBadgeType(user.role)} content={$i18n.t(user.role)} />
 									</div>
 
 									{#if onRemove}

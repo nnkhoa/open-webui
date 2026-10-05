@@ -26,7 +26,7 @@ from zoneinfo import ZoneInfo
 from dateutil.rrule import rrulestr
 from fastapi import Request
 from fastapi.security import HTTPAuthorizationCredentials
-from open_webui.constants import ERROR_MESSAGES
+from open_webui.constants import ERROR_MESSAGES, VERIFIED_ROLES
 from open_webui.events import EVENTS, publish_event
 from open_webui.internal.db import get_async_db
 from open_webui.models.automations import AutomationModel, AutomationRuns, Automations
@@ -379,7 +379,7 @@ async def execute_automation(app, automation: AutomationModel) -> None:
         # Re-gate the rehydrated owner: a demoted/deactivated or de-permissioned owner must not run.
         from open_webui.utils.access_control import has_permission
 
-        if user.role not in ('user', 'data_uploader', 'admin') or (
+        if user.role not in VERIFIED_ROLES or (
             user.role != 'admin'
             and not await has_permission(user.id, 'features.automations', await Config.get('user.permissions'))
         ):

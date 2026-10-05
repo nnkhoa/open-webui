@@ -140,3 +140,13 @@ class TASKS(str, Enum):
     AUTOCOMPLETE_GENERATION = 'autocomplete_generation'
     FUNCTION_CALLING = 'function_calling'
     MOA_RESPONSE_GENERATION = 'moa_response_generation'
+
+
+ADMIN_ROLE = 'admin'
+USER_ROLE = 'user'
+DATA_UPLOADER_ROLE = 'data_uploader'
+PENDING_ROLE = 'pending'
+
+VERIFIED_ROLES = frozenset({ADMIN_ROLE, USER_ROLE, DATA_UPLOADER_ROLE})
+ROLES = VERIFIED_ROLES | {PENDING_ROLE}
+DATA_PORTAL_ROLES = frozenset({ADMIN_ROLE, DATA_UPLOADER_ROLE})

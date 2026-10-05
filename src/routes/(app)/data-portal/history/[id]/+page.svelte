@@ -6,6 +6,7 @@
 	import { page } from '$app/stores';
 	import { toast } from 'svelte-sonner';
 
+	import { ADMIN_ROLE } from '$lib/constants';
 	import { user } from '$lib/stores';
 	import { hasMultipleFileTypes, loadPortalDomains, portalDomains } from '$lib/stores/dataPortal';
 	import { deleteLoad, getLoad } from '$lib/apis/data-portal';
@@ -32,7 +33,7 @@
 
 	$: loadId = Number($page.params.id);
 	$: tab = $page.url.searchParams.get('tab') ?? 'steps';
-	$: isAdmin = $user?.role === 'admin';
+	$: isAdmin = $user?.role === ADMIN_ROLE;
 	$: multipleFileTypes = hasMultipleFileTypes(
 		$portalDomains.find((domain) => domain.code === load?.domain)
 	);

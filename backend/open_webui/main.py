@@ -70,7 +70,7 @@ from open_webui.config import (
     import_legacy_config_json,
     seed_registered_defaults,
 )
-from open_webui.constants import ERROR_MESSAGES, TASKS
+from open_webui.constants import ERROR_MESSAGES, TASKS, VERIFIED_ROLES
 from open_webui.env import (
     AIOHTTP_CLIENT_SESSION_SSL,
     AUDIT_EXCLUDED_PATHS,
@@ -2053,7 +2053,7 @@ async def get_app_config(request: Request):
                     else {}
                 ),
             }
-            if user is not None and (user.role in ['admin', 'user', 'data_uploader'])
+            if user is not None and (user.role in VERIFIED_ROLES)
             else {
                 **(
                     {

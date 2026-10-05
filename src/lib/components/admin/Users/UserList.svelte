@@ -26,6 +26,7 @@
 	import RoleUpdateConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
 
 	import Badge from '$lib/components/common/Badge.svelte';
+	import { getRoleBadgeType } from '$lib/utils/roles';
 	import Plus from '$lib/components/icons/Plus.svelte';
 	import ChevronUp from '$lib/components/icons/ChevronUp.svelte';
 	import ChevronDown from '$lib/components/icons/ChevronDown.svelte';
@@ -371,16 +372,7 @@
 									showEditUserModal = !showEditUserModal;
 								}}
 							>
-								<Badge
-									type={user.role === 'admin'
-										? 'info'
-										: user.role === 'user'
-											? 'success'
-											: user.role === 'data_uploader'
-												? 'warning'
-												: 'muted'}
-									content={$i18n.t(user.role)}
-								/>
+								<Badge type={getRoleBadgeType(user.role)} content={$i18n.t(user.role)} />
 							</button>
 						</td>
 						<td class="px-3 py-1 font-medium text-gray-900 dark:text-white max-w-48">

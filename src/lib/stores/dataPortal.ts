@@ -3,7 +3,6 @@ import { get, writable } from 'svelte/store';
 import { getDomains } from '$lib/apis/data-portal';
 import type { Domain } from '$lib/apis/data-portal/types';
 
-export const DATA_PORTAL_ROLES = ['admin', 'data_uploader'];
 export const DATA_YEARS = ['2025', '2026', '2027', '2028', '2029', '2030', '2031'];
 
 export const selectedDomain = writable<string>('HQKD');

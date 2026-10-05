@@ -113,6 +113,15 @@ export const DEFAULT_CAPABILITIES = {
 
 export const PASTED_TEXT_CHARACTER_LIMIT = 1000;
 
+export const ADMIN_ROLE = 'admin';
+export const USER_ROLE = 'user';
+export const DATA_UPLOADER_ROLE = 'data_uploader';
+export const PENDING_ROLE = 'pending';
+
+export const VERIFIED_ROLES = [ADMIN_ROLE, USER_ROLE, DATA_UPLOADER_ROLE];
+export const ROLES = [...VERIFIED_ROLES, PENDING_ROLE];
+export const DATA_PORTAL_ROLES = [ADMIN_ROLE, DATA_UPLOADER_ROLE];
+
 // Source: https://kit.svelte.dev/docs/modules#$env-static-public
 // This feature, akin to $env/static/private, exclusively incorporates environment variables
 // that are prefixed with config.kit.env.publicPrefix (usually set to PUBLIC_).

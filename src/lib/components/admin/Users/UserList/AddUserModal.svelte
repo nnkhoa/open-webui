@@ -4,7 +4,7 @@
 	import { onMount, getContext } from 'svelte';
 	import { addUser } from '$lib/apis/auths';
 
-	import { WEBUI_BASE_URL } from '$lib/constants';
+	import { DATA_UPLOADER_ROLE, ROLES, WEBUI_BASE_URL } from '$lib/constants';
 
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import Modal from '$lib/components/common/Modal.svelte';
@@ -79,10 +79,7 @@
 						console.debug(idx, columns);
 
 						if (idx > 0) {
-							if (
-								columns.length === 4 &&
-								['admin', 'user', 'data_uploader', 'pending'].includes(columns[3].toLowerCase())
-							) {
+							if (columns.length === 4 && ROLES.includes(columns[3].toLowerCase())) {
 								validRows.push({ idx, columns });
 							} else {
 								toast.error(`Row ${idx + 1}: invalid format.`);
@@ -203,7 +200,7 @@
 									>
 										<option value="pending"> {$i18n.t('pending')} </option>
 										<option value="user"> {$i18n.t('user')} </option>
-										<option value="data_uploader"> {$i18n.t('data_uploader')} </option>
+										<option value={DATA_UPLOADER_ROLE}> {$i18n.t('data_uploader')} </option>
 										<option value="admin"> {$i18n.t('admin')} </option>
 									</select>
 								</div>

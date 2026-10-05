@@ -7,7 +7,7 @@
 	import { toast } from 'svelte-sonner';
 
 	import { user, showSidebar, mobile, WEBUI_NAME } from '$lib/stores';
-	import { DATA_PORTAL_ROLES } from '$lib/stores/dataPortal';
+	import { ADMIN_ROLE, DATA_PORTAL_ROLES } from '$lib/constants';
 
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
 	import SidebarIcon from '$lib/components/icons/Sidebar.svelte';
@@ -30,7 +30,7 @@
 	$: path = $page.url.pathname;
 	$: role = $user?.role ?? '';
 	$: allowed =
-		DATA_PORTAL_ROLES.includes(role) && (role === 'admin' || !path.startsWith(ADMIN_PATH));
+		DATA_PORTAL_ROLES.includes(role) && (role === ADMIN_ROLE || !path.startsWith(ADMIN_PATH));
 	$: section =
 		SECTIONS.find(({ href }) => path === href || path.startsWith(href + '/'))?.label ?? '';
 
@@ -44,7 +44,7 @@
 			);
 		}
 		goto('/');
-	} else if ($user && role !== 'admin' && path.startsWith(ADMIN_PATH)) {
+	} else if ($user && role !== ADMIN_ROLE && path.startsWith(ADMIN_PATH)) {
 		goto('/data-portal/upload');
 	}
 </script>

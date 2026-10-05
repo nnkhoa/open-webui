@@ -17,6 +17,7 @@
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
 	import Checkbox from '$lib/components/common/Checkbox.svelte';
 	import Badge from '$lib/components/common/Badge.svelte';
+	import { getRoleBadgeType } from '$lib/utils/roles';
 	import Search from '$lib/components/icons/Search.svelte';
 	import Pagination from '$lib/components/common/Pagination.svelte';
 	import ChevronDown from '$lib/components/icons/ChevronDown.svelte';
@@ -238,16 +239,7 @@
 								</td>
 								<td class="px-3 py-1 min-w-[7rem] w-28">
 									<div class=" translate-y-0.5">
-										<Badge
-											type={user.role === 'admin'
-												? 'info'
-												: user.role === 'user'
-													? 'success'
-													: user.role === 'data_uploader'
-														? 'warning'
-														: 'muted'}
-											content={$i18n.t(user.role)}
-										/>
+										<Badge type={getRoleBadgeType(user.role)} content={$i18n.t(user.role)} />
 									</div>
 								</td>
 								<td class="px-3 py-1 font-medium text-gray-900 dark:text-white max-w-48">
