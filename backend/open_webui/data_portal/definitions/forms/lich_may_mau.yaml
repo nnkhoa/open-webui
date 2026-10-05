@@ -2,7 +2,7 @@
 #  Bộ bảng LICH_MAY_MAU — Lịch may mẫu (nhóm HQ-MAU-GC)
 #
 #  Tệp NBC: "SAMPLE MAKING SCHEDULE ( 30 Sep ) - OK.xlsx". Bộ đọc
-#  `sources/bang_theo_tieu_de.py` nhận sheet **theo dòng tiêu đề**, không theo
+#  `sources/header_table.py` nhận sheet **theo dòng tiêu đề**, không theo
 #  tên (tên sheet đổi theo ngày): sheet đang hiện có đủ 7 cột cần lấy. Dữ liệu
 #  từ dòng tiêu đề + 3 (dòng tiêu đề tiếng Anh, một dòng trống) tới trước dòng
 #  trống đầu tiên, đọc cả dòng ẩn, bỏ dòng tổng (QT-16).

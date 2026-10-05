@@ -20,8 +20,8 @@ from ..db.lock import acquire_write_locks
 from ..errors import ReconcileError, StructureError
 from ..formatting import format_integer
 from ..registry.schema import Form
-from ..sources import bang_theo_tieu_de, bao_cao_kh  # noqa: F401 — đăng ký bộ đọc
-from ..sources import base as nguon
+from ..sources import customer_report, header_table  # noqa: F401
+from ..sources.base import open_reader
 from . import bronze, cac_buoc, doi_chieu_the, gold, kiem_tra_tep, reconcile, silver, validate
 from .context import LoadContext
 from .structure import kiem_tra as kiem_tra_cau_truc
@@ -77,7 +77,7 @@ def chay(conn, form: Form, *, domain_id: int, domain_code: str, form_id: int,
     # Khoá đúng phạm vi ghi.
     acquire_write_locks(conn, [(domain_id, form_id)])
 
-    ctx.reader = nguon.mo(form.source_kind, upload_path, form.header_row, form)
+    ctx.reader = open_reader(form.source_kind, upload_path, form)
     try:
         return _chay_trong_khoa(ctx, table_id, settings, bat_dau, kiem_tra, a4)
     finally:

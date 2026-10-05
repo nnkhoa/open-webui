@@ -2,13 +2,13 @@
 #  Bộ bảng BAO_CAO_HQKH — hiệu quả kinh doanh theo nhóm và khách hàng
 #
 #  Tệp đầu vào là báo cáo "FORM MAU - HIEU QUA TUNG KHACH HANG". Bộ đọc
-#  `sources/bao_cao_kh.py` tách báo cáo thành bốn bảng có đúng các cột của tệp
+#  `sources/customer_report.py` tách báo cáo thành bốn bảng có đúng các cột của tệp
 #  Biểu mẫu nhập liệu; tệp này khai kiểu, khoá và ý nghĩa của từng cột. Lớp gốc
 #  giữ y nguyên, lớp chuẩn hoá ép kiểu và bỏ dòng trùng y hệt ở bảng danh mục,
 #  lớp phân tích chép lớp chuẩn hoá. Nhóm thông tin nào dùng bộ bảng này khai ở
 #  `registry/domains.yaml`.
 #
-#  Tên cột phải trùng `BANG_PHANG` ở `sources/bao_cao_kh_mau.py`.
+#  Tên cột phải trùng `FLAT_TABLES` ở `sources/customer_report_layout.py`.
 #
 #  Ý nghĩa cột lấy từ phiếu khảo sát 20260915_NBC-QTTM_Bieu_mau_du_lieu_va_Khao_sat
 #  sheet "2. Ket qua kinh doanh" và "3. Chi phi"; `purpose` của bảng lấy ở dòng

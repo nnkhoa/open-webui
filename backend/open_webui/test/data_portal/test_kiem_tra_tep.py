@@ -72,29 +72,29 @@ def test_bo_doc_theo_dong_tieu_de_hq_mau_gc():
 
     registry = load_definitions(DEFINITIONS_DIR)
     form = registry.form("LICH_MAY_MAU")
-    doc = base.mo(form.source_kind, can_tep_mau(TEP_MAY_MAU), 1, form)
-    assert doc.loi_nguon() == []
-    tt = doc.thong_tin
-    assert (tt["sheet"].strip(), tt["dong_tieu_de"], tt["dong_tu"], tt["dong_den"]) == (
+    doc = base.open_reader(form.source_kind, can_tep_mau(TEP_MAY_MAU), form)
+    assert doc.source_issues() == []
+    tt = doc.info
+    assert (tt.sheet.strip(), tt.header_row, tt.first_row, tt.last_row) == (
         "30 Sep - OK", 11, 14, 1716)
-    assert (tt["so_dong_an"], tt["so_dong_hien"]) == (1613, 90)
-    assert tt["o_tong"]["gia_tri"] == "141" and tt["ngay_ban"] == "30/09/2026"
-    assert doc.gia_tri_tieu_de("GIÁ TIỀN (USD)") == "USD"
+    assert (tt.hidden_row_count, tt.visible_row_count) == (1613, 90)
+    assert tt.total_cell.value == "141" and tt.report_date == "30/09/2026"
+    assert doc.header_value("GIÁ TIỀN (USD)") == "USD"
     form_gc = registry.form("DON_GIA_CONG")
-    doc = base.mo(form_gc.source_kind, can_tep_mau(TEP_GIA_CONG), 1, form_gc)
-    assert doc.thong_tin["sheet"] == "Final 09.4"          # sheet ẩn "Fty update" không tính
-    assert doc.thong_tin["o_tong"]["gia_tri"] == "108541"
+    doc = base.open_reader(form_gc.source_kind, can_tep_mau(TEP_GIA_CONG), form_gc)
+    assert doc.info.sheet == "Final 09.4"          # sheet ẩn "Fty update" không tính
+    assert doc.info.total_cell.value == "108541"
 
 
 def test_doc_lai_doc_lap_khop_bo_doc_chinh():
     """R1: đường đọc XML độc lập cho đúng các dòng như bộ đọc openpyxl."""
     from open_webui.data_portal.sources import base
-    from open_webui.data_portal.sources.bang_theo_tieu_de_verify import BangTheoTieuDeDocLai
+    from open_webui.data_portal.sources.header_table_verify import HeaderTableVerifyReader
     from .conftest import TEP_MAY_MAU
 
     form = load_definitions(DEFINITIONS_DIR).form("LICH_MAY_MAU")
     tep = can_tep_mau(TEP_MAY_MAU)
-    chinh = {r.number for r in base.mo(form.source_kind, tep, 1, form).rows(
+    chinh = {r.number for r in base.open_reader(form.source_kind, tep, form).rows(
         "LICH_MAY_MAU", form.tables[0].header_map)}
-    _, hang = BangTheoTieuDeDocLai(tep, form).doc_sheet("LICH_MAY_MAU")
+    _, hang = HeaderTableVerifyReader(tep, form).read_table("LICH_MAY_MAU")
     assert set(hang) == chinh and len(chinh) == 1703

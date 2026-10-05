@@ -1,0 +1,64 @@
+from __future__ import annotations
+
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+from .base import normalize_name
+from .xlsx_verify import Grid, VerifyTable, XlsxXmlReader
+
+if TYPE_CHECKING:
+    from ..registry.schema import Form
+
+HEADER_SEARCH_ROWS = 30
+TOTAL_ROW_PREFIXES = ('total', 'tổng cộng')
+
+
+class HeaderTableVerifyReader:
+    def __init__(self, path: Path, form: Form) -> None:
+        table = form.tables[0]
+        required_headers = list(dict.fromkeys(column.file_header for column in table.file_columns))
+        self._data_row_offset = int(form.source_options.get('data_row_offset', 1))
+        self._headers: dict[int, str] = {}
+        self._rows: dict[int, dict[int, str]] = {}
+        reader = XlsxXmlReader(path)
+        try:
+            self._read(reader, required_headers)
+        finally:
+            reader.close()
+
+    def close(self) -> None:
+        return None
+
+    def read_table(self, sheet_name: str) -> VerifyTable:
+        return VerifyTable(dict(self._headers), dict(self._rows))
+
+    def _read(self, reader: XlsxXmlReader, required_headers: list[str]) -> None:
+        required = {normalize_name(header) for header in required_headers}
+        for sheet_name in reader.visible_sheets():
+            grid = reader.grid(sheet_name)
+            found = _find_header_row(grid, required)
+            if found is not None:
+                header_row, columns_by_name = found
+                headers = {columns_by_name[normalize_name(header)]: header for header in required_headers}
+                self._collect_rows(grid, header_row, headers)
+                return
+
+    def _collect_rows(self, grid: Grid, header_row: int, headers: dict[int, str]) -> None:
+        self._headers = headers
+        row_number = header_row + self._data_row_offset
+        while row_number in grid:
+            cells = {column: grid[row_number][column] for column in headers if column in grid[row_number]}
+            is_total = any(normalize_name(value).startswith(TOTAL_ROW_PREFIXES) for value in cells.values())
+            if cells and not is_total:
+                self._rows[row_number] = cells
+            row_number += 1
+
+
+def _find_header_row(grid: Grid, required: set[str]) -> tuple[int, dict[str, int]] | None:
+    for row_number in sorted(row for row in grid if row <= HEADER_SEARCH_ROWS):
+        columns_by_name: dict[str, int] = {}
+        for column in sorted(grid[row_number]):
+            columns_by_name.setdefault(normalize_name(grid[row_number][column]), column)
+        if required <= set(columns_by_name):
+            return row_number, columns_by_name
+    return None
