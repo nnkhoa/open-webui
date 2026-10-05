@@ -1,22 +1,21 @@
-"""Bối cảnh một lần nạp — thứ mọi chặng của đường xử lý dùng chung.
-
-Giữ trạng thái, không giữ hành vi: mỗi chặng đọc cái nó cần và ghi kết quả của
-nó vào đây.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from ..registry.schema import Form, FormTable
 
 
-@dataclass
-class DongSach:
-    """Một dòng đã ép kiểu, sẵn sàng vào lớp chuẩn hoá."""
+class BronzeRow(NamedTuple):
+    bronze_id: int
+    source_row: int
+    row_hash: str
+    values: dict
 
+
+@dataclass
+class CleanRow:
     source_row: int
     bronze_id: int
     row_hash: str
@@ -24,9 +23,7 @@ class DongSach:
 
 
 @dataclass
-class KetQuaBang:
-    """Số dòng qua từng lớp của một bảng — nguồn của bảng "Kết quả theo từng bảng"."""
-
+class TableResult:
     table: str
     label: str
     rows_file: int = 0
@@ -52,44 +49,40 @@ class LoadContext:
     actor_user_id: int | None
     actor_username: str
     request_id: str
-
-    # Năm dữ liệu chọn lúc nạp (QT-02) — ghi vào cột `nam` của bảng số liệu.
-    nam: int | None = None
-
+    year: int | None = None
     reader: Any = None
     sheets_count: int = 0
-    dong_sach: dict[str, list[DongSach]] = field(default_factory=dict)
-    ket_qua: dict[str, KetQuaBang] = field(default_factory=dict)
-    ky_cham_toi: dict[str, set[str]] = field(default_factory=dict)
+    clean_rows: dict[str, list[CleanRow]] = field(default_factory=dict)
+    table_results: dict[str, TableResult] = field(default_factory=dict)
+    touched_periods: dict[str, set[str]] = field(default_factory=dict)
 
-    def bang(self, table: FormTable) -> KetQuaBang:
-        if table.name not in self.ket_qua:
-            self.ket_qua[table.name] = KetQuaBang(table.name, table.label)
-        return self.ket_qua[table.name]
+    def table_result(self, table: FormTable) -> TableResult:
+        if table.name not in self.table_results:
+            self.table_results[table.name] = TableResult(table.name, table.label)
+        return self.table_results[table.name]
 
     @property
     def rows_read(self) -> int:
-        return sum(k.rows_bronze for k in self.ket_qua.values())
+        return sum(result.rows_bronze for result in self.table_results.values())
 
     @property
     def rows_written(self) -> int:
-        return sum(k.rows_silver for k in self.ket_qua.values())
+        return sum(result.rows_silver for result in self.table_results.values())
 
-    def bao_cao(self) -> dict:
-        """`ctl.load.report` — số dòng theo tên bảng và kỳ bị chạm tới."""
+    def report(self) -> dict:
         return {
-            "tables": {
-                k.table: {
-                    "label": k.label,
-                    "rows_file": k.rows_file,
-                    "rows_bronze": k.rows_bronze,
-                    "rows_silver": k.rows_silver,
-                    "rows_gold": k.rows_gold,
-                    "rows_superseded": k.rows_superseded,
-                    "rows_unchanged": k.rows_unchanged,
-                    "rows_duplicate": k.rows_duplicate,
+            'tables': {
+                result.table: {
+                    'label': result.label,
+                    'rows_file': result.rows_file,
+                    'rows_bronze': result.rows_bronze,
+                    'rows_silver': result.rows_silver,
+                    'rows_gold': result.rows_gold,
+                    'rows_superseded': result.rows_superseded,
+                    'rows_unchanged': result.rows_unchanged,
+                    'rows_duplicate': result.rows_duplicate,
                 }
-                for k in self.ket_qua.values()
+                for result in self.table_results.values()
             },
-            "partitions": {t: sorted(k) for t, k in self.ky_cham_toi.items()},
+            'partitions': {table: sorted(periods) for table, periods in self.touched_periods.items()},
         }

@@ -1,78 +1,57 @@
-"""Ghi lớp gốc.
-
-Mọi dòng không trống được ghi, **mọi giá trị dạng văn bản, y nguyên như tệp**:
-không sửa, không suy đoán, không làm tròn. Lớp gốc là bằng chứng phục vụ kiểm
-toán, và là đầu vào của đối chiếu R1.
-"""
-
 from __future__ import annotations
 
-from datetime import UTC, datetime
+import datetime as dt
 
 from psycopg import sql
 
-from ..db import sql as q
+from ..db import sql as warehouse_sql
 from ..registry.schema import FormTable
 from ..sources.base import SourceRow
-from .context import LoadContext
-from .dedup import bam_dong
+from .context import BronzeRow, LoadContext
+from .dedup import hash_row
 
 
-def dien_ngoai_tep(table: FormTable, dong: SourceRow, nam: int | None,
-                   reader=None) -> SourceRow:
-    """Thêm giá trị các cột không lấy từ ô dữ liệu của tệp vào một dòng:
-
-    · `nam` — Năm dữ liệu chọn lúc nạp (QT-02);
-    · cột `lay_tu: tieu_de` — đơn vị ghi trong tiêu đề cột ("GIÁ TIỀN (USD)" → USD).
-
-    Lớp gốc giữ văn bản, nên năm cũng ghi dạng văn bản như mọi ô khác. Cột
-    `lay_tu: trong` để trống (QT-21).
-    """
-    them: dict[str, str | None] = {}
-    for c in table.columns:
-        if c.is_year:
-            them[c.name] = None if nam is None else str(nam)
-        elif c.from_header and reader is not None and hasattr(reader, "header_value"):
-            them[c.name] = reader.header_value(c.file_header)
-    return SourceRow(dong.number, {**dong.values, **them}) if them else dong
+def fill_derived_columns(table: FormTable, row: SourceRow, year: int | None, reader=None) -> SourceRow:
+    derived: dict[str, str | None] = {}
+    for column in table.columns:
+        if column.is_year:
+            derived[column.name] = None if year is None else str(year)
+        elif column.from_header and reader is not None and hasattr(reader, 'header_value'):
+            derived[column.name] = reader.header_value(column.file_header)
+    return SourceRow(row.number, {**row.values, **derived}) if derived else row
 
 
-def ghi(ctx: LoadContext, table: FormTable) -> list[tuple[int, int, str, dict]]:
-    """Đọc sheet của `table`, ghi vào `bronze.<t>`.
+def write(ctx: LoadContext, table: FormTable) -> list[BronzeRow]:
+    columns = table.column_names
+    rows = [
+        fill_derived_columns(table, row, ctx.year, ctx.reader) for row in ctx.reader.rows(table.sheet, table.header_map)
+    ]
+    result = ctx.table_result(table)
+    result.rows_file = len(rows)
 
-    Trả `[(bronze_id, source_row, row_hash, giá trị văn bản)]` theo thứ tự đọc,
-    để bước kiểm tra giá trị dùng tiếp mà không phải đọc lại tệp.
-    """
-    cot = table.column_names
-    hang = [dien_ngoai_tep(table, r, ctx.nam, ctx.reader)
-            for r in ctx.reader.rows(table.sheet, table.header_map)]
-    ket_qua = ctx.bang(table)
-    ket_qua.rows_file = len(hang)
-
-    if not hang:
-        ket_qua.rows_bronze = 0
+    if not rows:
+        result.rows_bronze = 0
         return []
 
-    luc = datetime.now(UTC)
-    cau = sql.SQL(
-        "INSERT INTO {} ({}, domain_id, load_id, batch_id, source_sheet, source_row, "
-        "loaded_at, row_hash) VALUES ({}, %s, %s, %s, %s, %s, %s, %s) RETURNING row_id"
+    loaded_at = dt.datetime.now(dt.UTC)
+    statement = sql.SQL(
+        'INSERT INTO {} ({}, domain_id, load_id, batch_id, source_sheet, source_row, '
+        'loaded_at, row_hash) VALUES ({}, %s, %s, %s, %s, %s, %s, %s) RETURNING row_id'
     ).format(
-        sql.Identifier("bronze", table.name),
-        q.column_list(cot),
-        q.placeholders(len(cot)),
+        sql.Identifier('bronze', table.name),
+        warehouse_sql.column_list(columns),
+        warehouse_sql.placeholders(len(columns)),
     )
 
-    ra: list[tuple[int, int, str, dict]] = []
+    written: list[BronzeRow] = []
     with ctx.conn.cursor() as cur:
-        for row in hang:
-            row_hash = bam_dong(table.sheet, row.values, cot)
-            tham_so = [row.values.get(c) for c in cot]
-            tham_so += [ctx.domain_id, ctx.load_id, ctx.batch_id, table.sheet,
-                        row.number, luc, row_hash]
-            cur.execute(cau, tham_so)
+        for row in rows:
+            row_hash = hash_row(table.sheet, row.values, columns)
+            params = [row.values.get(column) for column in columns]
+            params += [ctx.domain_id, ctx.load_id, ctx.batch_id, table.sheet, row.number, loaded_at, row_hash]
+            cur.execute(statement, params)
             bronze_id = cur.fetchone()[0]
-            ra.append((bronze_id, row.number, row_hash, row.values))
+            written.append(BronzeRow(bronze_id, row.number, row_hash, row.values))
 
-    ket_qua.rows_bronze = len(ra)
-    return ra
+    result.rows_bronze = len(written)
+    return written

@@ -1,214 +1,58 @@
-"""Dựng lớp chuẩn hoá
-
-Cơ chế: **phiên bản theo lô**, không ghi đè tại chỗ.
-
-    · dòng mới hoàn toàn            → thêm, is_current = true
-    · dòng cũ, nội dung y hệt       → không ghi gì, giữ nguyên bản hiện hành
-    · dòng cũ, nội dung đổi         → bản cũ hết hiệu lực, thêm bản mới
-    · (replace_partition) dòng hiện hành thuộc kỳ mà tệp mới chạm tới nhưng tệp
-      mới không có  → coi như NBC đã xoá, đánh dấu hết hiệu lực
-
-Nhờ vậy "sửa một ô rồi nạp lại" là **ghi đè có lịch sử**: số dòng hiện hành
-không tăng, bản cũ vẫn truy được qua `is_current = false`. Gỡ một lần nạp chỉ
-tốn chi phí bằng kích thước lô, không phải dựng lại toàn kho.
-
-Không có bước nào ở đây quét toàn bộ kho: mọi câu đều bị giới hạn theo
-`domain_id` cộng khoá nghiệp vụ hoặc kỳ, đều có chỉ mục.
-"""
-
 from __future__ import annotations
 
-from datetime import UTC, datetime
+import datetime as dt
+import json
 
 from psycopg import sql
 
-from ..db import sql as q
+from ..db import sql as warehouse_sql
 from ..registry.schema import FormTable
-from .context import DongSach, LoadContext
+from .context import CleanRow, LoadContext
+
+NO_PERIOD = '—'
 
 
-def _ten_tam(table: FormTable) -> str:
-    return f"stg_{table.name}"
+def staging_table_name(table: FormTable) -> str:
+    return f'stg_{table.name}'
 
 
-def _dieu_kien_khoa(table: FormTable, trai: str, phai: str) -> sql.Composed:
-    """`a.bk1 IS NOT DISTINCT FROM b.bk1 AND …` — NULL so bằng NULL.
+def merge(ctx: LoadContext, table: FormTable, rows: list[CleanRow]) -> None:
+    result = ctx.table_result(table)
+    _create_staging_table(ctx, table, rows)
+    now = dt.datetime.now(dt.UTC)
 
-    Dùng `IS NOT DISTINCT FROM` chứ không dùng `=` vì cột khoá có thể rỗng ở
-    những bảng mà cột đó không bắt buộc (ví dụ `ma_khach` của bảng Chi phí khi
-    cấp phân bổ là toàn công ty).
-    """
-    return sql.SQL(" AND ").join(
-        sql.SQL("{}.{} IS NOT DISTINCT FROM {}.{}").format(
-            sql.Identifier(trai), sql.Identifier(c),
-            sql.Identifier(phai), sql.Identifier(c),
-        )
-        for c in table.business_key
-    )
-
-
-def ky_da_ep_kieu(ctx: LoadContext, table: FormTable) -> list:
-    """Kỳ mà lô chạm tới, ở đúng kiểu của cột phân vùng.
-
-    `ctx.ky_cham_toi` giữ dạng hiển thị (`2026-01`) để in lên màn hình; câu SQL
-    thì cần đúng kiểu cột (`date`), nên ép lại qua chính bộ xử lý kiểu của cột.
-    """
-    if not table.partition_by:
-        return []
-    col = table.partition_column
-    ra = []
-    for ky in sorted(ctx.ky_cham_toi.get(table.name, set())):
-        phan = col.handler.parse(ky)
-        ra.append(phan.value if phan.ok else ky)
-    return ra
-
-
-def dieu_kien_nam(table: FormTable, nam: int | None, bi_danh: str
-                  ) -> tuple[sql.Composable, list]:
-    """` AND s.nam IS NOT DISTINCT FROM %s` với bảng có cột năm (QT-02): tháng 1/2026
-    và tháng 1/2027 là hai kỳ khác nhau, nạp lại chỉ thay kỳ của đúng năm đã chọn."""
-    cot = table.year_column
-    if cot is None:
-        return sql.SQL(""), []
-    return (sql.SQL(" AND {}.{} IS NOT DISTINCT FROM %s").format(
-        sql.Identifier(bi_danh), sql.Identifier(cot.name)), [nam])
-
-
-def _tao_bang_tam(ctx: LoadContext, table: FormTable, dong: list[DongSach]) -> None:
-    cot = table.column_names
-    dinh_nghia = sql.SQL(", ").join(
-        [sql.SQL("{} {}").format(sql.Identifier(c.name), sql.SQL(c.silver_sql_type))
-         for c in table.columns]
-        + [sql.SQL("row_hash char(64)"), sql.SQL("bronze_id bigint"),
-           sql.SQL("source_row int")]
-    )
-    ten = sql.Identifier(_ten_tam(table))
-    q.execute(ctx.conn, sql.SQL("DROP TABLE IF EXISTS {}").format(ten))
-    q.execute(ctx.conn,
-              sql.SQL("CREATE TEMP TABLE {} ({}) ON COMMIT DROP").format(ten, dinh_nghia))
-    if not dong:
-        return
-    q.execute_many(
-        ctx.conn,
-        sql.SQL("INSERT INTO {} ({}, row_hash, bronze_id, source_row) VALUES ({})").format(
-            ten, q.column_list(cot), q.placeholders(len(cot) + 3)
-        ),
-        [[d.values.get(c) for c in cot] + [d.row_hash, d.bronze_id, d.source_row]
-         for d in dong],
-    )
-
-
-def hop_nhat(ctx: LoadContext, table: FormTable, dong: list[DongSach]) -> None:
-    """Đưa các dòng đã ép kiểu vào `silver.<t>` theo chiến lược khai ở bộ bảng."""
-    ket_qua = ctx.bang(table)
-    _tao_bang_tam(ctx, table, dong)
-    tam = sql.Identifier(_ten_tam(table))
-    dich = sql.Identifier("silver", table.name)
-    luc = datetime.now(UTC)
-
-    if table.merge == "append" or not table.business_key:
-        ket_qua.rows_silver = _them(ctx, table, tam, dich, luc, loc_khong_doi=False)
+    if table.merge == 'append' or not table.business_key:
+        result.rows_silver = _insert_rows(ctx, table, now, skip_unchanged=False)
         return
 
-    if table.merge == "replace_all":
-        # QT-10: tệp là bản theo dõi luỹ kế — mọi dòng hiện hành của cùng (loại tệp,
-        # năm) hết hiệu lực, thay bằng toàn bộ dòng trong tệp. Năm khác giữ nguyên.
-        nam, tham_nam = dieu_kien_nam(table, ctx.nam, "s")
-        ket_qua.rows_superseded = q.execute(
-            ctx.conn,
-            sql.SQL("UPDATE {dich} s SET is_current = false, valid_to = %s, "
-                    "superseded_by_batch_id = %s "
-                    " WHERE s.domain_id = %s AND s.is_current{nam}").format(
-                dich=dich, nam=nam),
-            (luc, ctx.batch_id, ctx.domain_id, *tham_nam),
-        )
-        ket_qua.rows_silver = _them(ctx, table, tam, dich, luc, loc_khong_doi=False)
-        ket_qua.rows_unchanged = 0
+    if table.merge == 'replace_all':
+        result.rows_superseded = _supersede_all(ctx, table, now)
+        result.rows_silver = _insert_rows(ctx, table, now, skip_unchanged=False)
+        result.rows_unchanged = 0
         return
 
-    thay_the = 0
+    superseded = _supersede_changed(ctx, table, now)
+    periods = _typed_periods(ctx, table)
+    if table.merge == 'replace_partition' and periods and table.partition_by:
+        superseded += _supersede_missing(ctx, table, now, periods)
+    inserted = _insert_rows(ctx, table, now, skip_unchanged=True)
 
-    # (a) Dòng hiện hành có cùng khoá nhưng nội dung đã đổi → hết hiệu lực.
-    thay_the += q.execute(
-        ctx.conn,
-        sql.SQL(
-            "UPDATE {dich} s SET is_current = false, valid_to = %s, "
-            "superseded_by_batch_id = %s "
-            " WHERE s.domain_id = %s AND s.is_current "
-            "   AND EXISTS (SELECT 1 FROM {tam} g "
-            "                WHERE {khop} AND g.row_hash <> s.row_hash)"
-        ).format(dich=dich, tam=tam, khop=_dieu_kien_khoa(table, "g", "s")),
-        (luc, ctx.batch_id, ctx.domain_id),
-    )
-
-    # (b) replace_partition: dòng hiện hành thuộc kỳ mà tệp mới chạm tới nhưng
-    #     tệp mới không còn ⇒ coi như đã bị xoá ở nguồn.
-    cac_ky = ky_da_ep_kieu(ctx, table)
-    if table.merge == "replace_partition" and cac_ky and table.partition_by:
-        cot_ky = table.partition_column
-        nam, tham_nam = dieu_kien_nam(table, ctx.nam, "s")
-        thay_the += q.execute(
-            ctx.conn,
-            sql.SQL(
-                "UPDATE {dich} s SET is_current = false, valid_to = %s, "
-                "superseded_by_batch_id = %s "
-                " WHERE s.domain_id = %s AND s.is_current "
-                "   AND s.{cot_ky} = ANY(%s){nam} "
-                "   AND NOT EXISTS (SELECT 1 FROM {tam} g WHERE {khop})"
-            ).format(dich=dich, tam=tam, cot_ky=sql.Identifier(cot_ky.name), nam=nam,
-                     khop=_dieu_kien_khoa(table, "g", "s")),
-            (luc, ctx.batch_id, ctx.domain_id, cac_ky, *tham_nam),
-        )
-
-    # (c) Thêm dòng mới, bỏ qua dòng y hệt bản hiện hành ("không đổi").
-    them = _them(ctx, table, tam, dich, luc, loc_khong_doi=True)
-
-    ket_qua.rows_silver = them
-    ket_qua.rows_superseded = thay_the
-    ket_qua.rows_unchanged = len(dong) - them
+    result.rows_silver = inserted
+    result.rows_superseded = superseded
+    result.rows_unchanged = len(rows) - inserted
 
 
-def _them(ctx: LoadContext, table: FormTable, tam, dich, luc, loc_khong_doi: bool) -> int:
-    cot = table.column_names
-    chon = sql.SQL(", ").join(sql.SQL("g.{}").format(sql.Identifier(c)) for c in cot)
-    dieu_kien = sql.SQL("")
-    if loc_khong_doi:
-        dieu_kien = sql.SQL(
-            " WHERE NOT EXISTS (SELECT 1 FROM {dich} c "
-            "                    WHERE c.domain_id = %s AND c.is_current "
-            "                      AND {khop} AND c.row_hash = g.row_hash)"
-        ).format(dich=dich, khop=_dieu_kien_khoa(table, "g", "c"))
+def write_partitions(ctx: LoadContext, table: FormTable, table_id: int) -> None:
+    labels = sorted(ctx.touched_periods.get(table.name, set()))
+    values = _typed_periods(ctx, table)
+    periods = list(zip(labels, values, strict=True)) or [(NO_PERIOD, None)]
+    result = ctx.table_result(table)
+    measure_columns = [column.name for column in table.measures]
+    single = len(periods) == 1
 
-    cau = sql.SQL(
-        "INSERT INTO {dich} ({cot}, domain_id, load_id, batch_id, bronze_id, "
-        "source_sheet, source_row, row_hash, valid_from, is_current) "
-        "SELECT {chon}, %s, %s, %s, g.bronze_id, %s, g.source_row, g.row_hash, %s, true "
-        "  FROM {tam} g{dieu_kien}"
-    ).format(dich=dich, cot=q.column_list(cot), chon=chon, tam=tam, dieu_kien=dieu_kien)
-
-    tham_so = [ctx.domain_id, ctx.load_id, ctx.batch_id, table.sheet, luc]
-    if loc_khong_doi:
-        tham_so.append(ctx.domain_id)
-    return q.execute(ctx.conn, cau, tham_so)
-
-
-def ghi_phan_vung(ctx: LoadContext, table: FormTable, table_id: int) -> None:
-    """Ghi `ctl.batch_partition`: kỳ nào bị chạm, bao nhiêu dòng, tổng kiểm soát.
-
-    Tổng kiểm soát là số mà R4c so lại — bảo chứng toán học rằng tiền không
-    biến mất.
-    """
-    hien_thi = sorted(ctx.ky_cham_toi.get(table.name, set()))
-    gia_tri_ky = ky_da_ep_kieu(ctx, table)
-    cac_ky = list(zip(hien_thi, gia_tri_ky, strict=True)) or [("—", None)]
-    ket_qua = ctx.bang(table)
-    cot_do = [c.name for c in table.measures]
-
-    for ky, gia_tri in cac_ky:
-        tong = {}
-        if cot_do:
-            tong = _tong_theo_ky(ctx, table, gia_tri, cot_do)
-        q.execute(
+    for label, value in periods:
+        totals = _period_totals(ctx, table, value, measure_columns) if measure_columns else {}
+        warehouse_sql.execute(
             ctx.conn,
             """
             INSERT INTO ctl.batch_partition (batch_id, table_id, partition_key,
@@ -219,37 +63,172 @@ def ghi_phan_vung(ctx: LoadContext, table: FormTable, table_id: int) -> None:
                         rows_superseded = EXCLUDED.rows_superseded,
                         sum_control = EXCLUDED.sum_control
             """,
-            (ctx.batch_id, table_id, ky,
-             ket_qua.rows_silver if len(cac_ky) == 1 else 0,
-             ket_qua.rows_superseded if len(cac_ky) == 1 else 0,
-             _json(tong)),
+            (
+                ctx.batch_id,
+                table_id,
+                label,
+                result.rows_silver if single else 0,
+                result.rows_superseded if single else 0,
+                json.dumps(totals, ensure_ascii=False, default=str),
+            ),
         )
 
 
-def _tong_theo_ky(ctx: LoadContext, table: FormTable, ky, cot_do: list[str]) -> dict:
-    nam, tham_nam = dieu_kien_nam(table, ctx.nam, "s")
-    if not table.partition_by or ky is None:
-        dieu_kien = sql.SQL("s.domain_id = %s AND s.is_current{}").format(nam)
-        tham_so = [ctx.domain_id, *tham_nam]
-    else:
-        cot_ky = table.partition_column
-        dieu_kien = sql.SQL("s.domain_id = %s AND s.is_current AND s.{} = %s{}").format(
-            sql.Identifier(cot_ky.name), nam)
-        tham_so = [ctx.domain_id, ky, *tham_nam]
-    chon = sql.SQL(", ").join(
-        sql.SQL("coalesce(sum(s.{}), 0) AS {}").format(sql.Identifier(c), sql.Identifier(c))
-        for c in cot_do
+def _typed_periods(ctx: LoadContext, table: FormTable) -> list:
+    if not table.partition_by:
+        return []
+    column = table.partition_column
+    periods = []
+    for period in sorted(ctx.touched_periods.get(table.name, set())):
+        parsed = column.handler.parse(period)
+        periods.append(parsed.value if parsed.ok else period)
+    return periods
+
+
+def _year_condition(table: FormTable, year: int | None, alias: str) -> tuple[sql.Composable, list]:
+    column = table.year_column
+    if column is None:
+        return sql.SQL(''), []
+    condition = sql.SQL(' AND {}.{} IS NOT DISTINCT FROM %s').format(sql.Identifier(alias), sql.Identifier(column.name))
+    return condition, [year]
+
+
+def _staging(table: FormTable) -> sql.Identifier:
+    return sql.Identifier(staging_table_name(table))
+
+
+def _target(table: FormTable) -> sql.Identifier:
+    return sql.Identifier('silver', table.name)
+
+
+def _business_key_match(table: FormTable, left: str, right: str) -> sql.Composed:
+    return sql.SQL(' AND ').join(
+        sql.SQL('{}.{} IS NOT DISTINCT FROM {}.{}').format(
+            sql.Identifier(left),
+            sql.Identifier(column),
+            sql.Identifier(right),
+            sql.Identifier(column),
+        )
+        for column in table.business_key
     )
-    row = q.query_one(
+
+
+def _create_staging_table(ctx: LoadContext, table: FormTable, rows: list[CleanRow]) -> None:
+    columns = table.column_names
+    definition = sql.SQL(', ').join(
+        [sql.SQL('{} {}').format(sql.Identifier(c.name), sql.SQL(c.silver_sql_type)) for c in table.columns]
+        + [sql.SQL('row_hash char(64)'), sql.SQL('bronze_id bigint'), sql.SQL('source_row int')]
+    )
+    name = _staging(table)
+    warehouse_sql.execute(ctx.conn, sql.SQL('DROP TABLE IF EXISTS {}').format(name))
+    warehouse_sql.execute(ctx.conn, sql.SQL('CREATE TEMP TABLE {} ({}) ON COMMIT DROP').format(name, definition))
+    if not rows:
+        return
+    warehouse_sql.execute_many(
         ctx.conn,
-        sql.SQL("SELECT {chon} FROM {dich} s WHERE {dk}").format(
-            chon=chon, dich=sql.Identifier("silver", table.name), dk=dieu_kien),
-        tham_so,
+        sql.SQL('INSERT INTO {} ({}, row_hash, bronze_id, source_row) VALUES ({})').format(
+            name, warehouse_sql.column_list(columns), warehouse_sql.placeholders(len(columns) + 3)
+        ),
+        [[row.values.get(c) for c in columns] + [row.row_hash, row.bronze_id, row.source_row] for row in rows],
     )
-    return {k: str(v) for k, v in (row or {}).items()}
 
 
-def _json(gia_tri: dict) -> str:
-    import json
+def _supersede_all(ctx: LoadContext, table: FormTable, now: dt.datetime) -> int:
+    year, year_params = _year_condition(table, ctx.year, 's')
+    return warehouse_sql.execute(
+        ctx.conn,
+        sql.SQL(
+            'UPDATE {target} s SET is_current = false, valid_to = %s, '
+            'superseded_by_batch_id = %s '
+            ' WHERE s.domain_id = %s AND s.is_current{year}'
+        ).format(target=_target(table), year=year),
+        (now, ctx.batch_id, ctx.domain_id, *year_params),
+    )
 
-    return json.dumps(gia_tri, ensure_ascii=False, default=str)
+
+def _supersede_changed(ctx: LoadContext, table: FormTable, now: dt.datetime) -> int:
+    return warehouse_sql.execute(
+        ctx.conn,
+        sql.SQL(
+            'UPDATE {target} s SET is_current = false, valid_to = %s, '
+            'superseded_by_batch_id = %s '
+            ' WHERE s.domain_id = %s AND s.is_current '
+            '   AND EXISTS (SELECT 1 FROM {staging} g '
+            '                WHERE {match} AND g.row_hash <> s.row_hash)'
+        ).format(target=_target(table), staging=_staging(table), match=_business_key_match(table, 'g', 's')),
+        (now, ctx.batch_id, ctx.domain_id),
+    )
+
+
+def _supersede_missing(ctx: LoadContext, table: FormTable, now: dt.datetime, periods: list) -> int:
+    year, year_params = _year_condition(table, ctx.year, 's')
+    return warehouse_sql.execute(
+        ctx.conn,
+        sql.SQL(
+            'UPDATE {target} s SET is_current = false, valid_to = %s, '
+            'superseded_by_batch_id = %s '
+            ' WHERE s.domain_id = %s AND s.is_current '
+            '   AND s.{period_column} = ANY(%s){year} '
+            '   AND NOT EXISTS (SELECT 1 FROM {staging} g WHERE {match})'
+        ).format(
+            target=_target(table),
+            staging=_staging(table),
+            period_column=sql.Identifier(table.partition_column.name),
+            year=year,
+            match=_business_key_match(table, 'g', 's'),
+        ),
+        (now, ctx.batch_id, ctx.domain_id, periods, *year_params),
+    )
+
+
+def _insert_rows(ctx: LoadContext, table: FormTable, now: dt.datetime, skip_unchanged: bool) -> int:
+    columns = table.column_names
+    selected = sql.SQL(', ').join(sql.SQL('g.{}').format(sql.Identifier(c)) for c in columns)
+    condition = sql.SQL('')
+    if skip_unchanged:
+        condition = sql.SQL(
+            ' WHERE NOT EXISTS (SELECT 1 FROM {target} c '
+            '                    WHERE c.domain_id = %s AND c.is_current '
+            '                      AND {match} AND c.row_hash = g.row_hash)'
+        ).format(target=_target(table), match=_business_key_match(table, 'g', 'c'))
+
+    statement = sql.SQL(
+        'INSERT INTO {target} ({columns}, domain_id, load_id, batch_id, bronze_id, '
+        'source_sheet, source_row, row_hash, valid_from, is_current) '
+        'SELECT {selected}, %s, %s, %s, g.bronze_id, %s, g.source_row, g.row_hash, %s, true '
+        '  FROM {staging} g{condition}'
+    ).format(
+        target=_target(table),
+        columns=warehouse_sql.column_list(columns),
+        selected=selected,
+        staging=_staging(table),
+        condition=condition,
+    )
+
+    params = [ctx.domain_id, ctx.load_id, ctx.batch_id, table.sheet, now]
+    if skip_unchanged:
+        params.append(ctx.domain_id)
+    return warehouse_sql.execute(ctx.conn, statement, params)
+
+
+def _period_totals(ctx: LoadContext, table: FormTable, period, measure_columns: list[str]) -> dict:
+    year, year_params = _year_condition(table, ctx.year, 's')
+    if not table.partition_by or period is None:
+        condition = sql.SQL('s.domain_id = %s AND s.is_current{}').format(year)
+        params = [ctx.domain_id, *year_params]
+    else:
+        condition = sql.SQL('s.domain_id = %s AND s.is_current AND s.{} = %s{}').format(
+            sql.Identifier(table.partition_column.name), year
+        )
+        params = [ctx.domain_id, period, *year_params]
+    selected = sql.SQL(', ').join(
+        sql.SQL('coalesce(sum(s.{}), 0) AS {}').format(sql.Identifier(c), sql.Identifier(c)) for c in measure_columns
+    )
+    row = warehouse_sql.query_one(
+        ctx.conn,
+        sql.SQL('SELECT {selected} FROM {source} s WHERE {condition}').format(
+            selected=selected, source=sql.Identifier('silver', table.name), condition=condition
+        ),
+        params,
+    )
+    return {key: str(value) for key, value in (row or {}).items()}

@@ -16,8 +16,11 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, Response, UploadFile
 
+from ... import messages
 from ...errors import InvalidInput, NotFound, SourceFileError
-from ...pipeline import nap, tep_cho
+from ...pipeline import pending_uploads, upload
+from ...pipeline.pending_uploads import PendingUpload
+from ...pipeline.upload import UploadRequest
 from .. import json
 from ..deps import NguCanhApi, mo_ngu_canh
 
@@ -31,7 +34,7 @@ def _nam(nam: str) -> int:
     nam = (nam or "").strip()
     if not nam:
         raise InvalidInput("Chưa chọn Năm dữ liệu.")
-    if not nam.isdigit() or int(nam) not in nap.CAC_NAM:
+    if not nam.isdigit() or int(nam) not in upload.YEARS:
         raise InvalidInput("Năm dữ liệu phải từ 2025 đến 2031.")
     return int(nam)
 
@@ -70,41 +73,37 @@ def kiem_tra_tep(nhom: str = Form(""), nam: str = Form(""), loai: str = Form("")
         raise InvalidInput(CHI_NHAN_XLSX)
     ngu_canh.bat_buoc_kho_san_sang()
     try:
-        return nap.kiem_tra(
-            ngu_canh.container.warehouse, ngu_canh.container.catalog, ngu_canh.settings,
+        return upload.check_upload(ngu_canh.container, UploadRequest(
             domain_id=dm.domain_id, domain_code=dm.code, form_id=form_id, form=form,
-            nam=nam_so, ten_tep=ten_tep, nguon=file.file, nguoi_id=ngu_canh.nguoi.user_id,
-            nguoi_ten=ngu_canh.nguoi.user_name, request_id=ngu_canh.ma_yeu_cau)
+            year=nam_so, file_name=ten_tep, source=file.file, user_id=ngu_canh.nguoi.user_id,
+            user_name=ngu_canh.nguoi.user_name, request_id=ngu_canh.ma_yeu_cau))
     except SourceFileError:
         raise InvalidInput(CHI_NHAN_XLSX) from None
 
 
-def _tep_cua_toi(ngu_canh: NguCanhApi, ma: str) -> tep_cho.TepCho:
-    tep = tep_cho.doc(ngu_canh.settings.upload_dir, ma)
-    if tep is None or tep.thong_tin.get("nguoi_id") != ngu_canh.nguoi.user_id:
-        raise NotFound(nap.TEP_CHO_HET)
+def _tep_cua_toi(ngu_canh: NguCanhApi, ma: str) -> PendingUpload:
+    tep = pending_uploads.get_pending(ngu_canh.settings.upload_dir, ma)
+    if tep is None or tep.metadata.user_id != ngu_canh.nguoi.user_id:
+        raise NotFound(messages.UPLOAD_PENDING_EXPIRED)
     return tep
 
 
 @router.get("/uploads/{ma}")
 def xem_tep_cho(ma: str, ngu_canh: NguCanhApi = Depends(mo_ngu_canh)) -> dict:
     tep = _tep_cua_toi(ngu_canh, ma)
-    form = ngu_canh.registry.form(tep.thong_tin["loai"])
-    return json.sach(nap.thong_tin_cho(ngu_canh.kho(), form, tep))
+    form = ngu_canh.registry.form(tep.metadata.file_type)
+    return json.sach(upload.pending_upload_view(ngu_canh.kho(), form, tep))
 
 
 @router.delete("/uploads/{ma}", status_code=204)
 def huy_tep_cho(ma: str, ngu_canh: NguCanhApi = Depends(mo_ngu_canh)) -> Response:
     tep = _tep_cua_toi(ngu_canh, ma)
-    tep_cho.xoa(tep)
+    pending_uploads.delete(tep)
     return Response(status_code=204)
 
 
 @router.post("/uploads/{ma}/confirm")
 def xac_nhan(ma: str, ngu_canh: NguCanhApi = Depends(mo_ngu_canh)) -> dict:
     tep = _tep_cua_toi(ngu_canh, ma)
-    form = ngu_canh.registry.form(tep.thong_tin["loai"])
     ngu_canh.bat_buoc_kho_san_sang()
-    return nap.xac_nhan(ngu_canh.container.warehouse, ngu_canh.container.catalog,
-                        ngu_canh.settings, form, tep, domain_code=tep.thong_tin["nhom"],
-                        request_id=ngu_canh.ma_yeu_cau)
+    return upload.confirm_upload(ngu_canh.container, tep, request_id=ngu_canh.ma_yeu_cau)

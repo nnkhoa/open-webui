@@ -27,7 +27,7 @@ from ..db import sql as q
 from ..formatting import format_amount, format_integer
 from ..registry.schema import FormTable
 from .context import LoadContext
-from .kiem_tra_tep import cot_cong_tong
+from .file_check import total_columns
 
 KHONG = Decimal(0)
 
@@ -81,7 +81,7 @@ def _pham_vi(ctx: LoadContext, table: FormTable, goc: list[dict]) -> tuple[sql.C
     if table.year_column is not None:
         dk.append(sql.SQL("t.{} IS NOT DISTINCT FROM %s").format(
             sql.Identifier(table.year_column.name)))
-        tham.append(ctx.nam)
+        tham.append(ctx.year)
     if table.partition_by:
         cot = table.partition_column.name
         dk.append(sql.SQL("t.{} = ANY(%s)").format(sql.Identifier(cot)))
@@ -152,7 +152,7 @@ def _bang_so_lieu_nhom(ctx: LoadContext) -> list[dict]:
 def _so_dong_nhom(ctx: LoadContext) -> dict[str, int]:
     return {b["name"]: q.scalar(ctx.conn, sql.SQL(
         "SELECT count(*) FROM {} WHERE domain_id = %s AND is_current AND nam = %s").format(
-        sql.Identifier("gold", b["name"])), (ctx.domain_id, ctx.nam))
+        sql.Identifier("gold", b["name"])), (ctx.domain_id, ctx.year))
         for b in _bang_so_lieu_nhom(ctx)}
 
 
@@ -172,7 +172,7 @@ def _theo_thang_db(ctx: LoadContext, table: FormTable) -> dict[str, dict]:
         " WHERE t.domain_id = %s AND t.is_current AND t.{nam} IS NOT DISTINCT FROM %s "
         " GROUP BY 1").format(ky=ky, tong=tong, bang=sql.Identifier("gold", table.name),
                               nam=sql.Identifier(table.year_column.name)),
-        (ctx.domain_id, ctx.nam))
+        (ctx.domain_id, ctx.year))
     return {r["ky"]: {"so_dong": r["so_dong"], "tong": str(r["tong"])} for r in hang if r["ky"]}
 
 
@@ -228,8 +228,8 @@ def tinh(ctx: LoadContext, truoc: dict, kt: dict) -> dict:
 
 def _mo_bang(ctx: LoadContext, table: FormTable, lop: str, **them) -> dict:
     mo = {"bang": table.name, "lop": lop}
-    if table.year_column is not None and ctx.nam is not None:
-        mo["nam"] = ctx.nam
+    if table.year_column is not None and ctx.year is not None:
+        mo["nam"] = ctx.year
     mo.update({k: v for k, v in them.items() if v is not None})
     return mo
 
@@ -238,7 +238,7 @@ def _the_so_dong(ctx: LoadContext, sheet_so: dict, sheet_bang: dict) -> dict:
     """a) Số dòng qua từng lớp của mỗi bảng."""
     dong, tong = [], [0, 0, 0, 0, 0]
     for table in ctx.form.tables_by_display_order:
-        k = ctx.bang(table)
+        k = ctx.table_result(table)
         chuan_hoa = k.rows_silver + k.rows_unchanged
         phan_tich = k.rows_gold + k.rows_unchanged
         ky_vong = k.rows_bronze - k.rows_duplicate
@@ -340,7 +340,7 @@ def _ma_tran_tien(ctx: LoadContext, goc: dict, db: dict) -> dict:
                             "chia": chia, "thu_tu_chia": list(chia)}
         thu_tu.append(table.name)
     return {"ma": "tien_theo_nhom", "bang": bang, "thu_tu": thu_tu, "ten_khoan": ten_khoan,
-            "lech": co_lech, "nam": ctx.nam}
+            "lech": co_lech, "nam": ctx.year}
 
 
 def dung_the_tien(ma_tran: dict, *, bang: str | None, cot: str | None,
@@ -512,7 +512,7 @@ def _the_truoc_sau(ctx: LoadContext, truoc: dict, goc: dict) -> dict:
     """e) Đủ 12 tháng của năm: số dòng trước / sau lần nạp, cách ghi, kết luận."""
     bang = [t for t in ctx.form.tables_by_display_order
             if not t.is_dim and t.year_column is not None and t.partition_by]
-    the = {"ma": "truoc_sau", "tieu_de": TIEU_DE["truoc_sau"].format(nam=ctx.nam or ""),
+    the = {"ma": "truoc_sau", "tieu_de": TIEU_DE["truoc_sau"].format(nam=ctx.year or ""),
            "cot": [{"t": "Tháng"}, {"t": "Có trong tệp"},
                    {"t": "Số dòng trước lần nạp", "r": True},
                    {"t": "Số dòng sau lần nạp", "r": True}, {"t": "Cách ghi"},
@@ -544,7 +544,7 @@ def _the_truoc_sau(ctx: LoadContext, truoc: dict, goc: dict) -> dict:
                 _so_tong(truoc.get(t.name, {}), ky) == _so_tong(sau[t.name], ky)
                 for t in bang)
             ket_luan = "Giữ nguyên" if giu else "Lệch"
-        hang = {"o": [f"Tháng {thang}/{ctx.nam}", "Có" if co else "Không",
+        hang = {"o": [f"Tháng {thang}/{ctx.year}", "Có" if co else "Không",
                       " / ".join(format_integer(x) for x in so_truoc),
                       " / ".join(format_integer(x) for x in so_sau), cach_ghi],
                 "ket_luan": ket_luan}
@@ -572,7 +572,7 @@ def _cau_b4(the: dict, lech: list[str]) -> str:
 
 def cot_tong_bang(table: FormTable) -> list[str]:
     """Cột cộng vào tổng của bảng — dùng chung với bước Kiểm tra tệp."""
-    return cot_cong_tong(table)
+    return total_columns(table)
 
 
 def dung_the_chieu(ma_tran: dict, *, chia_theo: str | None, trang: int, moi: int) -> dict:

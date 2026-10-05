@@ -99,7 +99,7 @@ def chi_tiet(load_id: int, ngu_canh: NguCanhApi = Depends(mo_ngu_canh)) -> dict:
     form = ngu_canh.registry.form(r["form_code"])
     kt = r["kiem_tra"] or {}
     thanh_cong = r["status"] == "success"
-    co_the_go = thanh_cong and rollback.co_go_duoc(ngu_canh.kho(), load_id)[0]
+    co_the_go = thanh_cong and rollback.can_rollback(ngu_canh.kho(), load_id)[0]
     return json.sach({
         "id": r["load_id"], "status": r["status"], "nhom": r["domain_code"], "nam": r["nam"],
         "loai": loai_tep_json(form), "ten_tep": r["file_name"], "size_bytes": r["size_bytes"],
@@ -221,13 +221,13 @@ def xoa(load_id: int, ngu_canh: NguCanhApi = Depends(mo_ngu_canh_admin)) -> Resp
         if r is None:
             raise NotFound(KHONG_THAY)
         if r["status"] == "success":
-            duoc, ly_do = rollback.co_go_duoc(conn, load_id)
+            duoc, ly_do = rollback.can_rollback(conn, load_id)
             if not duoc:
                 raise Conflict(ly_do)
-            tep = rollback.go(conn, container.registry, load_id)["tep"]
+            tep = rollback.rollback_load(conn, container.registry, load_id).file_path
             hanh_dong = "load.rollback"
         else:
-            tep = rollback.xoa_lich_su(conn, load_id)
+            tep = rollback.delete_history(conn, load_id)
             hanh_dong = "load.delete_history"
     if tep:
         Path(tep).unlink(missing_ok=True)

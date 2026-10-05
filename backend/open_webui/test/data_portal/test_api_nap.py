@@ -169,7 +169,7 @@ def test_lech_doi_chieu_huy_ca_lan_nap(admin, sach, monkeypatch):
     liệu cũ giữ nguyên."""
     _nap(admin)
     truoc = _gold_nam(sach, "fact_ket_qua_kd", 2026)
-    monkeypatch.setattr(reconcile, "r2", lambda *a: False)
+    monkeypatch.setattr(reconcile, "reconcile_bronze_to_silver", lambda *a: False)
     kq = _nap(admin)
     assert kq["status"] == "mismatch"
     assert _gold_nam(sach, "fact_ket_qua_kd", 2026) == truoc == 348
