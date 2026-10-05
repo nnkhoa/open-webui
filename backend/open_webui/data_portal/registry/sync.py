@@ -51,7 +51,7 @@ def _upsert_domains(catalog_conn, registry: FormRegistry, form_ids: dict[str, in
         for position, form_code in enumerate(domain.forms, start=1):
             catalog_sql.execute(
                 catalog_conn,
-                'INSERT INTO ctl_domain_form (domain_id, form_id, thu_tu) VALUES (?, ?, ?)',
+                'INSERT INTO ctl_domain_form (domain_id, form_id, position) VALUES (?, ?, ?)',
                 (domain_id, form_ids[form_code], position),
             )
 
@@ -299,11 +299,11 @@ def _mirror_columns(catalog_conn, warehouse_conn) -> None:
 
 def _mirror_domain_forms(catalog_conn, warehouse_conn) -> None:
     warehouse_sql.execute(warehouse_conn, 'DELETE FROM ctl.domain_form')
-    for row in catalog_sql.query(catalog_conn, 'SELECT domain_id, form_id, thu_tu FROM ctl_domain_form'):
+    for row in catalog_sql.query(catalog_conn, 'SELECT domain_id, form_id, position FROM ctl_domain_form'):
         warehouse_sql.execute(
             warehouse_conn,
-            'INSERT INTO ctl.domain_form (domain_id, form_id, thu_tu) VALUES (%s, %s, %s)',
-            (row['domain_id'], row['form_id'], row['thu_tu']),
+            'INSERT INTO ctl.domain_form (domain_id, form_id, position) VALUES (%s, %s, %s)',
+            (row['domain_id'], row['form_id'], row['position']),
         )
 
 

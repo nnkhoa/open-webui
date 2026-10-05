@@ -70,12 +70,12 @@ def check_upload(container: Container, request: UploadRequest) -> dict:
     pending.metadata.size_bytes = size_bytes
     pending.metadata.file_check = file_check
 
-    if file_check['loi']:
+    if file_check['errors']:
         load_id = _reject_checked_upload(container, request, pending, file_check)
         return {'load_id': load_id, 'status': STATUS_REJECTED}
 
     pending_uploads.write_metadata(pending)
-    return {'ma_tep_cho': pending.pending_id}
+    return {'pending_id': pending.pending_id}
 
 
 def confirm_upload(container: Container, pending: PendingUpload, *, request_id: str) -> dict:
@@ -104,18 +104,18 @@ def pending_upload_view(conn, form: Form, pending: PendingUpload) -> dict:
     metadata = pending.metadata
     file_check = metadata.file_check
     view = {
-        'ma_tep_cho': pending.pending_id,
-        'nhom': metadata.domain,
-        'nam': metadata.year,
-        'loai': {'ma': form.code, 'ten': form.label, 'phu': form.subtitle},
-        'ten_tep': metadata.file_name,
+        'pending_id': pending.pending_id,
+        'domain': metadata.domain,
+        'year': metadata.year,
+        'file_type': {'code': form.code, 'name': form.label, 'subtitle': form.subtitle},
+        'file_name': metadata.file_name,
         'size_bytes': metadata.size_bytes,
-        'sheet': file_check.get('sheet_du_lieu'),
-        'kiem_tra': [_table_check_view(table) for table in file_check['bang']],
-        'giong_het': _identical_load(conn, metadata.domain_id, metadata.form_id, metadata.year, metadata.sha256),
-        'ghi_de': [],
-        'moi': [],
-        'truoc': None,
+        'sheet': file_check.get('data_sheet'),
+        'checks': [_table_check_view(table) for table in file_check['tables']],
+        'identical': _identical_load(conn, metadata.domain_id, metadata.form_id, metadata.year, metadata.sha256),
+        'overwrite': [],
+        'new': [],
+        'previous': None,
     }
     if form.source_kind == HEADER_TABLE_KIND:
         view.update(_header_table_groups(conn, form, metadata.domain_id, metadata.year, file_check))
@@ -138,10 +138,10 @@ def _mismatch_errors(mismatches: list[Mismatch]) -> list[dict]:
     return [
         {
             'sheet': mismatch.label,
-            'position': STEP_LABELS.get(mismatch.step, mismatch.step_label or mismatch.step),
+            'location': STEP_LABELS.get(mismatch.step, mismatch.step_label or mismatch.step),
             'issue': messages.RECONCILE_MISMATCH_ISSUE.format(step=mismatch.step),
             'reason_code': MISMATCH_REASON_CODE,
-            'fix': messages.RECONCILE_MISMATCH_RESOLUTION,
+            'resolution': messages.RECONCILE_MISMATCH_RESOLUTION,
             'step': mismatch.step,
             'cell_ref': None,
         }
@@ -155,7 +155,7 @@ def _identical_load(conn, domain_id: int, form_id: int, year: int | None, file_s
         'SELECT l.load_id, l.started_at, l.actor_username FROM ctl.load l '
         '  JOIN ctl.upload u USING (upload_id) '
         ' WHERE l.domain_id = %s AND l.form_id = %s AND u.file_sha256 = %s '
-        "   AND l.nam IS NOT DISTINCT FROM %s AND l.status = 'success' "
+        "   AND l.year IS NOT DISTINCT FROM %s AND l.status = 'success' "
         ' ORDER BY l.load_id DESC LIMIT 1',
         (domain_id, form_id, file_sha256, year),
     )
@@ -195,7 +195,7 @@ def _existing_data(conn, table: FormTable, domain_id: int, year: int | None) -> 
     if not row or not row['row_count']:
         return None
     summary = _load_summaries(conn, [row['load_id']]).get(row['load_id']) or {}
-    return {'so_dong': row['row_count'], **summary}
+    return {'row_count': row['row_count'], **summary}
 
 
 def _a4_result(conn, form: Form, domain_id: int, year: int | None) -> str:
@@ -228,10 +228,10 @@ def _reject_checked_upload(
     single_table = len(request.form.tables) == 1
     load_steps = steps.check_steps(
         file_check, user=request.user_name, a4_result=None, single_table=single_table
-    ) + steps.rejected_write_steps(file_check['buoc_loi'], steps.b4_name(file_check))
+    ) + steps.rejected_write_steps(file_check['failed_step'], steps.b4_name(file_check))
     failed = FailedLoad(
         STATUS_REJECTED,
-        file_check['loi'],
+        file_check['errors'],
         pending.metadata,
         str(storage_path),
         request.request_id,
@@ -281,7 +281,7 @@ def _insert_failed_load(conn, upload_id: int, failed: FailedLoad) -> int:
         conn,
         'INSERT INTO ctl.load (upload_id, domain_id, form_id, form_version, status, '
         'actor_user_id, actor_username, request_id, errors, finished_at, message, '
-        'nam, kiem_tra, cac_buoc, doi_chieu, sheets_count) '
+        'year, file_check, steps, reconciliation, sheets_count) '
         'VALUES (%s, %s, %s, %s, %s, NULL, %s, %s, %s, now(), %s, %s, %s, %s, %s, %s) '
         'RETURNING load_id',
         (
@@ -298,7 +298,7 @@ def _insert_failed_load(conn, upload_id: int, failed: FailedLoad) -> int:
             _json(failed.file_check),
             _json(failed.steps),
             _json(failed.reconciliation),
-            (failed.file_check or {}).get('so_sheet', 0),
+            (failed.file_check or {}).get('sheet_count', 0),
         ),
     )
 
@@ -313,7 +313,7 @@ def _record_load_event(catalog_conn, status: str, load_id: int, metadata: Pendin
         object_type='load',
         object_id=str(load_id),
         request_id=request_id,
-        detail={'nguoi_id': metadata.user_id, 'nam': metadata.year},
+        detail={'user_id': metadata.user_id, 'year': metadata.year},
     )
 
 
@@ -359,7 +359,7 @@ def _write_claimed(
 def _write_rejection(
     form: Form, metadata: PendingMetadata, storage_path: Path, request_id: str, errors: list[dict]
 ) -> FailedLoad:
-    file_check = {**metadata.file_check, 'loi': errors, 'buoc_loi': 'A3'}
+    file_check = {**metadata.file_check, 'errors': errors, 'failed_step': 'A3'}
     load_steps = steps.check_steps(
         file_check, user=metadata.user, a4_result=None, single_table=len(form.tables) == 1
     ) + steps.rejected_write_steps('A3', steps.b4_name(metadata.file_check))
@@ -368,28 +368,30 @@ def _write_rejection(
 
 def _table_check_view(table: dict) -> dict:
     return {
-        'bang': table['bang'],
-        'ten_bang': table['ten_bang'],
+        'table': table['table'],
+        'table_name': table['table_name'],
         'sheet': table['sheet'],
-        'doc': table['doc'],
-        'thieu_bat_buoc': table['thieu_bat_buoc'],
-        'trung_bo': table['trung_bo'],
-        'o_trong': table['o_trong'],
-        'o_trong_chi_tiet': [{'cot': cell['cot'], 'so_o': cell['so_o']} for cell in table['o_trong_chi_tiet']],
-        'se_ghi': table['se_ghi'],
-        'tong': _number(table['tong']),
-        'ket_luan': table['ket_luan'],
+        'read': table['read'],
+        'missing_required': table['missing_required'],
+        'duplicates': table['duplicates'],
+        'empty_cells': table['empty_cells'],
+        'empty_cell_details': [
+            {'column': cell['column'], 'cell_count': cell['cell_count']} for cell in table['empty_cell_details']
+        ],
+        'to_write': table['to_write'],
+        'total': _number(table['total']),
+        'verdict': table['verdict'],
     }
 
 
 def _header_table_groups(conn, form: Form, domain_id: int, year: int | None, file_check: dict) -> dict:
     table = form.tables[0]
-    checked = file_check['bang'][0]
-    grouping = checked.get('theo_nhom') or {'cot': None, 'cach': '', 'thu_tu': [], 'nhom': {}}
+    checked = file_check['tables'][0]
+    grouping = checked.get('by_group') or {'column': None, 'method': '', 'order': [], 'groups': {}}
     previous = _existing_data(conn, table, domain_id, year)
-    by_month = grouping['cach'] == GROUP_BY_MONTH
-    existing = _existing_groups(conn, table, domain_id, year, grouping) if grouping['cot'] else {}
-    order = sorted(grouping['thu_tu'], key=lambda key: (key == '', key)) if by_month else grouping['thu_tu']
+    by_month = grouping['method'] == GROUP_BY_MONTH
+    existing = _existing_groups(conn, table, domain_id, year, grouping) if grouping['column'] else {}
+    order = sorted(grouping['order'], key=lambda key: (key == '', key)) if by_month else grouping['order']
     rows = [_group_row(key, grouping, existing.get(key), by_month) for key in order]
     title, first_column = (
         (messages.UPLOAD_BY_DELIVERY_MONTH, messages.UPLOAD_DELIVERY_MONTH)
@@ -397,41 +399,43 @@ def _header_table_groups(conn, form: Form, domain_id: int, year: int | None, fil
         else (messages.UPLOAD_BY_SUBCONTRACTOR, messages.UPLOAD_SUBCONTRACTOR)
     )
     total = {
-        'so_dong': checked['doc'],
-        'so_luong': _number(checked['tong']),
-        'hien_co': previous['so_dong'] if previous else None,
+        'row_count': checked['read'],
+        'quantity': _number(checked['total']),
+        'existing': previous['row_count'] if previous else None,
     }
     return {
-        'truoc': previous,
-        'ghi_de': [form.label] if previous else [],
-        'moi': [] if previous else [form.label],
-        'theo_nhom': {'tieu_de': title, 'cot_dau': first_column, 'dong': rows, 'tong': total},
+        'previous': previous,
+        'overwrite': [form.label] if previous else [],
+        'new': [] if previous else [form.label],
+        'by_group': {'title': title, 'first_column': first_column, 'rows': rows, 'total': total},
     }
 
 
 def _group_row(key: str, grouping: dict, existing: dict | None, by_month: bool) -> dict:
-    group = grouping['nhom'][key]
+    group = grouping['groups'][key]
     row = {
-        'nhom': key or messages.UPLOAD_EMPTY_GROUP,
-        'so_dong': group['so_dong'],
-        'so_luong': _number(group['so_luong']),
-        'hien_co': existing,
-        'cach_ghi': messages.UPLOAD_WRITE_OVERWRITE if existing else messages.UPLOAD_WRITE_APPEND,
+        'group': key or messages.UPLOAD_EMPTY_GROUP,
+        'row_count': group['row_count'],
+        'quantity': _number(group['quantity']),
+        'existing': existing,
+        'write_mode': messages.UPLOAD_WRITE_OVERWRITE if existing else messages.UPLOAD_WRITE_APPEND,
     }
     if by_month and key:
         year, month = key.split('-')
-        row['nhom'] = messages.UPLOAD_MONTH_OF_YEAR.format(month=int(month), year=year)
+        row['group'] = messages.UPLOAD_MONTH_OF_YEAR.format(month=int(month), year=year)
     elif by_month:
-        row['nhom'] = messages.CHECK_NO_DELIVERY_DATE
-        row['phu'] = messages.UPLOAD_UNDATED_NOTE.format(empty=grouping['o_trong'], unreadable=grouping['khong_doc'])
+        row['group'] = messages.CHECK_NO_DELIVERY_DATE
+        row['subtitle'] = messages.UPLOAD_UNDATED_NOTE.format(
+            empty=grouping['empty'], unreadable=grouping['unreadable']
+        )
     return row
 
 
 def _existing_groups(conn, table: FormTable, domain_id: int, year: int | None, grouping: dict) -> dict[str, dict]:
-    by_month = grouping['cach'] == GROUP_BY_MONTH
+    by_month = grouping['method'] == GROUP_BY_MONTH
     expression = (
         sql.SQL("coalesce(to_char(s.{}, 'YYYY-MM'), '')") if by_month else sql.SQL("coalesce(s.{}::text, '')")
-    ).format(sql.Identifier(grouping['cot']))
+    ).format(sql.Identifier(grouping['column']))
     rows = warehouse_sql.query(
         conn,
         sql.SQL(
@@ -445,11 +449,11 @@ def _existing_groups(conn, table: FormTable, domain_id: int, year: int | None, g
 
 
 def _monthly_groups(conn, form: Form, domain_id: int, year: int | None, file_check: dict) -> dict:
-    checks = {table['bang']: table for table in file_check['bang']}
+    checks = {table['table']: table for table in file_check['tables']}
     tables = [table for table in form.tables_by_display_order if table.partition_by and table.name in checks]
     existing = {table.name: _existing_periods(conn, table, domain_id, year) for table in tables}
     periods = sorted(
-        {period for table in tables for period in checks[table.name].get('theo_ky', {})},
+        {period for table in tables for period in checks[table.name].get('by_period', {})},
         key=lambda period: (len(period), period),
     )
     rows, overwritten, new, total = [], [], [], 0
@@ -457,45 +461,45 @@ def _monthly_groups(conn, form: Form, domain_id: int, year: int | None, file_che
         period_rows = [
             _period_row(period, year, table, checks[table.name], existing[table.name].get(period))
             for table in tables
-            if checks[table.name]['theo_ky'].get(period) is not None
+            if checks[table.name]['by_period'].get(period) is not None
         ]
         rows += period_rows
-        total += sum(row['so_dong'] for row in period_rows)
+        total += sum(row['row_count'] for row in period_rows)
         month = int(period) if period.isdigit() else period
-        (overwritten if any(row['hien_co'] for row in period_rows) else new).append(month)
+        (overwritten if any(row['existing'] for row in period_rows) else new).append(month)
     return {
-        'ghi_de': overwritten,
-        'moi': new,
-        'theo_nhom': {
-            'tieu_de': messages.UPLOAD_BY_MONTH,
-            'cot_dau': messages.UPLOAD_MONTH_COLUMN,
-            'dong': rows,
-            'tong': {'so_dong': total},
+        'overwrite': overwritten,
+        'new': new,
+        'by_group': {
+            'title': messages.UPLOAD_BY_MONTH,
+            'first_column': messages.UPLOAD_MONTH_COLUMN,
+            'rows': rows,
+            'total': {'row_count': total},
         },
     }
 
 
 def _period_row(period: str, year: int | None, table: FormTable, check: dict, existing: dict | None) -> dict:
-    counts = check['theo_ky'][period]
+    counts = check['by_period'][period]
     label = (
         messages.UPLOAD_MONTH_OF_YEAR.format(month=period, year=year)
         if year
         else messages.UPLOAD_MONTH.format(month=period)
     )
     return {
-        'nhom': label,
-        'du_lieu': table.label,
-        'so_dong': counts['so_dong'],
-        'so_cot': counts['so_cot'],
-        'so_cot_tong': check['so_cot_tong'],
-        'hien_co': existing,
-        'cach_ghi': messages.UPLOAD_WRITE_OVERWRITE if existing else messages.UPLOAD_WRITE_APPEND,
+        'group': label,
+        'data': table.label,
+        'row_count': counts['row_count'],
+        'column_count': counts['column_count'],
+        'total_column_count': check['total_column_count'],
+        'existing': existing,
+        'write_mode': messages.UPLOAD_WRITE_OVERWRITE if existing else messages.UPLOAD_WRITE_APPEND,
     }
 
 
 def _with_load_summaries(conn, rows: list[dict], key_column: str) -> dict[str, dict]:
     summaries = _load_summaries(conn, [row['load_id'] for row in rows])
-    return {row[key_column]: {'so_dong': row['row_count'], **(summaries.get(row['load_id']) or {})} for row in rows}
+    return {row[key_column]: {'row_count': row['row_count'], **(summaries.get(row['load_id']) or {})} for row in rows}
 
 
 def _load_summaries(conn, load_ids: list[int]) -> dict[int, dict]:
@@ -510,7 +514,7 @@ def _load_summaries(conn, load_ids: list[int]) -> dict[int, dict]:
 
 
 def _load_summary(row: dict) -> dict:
-    return {'load_id': row['load_id'], 'luc': row['started_at'], 'nguoi': row['actor_username']}
+    return {'load_id': row['load_id'], 'created_at': row['started_at'], 'user': row['actor_username']}
 
 
 def _number(value) -> int | float | None:

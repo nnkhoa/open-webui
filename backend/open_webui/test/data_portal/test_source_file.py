@@ -8,7 +8,7 @@ from .conftest import can_tep_mau
 
 def test_danh_sach_sheet_hqkd():
     sheet = source_file.list_sheets(can_tep_mau())
-    assert [(s["so"], s["ten"], s["so_dong"], s["an"]) for s in sheet] == [
+    assert [(s["index"], s["name"], s["row_count"], s["hidden"]) for s in sheet] == [
         (1, "TỔNG HỢP", 524, False),
         (2, "DANH SACH KHACH HANG THEO HDX", 232, False),
         (3, "DANH MỤC CHI PHÍ", 27, False),
@@ -18,13 +18,13 @@ def test_danh_sach_sheet_hqkd():
 def test_noi_dung_theo_trang_va_dong_an():
     tep = can_tep_mau()
     trang1 = source_file.sheet_page(tep, 1, 1, 50)
-    assert trang1["tong"] == 524 and trang1["cot"][0] == "A"
-    assert [d["rn"] for d in trang1["dong"]] == list(range(1, 51))
-    assert len(trang1["dong"][0]["o"]) == len(trang1["cot"])
+    assert trang1["total"] == 524 and trang1["columns"][0] == "A"
+    assert [d["row_number"] for d in trang1["rows"]] == list(range(1, 51))
+    assert len(trang1["rows"][0]["cells"]) == len(trang1["columns"])
     trang_cuoi = source_file.sheet_page(tep, 1, 11, 50)
-    assert [d["rn"] for d in trang_cuoi["dong"]] == list(range(501, 525))
-    an = [d for p in range(1, 12) for d in source_file.sheet_page(tep, 1, p, 50)["dong"] if d["an"]]
-    assert len(an) == trang1["so_dong_an"] == 121
+    assert [d["row_number"] for d in trang_cuoi["rows"]] == list(range(501, 525))
+    an = [d for p in range(1, 12) for d in source_file.sheet_page(tep, 1, p, 50)["rows"] if d["hidden"]]
+    assert len(an) == trang1["hidden_row_count"] == 121
     assert source_file.sheet_page(tep, 9, 1, 50) is None
 
 

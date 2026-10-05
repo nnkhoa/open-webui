@@ -109,19 +109,19 @@ class AmountGroup:
 
     def to_json(self) -> dict:
         return {
-            'tep': self.file_rows,
-            'db': self.db_rows,
-            'tien_tep': {column: str(amount) for column, amount in self.file_amounts.items()},
-            'tien_db': {column: str(amount) for column, amount in self.db_amounts.items()},
+            'file_rows': self.file_rows,
+            'db_rows': self.db_rows,
+            'file_amounts': {column: str(amount) for column, amount in self.file_amounts.items()},
+            'db_amounts': {column: str(amount) for column, amount in self.db_amounts.items()},
         }
 
     @classmethod
     def from_json(cls, data: dict) -> AmountGroup:
         return cls(
-            data['tep'],
-            data['db'],
-            {column: Decimal(amount) for column, amount in data['tien_tep'].items()},
-            {column: Decimal(amount) for column, amount in data['tien_db'].items()},
+            data['file_rows'],
+            data['db_rows'],
+            {column: Decimal(amount) for column, amount in data['file_amounts'].items()},
+            {column: Decimal(amount) for column, amount in data['db_amounts'].items()},
         )
 
 
@@ -134,26 +134,26 @@ class AmountTable:
 
     def to_json(self) -> dict:
         return {
-            'ten': self.label,
-            'cot': [column.to_json() for column in self.columns],
-            'chia': {
+            'label': self.label,
+            'columns': [column.to_json() for column in self.columns],
+            'groupings': {
                 group_by: {key: group.to_json() for key, group in groups.items()}
                 for group_by, groups in self.groupings.items()
             },
-            'thu_tu_chia': list(self.grouping_order),
+            'grouping_order': list(self.grouping_order),
         }
 
     @classmethod
     def from_json(cls, data: dict) -> AmountTable:
         groupings = {
             group_by: {key: AmountGroup.from_json(group) for key, group in groups.items()}
-            for group_by, groups in data['chia'].items()
+            for group_by, groups in data['groupings'].items()
         }
         return cls(
-            data['ten'],
-            [OptionChoice(column['v'], column['t']) for column in data['cot']],
+            data['label'],
+            [OptionChoice(column['value'], column['label']) for column in data['columns']],
             groupings,
-            data.get('thu_tu_chia') or list(groupings),
+            data.get('grouping_order') or list(groupings),
         )
 
 
@@ -167,23 +167,23 @@ class AmountMatrix:
 
     def to_json(self) -> dict:
         return {
-            'ma': AMOUNT_BY_GROUP_CARD,
-            'bang': {name: table.to_json() for name, table in self.tables.items()},
-            'thu_tu': list(self.table_order),
-            'ten_khoan': dict(self.cost_item_names),
-            'lech': self.has_mismatch,
-            'nam': self.year,
+            'key': AMOUNT_BY_GROUP_CARD,
+            'tables': {name: table.to_json() for name, table in self.tables.items()},
+            'table_order': list(self.table_order),
+            'cost_item_names': dict(self.cost_item_names),
+            'has_mismatch': self.has_mismatch,
+            'year': self.year,
         }
 
     @classmethod
     def from_json(cls, data: dict) -> AmountMatrix:
-        tables = {name: AmountTable.from_json(table) for name, table in data.get('bang', {}).items()}
+        tables = {name: AmountTable.from_json(table) for name, table in data.get('tables', {}).items()}
         return cls(
             tables,
-            data.get('thu_tu') or list(tables),
-            data.get('ten_khoan', {}),
-            data.get('lech', False),
-            data.get('nam'),
+            data.get('table_order') or list(tables),
+            data.get('cost_item_names', {}),
+            data.get('has_mismatch', False),
+            data.get('year'),
         )
 
 
@@ -384,8 +384,8 @@ def _gold_period_totals(ctx: LoadContext, table: FormTable) -> dict[str, PeriodT
 
 
 def _row_count_card(ctx: LoadContext, file_check: dict) -> Card:
-    sheet_numbers = {name: number for number, name in enumerate(file_check.get('cac_sheet', []), start=1)}
-    sheet_by_table = {table['bang']: table['sheet'] for table in file_check.get('bang', [])}
+    sheet_numbers = {name: number for number, name in enumerate(file_check.get('sheets', []), start=1)}
+    sheet_by_table = {table['table']: table['sheet'] for table in file_check.get('tables', [])}
     rows, totals = [], [0, 0, 0, 0, 0]
     for table in ctx.form.tables_by_display_order:
         counts = _layer_counts(ctx, table)
@@ -721,7 +721,6 @@ def _months_before_after_card(ctx: LoadContext, before: LoadSnapshot, file_rows:
         BEFORE_AFTER_CARD,
         messages.CARD_TITLE_MONTHS_BEFORE_AFTER.format(year=ctx.year or ''),
         before_after_columns(messages.CARD_COLUMN_MONTH),
-        table_labels=[table.label for table in tables],
     )
     if not tables:
         return card

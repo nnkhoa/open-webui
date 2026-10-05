@@ -1,160 +1,144 @@
-"""Phụ thuộc dùng chung của tầng API.
-
-Mỗi yêu cầu có: một mã định danh, người gọi (tài khoản Open WebUI đang đăng nhập),
-và hai kết nối mở **khi cần** — sổ tay (SQLite) và kho (PostgreSQL). Không mở
-trước: sổ tay ghi dùng `BEGIN IMMEDIATE`, giữ nó suốt một lần nạp dài là chặn mọi
-yêu cầu khác. Lỗi trong thân route thì cả hai giao dịch cùng ROLLBACK.
-
-Quyền theo cột Quyền của bảng 9.2: `nguoi_goi` (A, L) cho mọi đường dẫn,
-`chi_admin` (A) cho gỡ / xoá lịch sử và cấu hình database. Ẩn nút ở giao diện
-không thay được chặn ở đây (PCN-01).
-"""
-
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import ExitStack
 from dataclasses import dataclass, field
+from typing import TypeVar
 
 from fastapi import Depends, Request
 
+from .. import messages
+from ..config import Settings
 from ..container import Container
 from ..domain import domains
 from ..errors import InvalidInput, NotReady, PermissionDenied, WarehouseNotConfigured
 from ..logs import new_request_id
+from ..registry.loader import FormRegistry
 from ..registry.schema import Form
 from ..security.rbac import Domain, active_domains
 
-VAI_TRO = ("admin", "data_uploader")
-KHONG_CO_QUYEN = "Bạn không có quyền vào Data Portal. Liên hệ Admin nếu cần nạp dữ liệu."
+PORTAL_ROLES = ('admin', 'data_uploader')
+ADMIN_ROLE = 'admin'
+PAGE_SIZES = (25, 50, 100)
+
+T = TypeVar('T')
 
 
 @dataclass(frozen=True)
-class NguoiGoi:
-    """Người đang gọi API, theo tài khoản Open WebUI."""
-
+class PortalUser:
     user_id: str
     user_name: str
     role: str
 
     @property
-    def la_admin(self) -> bool:
-        return self.role == "admin"
-
-
-def nguoi_dung_hien_tai():
-    """Tài khoản Open WebUI đang đăng nhập.
-
-    `tao_api` thay hàm này bằng hàm xác thực của Open WebUI (`get_verified_user`),
-    để gói này không phụ thuộc vào phần còn lại của Open WebUI.
-    """
-    raise NotImplementedError("Chưa gắn hàm xác thực của Open WebUI (tao_api).")
-
-
-def nguoi_goi(user=Depends(nguoi_dung_hien_tai)) -> NguoiGoi:
-    if user.role not in VAI_TRO:
-        raise PermissionDenied(KHONG_CO_QUYEN)
-    return NguoiGoi(user_id=str(user.id), user_name=user.name or user.email or "",
-                    role=user.role)
-
-
-def chi_admin(nguoi: NguoiGoi = Depends(nguoi_goi)) -> NguoiGoi:
-    if not nguoi.la_admin:
-        raise PermissionDenied()
-    return nguoi
-
-
-def _container(request: Request) -> Container:
-    container = getattr(request.app.state, "data_portal", None)
-    if container is None:
-        raise NotReady()
-    return container
+    def is_admin(self) -> bool:
+        return self.role == ADMIN_ROLE
 
 
 @dataclass
-class NguCanhApi:
+class RequestContext:
     container: Container
-    nguoi: NguoiGoi
-    ma_yeu_cau: str
+    user: PortalUser
+    request_id: str
     _stack: ExitStack
-    _so: object = field(default=None)
-    _kho: object = field(default=None)
+    _catalog_conn: object = field(default=None)
+    _warehouse_conn: object = field(default=None)
 
     @property
-    def settings(self):
+    def settings(self) -> Settings:
         return self.container.settings
 
     @property
-    def registry(self):
+    def registry(self) -> FormRegistry:
         return self.container.registry
 
-    def so(self):
-        """Giao dịch sổ tay, mở ở lần gọi đầu và giữ tới hết yêu cầu."""
-        if self._so is None:
-            self._so = self._stack.enter_context(self.container.catalog.transaction())
-        return self._so
+    def catalog(self):
+        if self._catalog_conn is None:
+            self._catalog_conn = self._stack.enter_context(self.container.catalog.transaction())
+        return self._catalog_conn
 
-    def noi_lai_neu_can(self) -> None:
-        """Kho vừa sống lại (container Docker khởi động xong) thì nối lại ngay."""
+    def warehouse(self):
+        if self._warehouse_conn is None:
+            self.reconnect_if_needed()
+            self._warehouse_conn = self._stack.enter_context(self.container.warehouse_transaction())
+        return self._warehouse_conn
+
+    def reconnect_if_needed(self) -> None:
         if not self.container.warehouse.should_retry():
             return
-        if self._so is not None:
-            self.container.reconnect_if_needed(self._so)
+        if self._catalog_conn is not None:
+            self.container.reconnect_if_needed(self._catalog_conn)
             return
-        with self.container.catalog.transaction() as so:
-            self.container.reconnect_if_needed(so)
+        with self.container.catalog.transaction() as catalog_conn:
+            self.container.reconnect_if_needed(catalog_conn)
 
-    def bat_buoc_kho_san_sang(self) -> None:
-        """Kho đã cấu hình — dùng trước những việc tự mở giao dịch riêng (nạp)."""
-        self.noi_lai_neu_can()
+    def require_warehouse(self) -> None:
+        self.reconnect_if_needed()
         if not self.container.warehouse.is_configured:
             raise WarehouseNotConfigured(reason=self.container.warehouse.reason)
 
-    def kho(self):
-        """Giao dịch kho, mở ở lần gọi đầu; chưa cấu hình ⇒ `WarehouseNotConfigured` (503)."""
-        if self._kho is None:
-            self.noi_lai_neu_can()
-            self._kho = self._stack.enter_context(self.container.warehouse_transaction())
-        return self._kho
+    def domains(self) -> list[Domain]:
+        return self._read_catalog(active_domains)
 
-    # -- nhóm thông tin, loại tệp --------------------------------------------- #
-    #
-    # Đọc sổ tay bằng giao dịch ngắn nếu yêu cầu chưa mở sổ tay: các route nạp gọi
-    # tiếp những việc tự mở giao dịch sổ tay (ghi nhật ký), giữ giao dịch ở đây
-    # thì hai bên chờ nhau.
+    def domain(self, code: str) -> Domain:
+        for domain in self.domains():
+            if domain.code == code:
+                return domain
+        raise InvalidInput(messages.API_INVALID_DOMAIN)
 
-    def _doc_so(self, ham):
-        if self._so is not None:
-            return ham(self._so)
-        with self.container.catalog.transaction() as so:
-            return ham(so)
+    def forms(self, domain: Domain) -> list[tuple[int, Form]]:
+        rows = self._read_catalog(lambda catalog_conn: domains.domain_forms(catalog_conn, domain.domain_id))
+        return [(row['form_id'], self.registry.form(row['code'])) for row in rows]
 
-    def cac_nhom(self) -> list[Domain]:
-        return self._doc_so(active_domains)
-
-    def nhom(self, ma: str) -> Domain:
-        """Nhóm thông tin đang hoạt động theo mã; sai ⇒ 422."""
-        for d in self.cac_nhom():
-            if d.code == ma:
-                return d
-        raise InvalidInput("Nhóm thông tin không hợp lệ.")
-
-    def cac_loai_tep(self, nhom: Domain) -> list[tuple[int, Form]]:
-        hang = self._doc_so(lambda so: domains.cac_loai_tep(so, nhom.domain_id))
-        return [(r["form_id"], self.registry.form(r["code"])) for r in hang]
+    def _read_catalog(self, read: Callable[[object], T]) -> T:
+        if self._catalog_conn is not None:
+            return read(self._catalog_conn)
+        with self.container.catalog.transaction() as catalog_conn:
+            return read(catalog_conn)
 
 
-def mo_ngu_canh(request: Request, nguoi: NguoiGoi = Depends(nguoi_goi)
-                ) -> Iterator[NguCanhApi]:
-    container = _container(request)
+def get_current_user():
+    raise NotImplementedError('create_api() overrides this dependency with the Open WebUI user dependency.')
+
+
+def get_portal_user(user=Depends(get_current_user)) -> PortalUser:
+    if user.role not in PORTAL_ROLES:
+        raise PermissionDenied(messages.API_NO_PORTAL_ACCESS)
+    return PortalUser(user_id=str(user.id), user_name=user.name or user.email or '', role=user.role)
+
+
+def get_admin_user(user: PortalUser = Depends(get_portal_user)) -> PortalUser:
+    if not user.is_admin:
+        raise PermissionDenied()
+    return user
+
+
+def get_context(request: Request, user: PortalUser = Depends(get_portal_user)) -> Iterator[RequestContext]:
+    yield from _open_context(request, user)
+
+
+def get_admin_context(request: Request, user: PortalUser = Depends(get_admin_user)) -> Iterator[RequestContext]:
+    yield from _open_context(request, user)
+
+
+def parse_pagination(page: int, page_size: int | None, default_page_size: int) -> tuple[int, int]:
+    page_size = default_page_size if page_size is None else page_size
+    if page < 1 or page_size not in PAGE_SIZES:
+        raise InvalidInput(messages.API_INVALID_PAGINATION)
+    return page, page_size
+
+
+def parse_year(year: str) -> int | None:
+    if not year:
+        return None
+    if not year.isdigit():
+        raise InvalidInput(messages.API_INVALID_YEAR)
+    return int(year)
+
+
+def _open_context(request: Request, user: PortalUser) -> Iterator[RequestContext]:
+    container = getattr(request.app.state, 'data_portal', None)
+    if container is None:
+        raise NotReady()
     with ExitStack() as stack:
-        yield NguCanhApi(container=container, nguoi=nguoi, ma_yeu_cau=new_request_id(),
-                         _stack=stack)
-
-
-def mo_ngu_canh_admin(request: Request, nguoi: NguoiGoi = Depends(chi_admin)
-                      ) -> Iterator[NguCanhApi]:
-    container = _container(request)
-    with ExitStack() as stack:
-        yield NguCanhApi(container=container, nguoi=nguoi, ma_yeu_cau=new_request_id(),
-                         _stack=stack)
+        yield RequestContext(container=container, user=user, request_id=new_request_id(), _stack=stack)

@@ -10,7 +10,7 @@ from . import messages
 from .config import Settings, load_settings
 from .db.catalog import Catalog
 from .db.warehouse import BACKGROUND_CONNECT_TIMEOUT, INTERACTIVE_CONNECT_TIMEOUT, Warehouse
-from .domain import ket_noi_kho
+from .domain import warehouse_config
 from .errors import MigrationError, WarehouseNotConfigured
 from .migrate import ledger
 from .registry import sync
@@ -28,16 +28,16 @@ class Container:
         self.warehouse.close()
 
     def reconnect_warehouse(self, catalog_conn, timeout: float = INTERACTIVE_CONNECT_TIMEOUT) -> None:
-        saved = ket_noi_kho.doc(catalog_conn)
+        saved = warehouse_config.get_connection(catalog_conn)
         dsn = saved.dsn if saved else self.settings.default_database_url
-        target = saved.mo_ta if saved else dsn
+        target = saved.description if saved else dsn
         if not dsn:
             self.warehouse.disconnect(messages.WAREHOUSE_NOT_SET, forget_target=True)
             return
         try:
             self.warehouse.connect(dsn, timeout=timeout)
         except psycopg.Error as e:
-            reason = ket_noi_kho.doc_loi(e)
+            reason = warehouse_config.describe_error(e)
             self.warehouse.disconnect(messages.WAREHOUSE_CONNECT_FAILED.format(target=target, reason=reason).strip())
             return
         try:
@@ -57,7 +57,7 @@ class Container:
             with self.warehouse.transaction() as conn:
                 yield conn
         except psycopg.OperationalError as e:
-            reason = ket_noi_kho.doc_loi(e)
+            reason = warehouse_config.describe_error(e)
             self.warehouse.disconnect(messages.WAREHOUSE_CONNECTION_FAILED.format(reason=reason))
             raise WarehouseNotConfigured(reason=self.warehouse.reason) from e
 

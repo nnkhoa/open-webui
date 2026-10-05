@@ -30,11 +30,11 @@ class SourceSheet:
 def list_sheets(path: Path) -> list[dict[str, Any]]:
     return [
         {
-            'so': index,
-            'ten': sheet.name,
-            'so_dong': len(sheet.grid),
-            'an': sheet.hidden,
-            'so_dong_an': len(sheet.hidden_rows),
+            'index': index,
+            'name': sheet.name,
+            'row_count': len(sheet.grid),
+            'hidden': sheet.hidden,
+            'hidden_row_count': len(sheet.hidden_rows),
         }
         for index, sheet in enumerate(_read_sheets(path), start=1)
     ]
@@ -47,14 +47,14 @@ def sheet_page(path: Path, index: int, page: int, page_size: int) -> dict[str, A
     sheet = sheets[index - 1]
     offset = (page - 1) * page_size
     return {
-        'so': index,
-        'ten': sheet.name,
-        'an': sheet.hidden,
-        'cot': [_column_letter(column) for column in range(1, sheet.column_count + 1)],
-        'tong': len(sheet.grid),
-        'so_dong_an': len(sheet.hidden_rows),
-        'dong': [
-            {'rn': offset + i, 'o': list(cells), 'an': (offset + i) in sheet.hidden_rows}
+        'index': index,
+        'name': sheet.name,
+        'hidden': sheet.hidden,
+        'columns': [_column_letter(column) for column in range(1, sheet.column_count + 1)],
+        'total': len(sheet.grid),
+        'hidden_row_count': len(sheet.hidden_rows),
+        'rows': [
+            {'row_number': offset + i, 'cells': list(cells), 'hidden': (offset + i) in sheet.hidden_rows}
             for i, cells in enumerate(sheet.grid[offset : offset + page_size], start=1)
         ],
     }

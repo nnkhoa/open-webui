@@ -24,7 +24,7 @@ from .structure import check_structure
 from .validate import validate_rows
 
 STEP_OF_RULE = {'R1': 'B1', 'R2': 'B2', 'R4a': 'B2', 'R3': 'B3', 'R4c': 'B4'}
-R1_DIFFERENCE_KEYS = ('o_lech', 'thieu_o_goc', 'thua_o_goc')
+R1_DIFFERENCE_KEYS = ('cell_differences', 'missing_in_bronze', 'extra_in_bronze')
 
 
 @dataclass
@@ -60,7 +60,7 @@ def _open_load(conn, form: Form, request: LoadRequest) -> LoadContext:
         conn,
         """
         INSERT INTO ctl.load (upload_id, domain_id, form_id, form_version, status,
-                              actor_user_id, actor_username, request_id, nam)
+                              actor_user_id, actor_username, request_id, year)
              VALUES (%s, %s, %s, %s, 'running', %s, %s, %s, %s)
           RETURNING load_id
         """,
@@ -170,7 +170,7 @@ def _commit(ctx: LoadContext, started: float, file_check: dict, load_steps: list
            SET status = 'success', rows_read = %s,
                rows_written = %s, sheets_count = %s, finished_at = %s,
                duration_ms = %s, report = %s, message = NULL,
-               kiem_tra = %s, cac_buoc = %s, doi_chieu = %s
+               file_check = %s, steps = %s, reconciliation = %s
          WHERE load_id = %s
         """,
         (
@@ -201,7 +201,7 @@ def _load_steps(
 
     mismatched = _mismatched_tables_by_step(mismatches)
     results = _results_by_rule(ctx)
-    to_write = {table['bang']: table['se_ghi'] for table in file_check.get('bang', [])}
+    to_write = {table['table']: table['to_write'] for table in file_check.get('tables', [])}
     tables = [table for table in ctx.form.tables_by_display_order if ctx.table_result(table).rows_bronze]
     outcomes = [
         _b1_outcome(results.get('R1', []), mismatched),
@@ -346,13 +346,13 @@ def _difference_count(result: dict) -> int:
 
 
 def _commit_result(ctx: LoadContext, file_check: dict) -> str:
-    if file_check.get('cau_chot'):
-        return file_check['cau_chot']
+    if file_check.get('commit_result'):
+        return file_check['commit_result']
     months = sorted(
         {
             int(period)
-            for table in file_check.get('bang', [])
-            for period in (table.get('theo_ky') or {})
+            for table in file_check.get('tables', [])
+            for period in (table.get('by_period') or {})
             if str(period).isdigit()
         }
     )

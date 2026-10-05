@@ -257,11 +257,24 @@ UPLOAD_BY_SUBCONTRACTOR = 'Theo đơn vị gia công'
 UPLOAD_SUBCONTRACTOR = 'Đơn vị gia công'
 UPLOAD_BY_MONTH = 'Theo tháng'
 UPLOAD_MONTH_COLUMN = 'Tháng'
+UPLOAD_DOMAIN_REQUIRED = 'Chưa chọn Nhóm thông tin.'
+UPLOAD_YEAR_REQUIRED = 'Chưa chọn Năm dữ liệu.'
+UPLOAD_YEAR_OUT_OF_RANGE = 'Năm dữ liệu phải từ {first} đến {last}.'
+UPLOAD_FILE_TYPE_REQUIRED = 'Chưa chọn Loại tệp.'
+UPLOAD_DOMAIN_WITHOUT_FORMS = (
+    'Nhóm {domain} chưa có thông tin: chưa khai báo loại tệp nên chưa nạp, chưa có lịch sử và chưa có dữ liệu.'
+)
+UPLOAD_FILE_REQUIRED = 'Chưa chọn tệp.'
+UPLOAD_XLSX_ONLY = 'Portal chỉ nhận tệp .xlsx. Hãy mở tệp trong Excel và lưu lại đúng định dạng.'
 
 LOAD_NOT_FOUND = 'Không tìm thấy lần nạp này.'
 LOAD_ROLLBACK_SUCCESS_ONLY = 'Chỉ gỡ được lần nạp đã thành công.'
 LOAD_ROLLBACK_LATER_LOADS = 'Có {count} lần nạp sau lần này trên cùng nhóm thông tin. Hãy gỡ các lần nạp sau trước.'
 LOAD_DELETE_HISTORY_NO_DATA_ONLY = 'Chỉ xoá được lịch sử của lần nạp không còn dữ liệu.'
+LOAD_INVALID_STATUS = 'Trạng thái không hợp lệ.'
+LOAD_CARD_NOT_FOUND = 'Không có thẻ đối chiếu này.'
+LOAD_FILE_MISSING = 'Không còn tệp gốc của lần nạp này.'
+LOAD_SHEET_NOT_FOUND = 'Không có sheet này trong tệp.'
 
 CARD_TITLE_ROW_COUNT = 'Đối chiếu số dòng: tệp gốc ↔ database'
 CARD_TITLE_AMOUNT_TOTALS = 'Đối chiếu tổng tiền cả bảng: tệp gốc ↔ database'
@@ -380,3 +393,58 @@ CARD_B4_AMOUNTS_MATCH = (
 CARD_B4_COLUMN_TOTAL = 'tổng {column} {file_total} = {db_total}'
 CARD_B4_EQUALS_TOTAL_CELL = ', bằng ô tổng {cell} của tệp'
 CARD_B4_CODES_MATCH = 'số {names} khớp'
+
+API_NOT_FOUND = 'Không tìm thấy.'
+API_WAREHOUSE_NOT_CONFIGURED = 'Chưa cấu hình cơ sở dữ liệu.'
+API_INVALID_REQUEST = 'Dữ liệu gửi lên chưa hợp lệ.'
+API_METHOD_NOT_ALLOWED = 'Phương thức không được hỗ trợ.'
+API_UNEXPECTED_ERROR = (
+    'Hệ thống gặp sự cố. Yêu cầu chưa được thực hiện và dữ liệu không bị thay đổi. '
+    'Hãy thử lại; nếu vẫn lỗi, gửi mã yêu cầu cho quản trị.'
+)
+API_NO_PORTAL_ACCESS = 'Bạn không có quyền vào Data Portal. Liên hệ Admin nếu cần nạp dữ liệu.'
+API_INVALID_DOMAIN = 'Nhóm thông tin không hợp lệ.'
+API_INVALID_FILE_TYPE = 'Loại tệp không hợp lệ.'
+API_INVALID_PAGINATION = 'Tham số phân trang không hợp lệ.'
+API_INVALID_YEAR = 'Năm dữ liệu không hợp lệ.'
+
+TABLE_NOT_FOUND = 'Không tìm thấy bảng dữ liệu này.'
+TABLE_INVALID_LAYER = 'Lớp dữ liệu không hợp lệ.'
+TABLE_UNKNOWN_LAYER = 'Không có lớp dữ liệu {layer!r}.'
+TABLE_PURPOSE_KEY_WITH = 'Khoá: cùng {columns} xác định một dòng.'
+TABLE_PURPOSE_KEY = 'Khoá: xác định một dòng.'
+TABLE_PURPOSE_PERIOD = 'Kỳ nạp: nạp lại một tháng thì thay toàn bộ dòng của tháng đó.'
+TABLE_PURPOSE_JOIN = 'Nối sang {table} ({label}).'
+TABLE_PURPOSE_RATIO = (
+    'Tỷ lệ tính sẵn cho từng dòng, lấy nguyên từ tệp NBC. Cách gom theo nhóm hay tháng khai ở Lớp ngữ nghĩa.'
+)
+TABLE_PURPOSE_MEASURE = 'Số đo: cộng được khi gom theo tháng, nhóm kinh doanh, khách hàng.'
+TABLE_PURPOSE_ATTRIBUTE = 'Thuộc tính mô tả: dùng để lọc, gom nhóm và hiển thị.'
+
+EXPORT_ERRORS_CSV_HEADER = ('Sheet', 'Vị trí', 'Vấn đề', 'Cách xử lý')
+EXPORT_ERRORS_CSV_NAME = 'loi-lan-nap-{load_id}.csv'
+
+DB_CONFIG_INVALID = 'Cấu hình kết nối chưa hợp lệ.'
+DB_CONFIG_MISSING_HOST = 'Chưa nhập địa chỉ máy chủ.'
+DB_CONFIG_MISSING_DATABASE = 'Chưa nhập tên cơ sở dữ liệu.'
+DB_CONFIG_MISSING_USERNAME = 'Chưa nhập tên đăng nhập.'
+DB_CONFIG_INVALID_SSL_MODE = 'Chỉ nhận: {modes}.'
+DB_CONFIG_MISSING_PORT = 'Chưa nhập cổng.'
+DB_CONFIG_PORT_NOT_NUMBER = 'Cổng phải là số.'
+DB_CONFIG_PORT_OUT_OF_RANGE = 'Cổng phải nằm trong khoảng 1–65535.'
+DB_CONFIG_CONNECTED = 'Kết nối được. {server}'
+DB_CONFIG_DATABASE_REFUSED = 'Cơ sở dữ liệu từ chối: {error}'
+DB_CONFIG_CONNECT_FAILED = 'Không kết nối được.'
+DB_CONFIG_ERROR_NO_PASSWORD = 'Chưa nhập mật khẩu. Cơ sở dữ liệu này bắt buộc phải có mật khẩu.'
+DB_CONFIG_ERROR_WRONG_PASSWORD = 'Sai tên đăng nhập hoặc mật khẩu.'
+DB_CONFIG_ERROR_UNKNOWN_USER = 'Không có tên đăng nhập này trên máy chủ.'
+DB_CONFIG_ERROR_UNKNOWN_DATABASE = 'Không có cơ sở dữ liệu tên này trên máy chủ.'
+DB_CONFIG_ERROR_CONNECTION_REFUSED = (
+    'Không có gì đang chạy ở cổng đó — kiểm tra container đã chạy chưa, và số cổng có đúng không.'
+)
+DB_CONFIG_ERROR_UNKNOWN_HOST = 'Không tìm ra máy chủ với tên này.'
+DB_CONFIG_ERROR_TIMEOUT = 'Máy chủ không trả lời trong 8 giây.'
+DB_CONFIG_ERROR_HOST_REJECTED = 'Máy chủ từ chối kết nối từ máy này — cần sửa `pg_hba.conf` bên đó.'
+DB_CONFIG_SAVED = 'Đã lưu và nối tới {target}.'
+DB_CONFIG_REMOVED = 'Đã bỏ cấu hình. Dữ liệu trong cơ sở dữ liệu đó không bị đụng tới.'
+DB_CONFIG_REMOVED_BY_ADMIN = 'Quản trị đã bỏ cấu hình kết nối.'

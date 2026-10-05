@@ -21,6 +21,10 @@ EXCEL_EPOCH = dt.date(1899, 12, 30)
 EXCEL_MAX_SERIAL = 2_958_465
 MAX_REPORTED_DIFFERENCES = 20
 MONEY_TYPES = ('money', 'currency')
+METRIC_ROW_COUNT = 'row_count'
+METRIC_ROW_OUTCOME = 'row_outcome'
+METRIC_ROWS_KEPT = 'rows_kept'
+METRIC_CONTROL_TOTAL = 'control_total'
 NUMERIC_SUM = (
     "coalesce(sum(CASE WHEN {column} ~ '^[+-]?([0-9]+(\\.[0-9]*)?|\\.[0-9]+)([eE][+-]?[0-9]+)?$' "
     'THEN {column}::numeric ELSE 0 END), 0)'
@@ -78,11 +82,11 @@ def reconcile_file_to_bronze(ctx: LoadContext, table: FormTable, table_id: int) 
 
     passed = not (differences or missing_in_bronze or extra_in_bronze)
     detail = {
-        'o_lech': differences,
-        'thieu_o_goc': missing_in_bronze[:MAX_REPORTED_DIFFERENCES],
-        'thua_o_goc': extra_in_bronze[:MAX_REPORTED_DIFFERENCES],
+        'cell_differences': differences,
+        'missing_in_bronze': missing_in_bronze[:MAX_REPORTED_DIFFERENCES],
+        'extra_in_bronze': extra_in_bronze[:MAX_REPORTED_DIFFERENCES],
     }
-    _record(ctx, _Check('R1', table_id, 'so_dong', len(file_row_numbers), len(by_row), passed, detail))
+    _record(ctx, _Check('R1', table_id, METRIC_ROW_COUNT, len(file_row_numbers), len(by_row), passed, detail))
     return passed
 
 
@@ -93,11 +97,11 @@ def reconcile_bronze_to_silver(ctx: LoadContext, table: FormTable, table_id: int
     actual = inserted + result.rows_unchanged + result.rows_duplicate
     passed = expected == actual
     detail = {
-        'vao_chuan_hoa': inserted,
-        'khong_doi': result.rows_unchanged,
-        'trung_trong_tep': result.rows_duplicate,
+        'inserted_into_silver': inserted,
+        'unchanged': result.rows_unchanged,
+        'duplicates_in_file': result.rows_duplicate,
     }
-    _record(ctx, _Check('R2', table_id, 'ket_cuc_tung_dong', expected, actual, passed, detail))
+    _record(ctx, _Check('R2', table_id, METRIC_ROW_OUTCOME, expected, actual, passed, detail))
     return passed
 
 
@@ -119,8 +123,8 @@ def reconcile_silver_to_gold(ctx: LoadContext, table: FormTable, table_id: int) 
     row = warehouse_sql.query_one(ctx.conn, statement, (ctx.batch_id, ctx.batch_id))
 
     passed = row['missing_in_gold'] == 0 and row['extra_in_gold'] == 0
-    detail = {'thieu_o_gold': row['missing_in_gold'], 'thua_o_gold': row['extra_in_gold']}
-    _record(ctx, _Check('R3', table_id, 'so_dong', row['silver_rows'], row['gold_rows'], passed, detail))
+    detail = {'missing_in_gold': row['missing_in_gold'], 'extra_in_gold': row['extra_in_gold']}
+    _record(ctx, _Check('R3', table_id, METRIC_ROW_COUNT, row['silver_rows'], row['gold_rows'], passed, detail))
     return passed
 
 
@@ -130,7 +134,7 @@ def reconcile_row_retention(ctx: LoadContext, table: FormTable, table_id: int) -
     expected = result.rows_bronze - result.rows_unchanged - result.rows_duplicate
     passed = actual == expected
     detail = {'business_key': table.business_key}
-    _record(ctx, _Check('R4a', table_id, 'dong_giu_lai', expected, actual, passed, detail))
+    _record(ctx, _Check('R4a', table_id, METRIC_ROWS_KEPT, expected, actual, passed, detail))
     return passed
 
 
@@ -147,13 +151,13 @@ def reconcile_control_total(ctx: LoadContext, table: FormTable, table_id: int) -
     difference = Decimal(file_total) - written_total
     passed = difference == 0
     detail = {
-        'cot': money_columns,
-        'tong_tep': str(file_total),
-        'tong_chuan_hoa': str(silver_total),
-        'tong_khong_doi': str(unchanged_total),
-        'lech': str(difference),
+        'columns': money_columns,
+        'file_total': str(file_total),
+        'silver_total': str(silver_total),
+        'unchanged_total': str(unchanged_total),
+        'difference': str(difference),
     }
-    _record(ctx, _Check('R4c', table_id, 'tong_kiem_soat', file_total, written_total, passed, detail))
+    _record(ctx, _Check('R4c', table_id, METRIC_CONTROL_TOTAL, file_total, written_total, passed, detail))
     return passed
 
 
@@ -280,7 +284,9 @@ def _cell_differences(by_row: dict[int, dict], file_rows: dict, column_index: di
         for name, index in column_index.items():
             in_file = cells.get(index) if index else None
             if not _values_equal(in_file, bronze_row[name]):
-                differences.append({'source_row': number, 'column': name, 'tep': in_file, 'goc': bronze_row[name]})
+                differences.append(
+                    {'source_row': number, 'column': name, 'file_value': in_file, 'bronze_value': bronze_row[name]}
+                )
                 if len(differences) >= MAX_REPORTED_DIFFERENCES:
                     return differences
     return differences
