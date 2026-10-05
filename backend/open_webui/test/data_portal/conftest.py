@@ -26,11 +26,10 @@ from types import SimpleNamespace
 import psycopg
 import pytest
 from fastapi import HTTPException, Request
+from open_webui.data_portal.config import PACKAGE_DIR, load_settings
+from open_webui.data_portal.container import build_container
 
-from open_webui.data_portal.config import GOI, doc_cau_hinh
-from open_webui.data_portal.container import dung
-
-KHAI_BAO = GOI / "khai_bao"
+KHAI_BAO = PACKAGE_DIR / "khai_bao"
 MAU = Path(os.getenv("DATA_PORTAL_SAMPLE_DIR", "/khong-co-tep-mau"))
 TEP_HQKD = (MAU / "2. HQKD - Hieu qua kinh doanh"
             / "FORM MAU - HIEU QUA TUNG KHACH HANG T1-T7.26.xlsx")
@@ -63,18 +62,18 @@ def container(tmp_path_factory):
         for s in SCHEMA:
             conn.execute(f"DROP SCHEMA IF EXISTS {s} CASCADE")
     thu_muc = tmp_path_factory.mktemp("data_portal")
-    settings = replace(doc_cau_hinh(), database_url_mac_dinh=DSN,
-                       so_tay_path=thu_muc / "so-tay.db", upload_dir=thu_muc / "uploads")
+    settings = replace(load_settings(), default_database_url=DSN,
+                       catalog_path=thu_muc / "so-tay.db", upload_dir=thu_muc / "uploads")
     settings.upload_dir.mkdir(parents=True, exist_ok=True)
-    ct = dung(settings)
-    assert ct.kho.da_cau_hinh, ct.kho.ly_do
+    ct = build_container(settings)
+    assert ct.warehouse.is_configured, ct.warehouse.reason
     yield ct
-    ct.dong()
+    ct.close()
 
 
 def xoa_du_lieu(ct) -> None:
     """Xoá mọi lần nạp và dữ liệu ba lớp, giữ khai báo."""
-    with ct.kho.giao_dich() as conn:
+    with ct.warehouse.transaction() as conn:
         bang = [f"{lop}.{t.name}" for lop in ("gold", "silver", "bronze")
                 for t in ct.registry.tables]
         conn.execute("TRUNCATE " + ", ".join(bang) + ", ctl.recon_result, "
@@ -100,7 +99,6 @@ def _tai_khoan_thu(request: Request):
 @pytest.fixture
 def client(sach):
     from fastapi.testclient import TestClient
-
     from open_webui.data_portal.api.app import tao_api
 
     return TestClient(tao_api(_tai_khoan_thu, container=sach))
@@ -146,5 +144,5 @@ def tai_len(goi, tep: Path, *, nhom: str = "HQKD", nam: str = "2026", loai: str 
 
 
 def dem(ct, cau: str, tham=()) -> int:
-    with ct.kho.giao_dich() as conn:
+    with ct.warehouse.transaction() as conn:
         return conn.execute(cau, tham).fetchone()[0]

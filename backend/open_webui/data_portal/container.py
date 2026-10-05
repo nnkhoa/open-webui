@@ -1,20 +1,3 @@
-"""Composition root — nơi duy nhất tạo và nối các đối tượng dùng chung.
-
-Không biến toàn cục tự quản lý, không Singleton: mọi thứ được tạo ở đây một lần
-lúc khởi động và truyền xuống. Thứ gắn với một yêu cầu (kết nối, giao dịch,
-người dùng) thì tạo mới mỗi yêu cầu, ở `web/deps.py`.
-
-Hai kho lưu trữ, hai vòng đời khác hẳn nhau:
-
-    so_tay  SQLite, luôn có, luôn mở được. Tài khoản, nhóm thông tin, và địa chỉ
-            của kho dữ liệu.
-    kho     PostgreSQL, **có thể chưa có**. Bảng bronze/silver/gold và sổ ghi
-            mỗi lần nạp. Địa chỉ đọc từ sổ tay, đổi được lúc đang chạy.
-
-Portal khởi động được khi kho chưa cấu hình hoặc đang tắt — nếu không thì
-không có đường nào vào màn Cấu hình database để sửa.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Iterator
@@ -23,12 +6,12 @@ from dataclasses import dataclass
 
 import psycopg
 
-from .config import Settings, doc_cau_hinh
-from .db import kho_du_lieu
-from .db.kho_du_lieu import KhoDuLieu
-from .db.sotay import SoTay
+from . import messages
+from .config import Settings, load_settings
+from .db.catalog import Catalog
+from .db.warehouse import BACKGROUND_CONNECT_TIMEOUT, INTERACTIVE_CONNECT_TIMEOUT, Warehouse
 from .domain import ket_noi_kho
-from .errors import ChuaCauHinhKho, MigrationError
+from .errors import MigrationError, WarehouseNotConfigured
 from .migrate import ledger
 from .registry import sync
 from .registry.loader import FormRegistry, doc_thu_muc
@@ -37,104 +20,63 @@ from .registry.loader import FormRegistry, doc_thu_muc
 @dataclass
 class Container:
     settings: Settings
-    so_tay: SoTay
-    kho: KhoDuLieu
+    catalog: Catalog
+    warehouse: Warehouse
     registry: FormRegistry
 
-    def dong(self) -> None:
-        self.kho.dong()
-        self.so_tay.dong()
+    def close(self) -> None:
+        self.warehouse.close()
 
-    def noi_lai_kho(self, so, cho: float = kho_du_lieu.CHO_NGUOI_BAM) -> None:
-        """Thử kết nối lại kho theo cấu hình đang lưu trong sổ tay.
-
-        Gọi lúc khởi động và sau mỗi lần quản trị lưu cấu hình mới. Không ném
-        lỗi: kho tắt là chuyện bình thường, portal vẫn phải lên để người ta vào
-        sửa được. Lý do hỏng được giữ lại trong `kho.ly_do` để hiện ra màn hình.
-
-        Sổ tay chưa có cấu hình thì lùi về `DATA_PORTAL_DATABASE_URL`. Biến môi
-        trường là **mồi cho lần đầu**, không phải nguồn chuẩn: từ lúc quản trị bấm
-        Lưu ở màn Cấu hình database thì sổ tay thắng.
-        """
-        cau_hinh = ket_noi_kho.doc(so)
-        dsn = cau_hinh.dsn if cau_hinh else self.settings.database_url_mac_dinh
-        mo_ta = cau_hinh.mo_ta if cau_hinh else dsn
+    def reconnect_warehouse(self, catalog_conn, timeout: float = INTERACTIVE_CONNECT_TIMEOUT) -> None:
+        saved = ket_noi_kho.doc(catalog_conn)
+        dsn = saved.dsn if saved else self.settings.default_database_url
+        target = saved.mo_ta if saved else dsn
         if not dsn:
-            self.kho.ngat("Chưa trỏ Data Portal tới cơ sở dữ liệu nào.", quen_dia_chi=True)
+            self.warehouse.disconnect(messages.WAREHOUSE_NOT_SET, forget_target=True)
             return
         try:
-            self.kho.thu_va_doi(dsn, cho=cho)
+            self.warehouse.connect(dsn, timeout=timeout)
         except psycopg.Error as e:
-            ly_do = ket_noi_kho.doc_loi(e)
-            self.kho.ngat(f"Không kết nối được tới {mo_ta}: {ly_do}".strip())
+            reason = ket_noi_kho.doc_loi(e)
+            self.warehouse.disconnect(messages.WAREHOUSE_CONNECT_FAILED.format(target=target, reason=reason).strip())
             return
         try:
-            self.dung_kho(so)
+            self.build_warehouse(catalog_conn)
         except (psycopg.Error, MigrationError) as e:
-            self.kho.ngat(f"Đã kết nối tới {mo_ta} nhưng không dựng được bảng: {e}")
+            self.warehouse.disconnect(messages.WAREHOUSE_SCHEMA_FAILED.format(target=target, error=e))
 
-    def noi_lai_neu_can(self, so) -> None:
-        """Thử nối lại kho khi đang đứt — gọi ở mỗi yêu cầu, rẻ.
-
-        Kho chạy trong Docker: nó tắt, khởi động lại, hoặc chưa kịp sẵn sàng
-        lúc portal lên là chuyện thường. Không có bước này thì một lần hỏng là
-        portal báo "Chưa kết nối" mãi dù kho đã sống lại, và quản trị phải vào bấm
-        Lưu một cấu hình không hề đổi.
-
-        `can_thu_lai()` giữ nhịp, nên kho chết thật cũng không làm mỗi lần tải
-        trang phải ngồi chờ hết thời gian kết nối.
-        """
-        if self.kho.can_thu_lai():
-            self.noi_lai_kho(so, cho=kho_du_lieu.CHO_TU_THU)
+    def reconnect_if_needed(self, catalog_conn) -> None:
+        if self.warehouse.should_retry():
+            self.reconnect_warehouse(catalog_conn, timeout=BACKGROUND_CONNECT_TIMEOUT)
 
     @contextmanager
-    def giao_dich_kho(self) -> Iterator[psycopg.Connection]:
-        """Một giao dịch kho cho tầng API; kho chưa cấu hình hoặc vừa đứt kết nối
-        thì ném `ChuaCauHinhKho` — tình trạng có lối thoát, không phải lỗi 500.
-
-        Chỉ lỗi **kết nối** mới đánh dấu kho là đứt; lỗi truy vấn đi tiếp tới bộ
-        bắt lỗi chung.
-        """
-        if not self.kho.da_cau_hinh:
-            raise ChuaCauHinhKho(ly_do=self.kho.ly_do)
+    def warehouse_transaction(self) -> Iterator[psycopg.Connection]:
+        if not self.warehouse.is_configured:
+            raise WarehouseNotConfigured(reason=self.warehouse.reason)
         try:
-            with self.kho.giao_dich() as conn:
+            with self.warehouse.transaction() as conn:
                 yield conn
         except psycopg.OperationalError as e:
-            ly_do = ket_noi_kho.doc_loi(e)
-            self.kho.ngat(f"Không kết nối được tới cơ sở dữ liệu: {ly_do}")
-            raise ChuaCauHinhKho(ly_do=self.kho.ly_do) from e
+            reason = ket_noi_kho.doc_loi(e)
+            self.warehouse.disconnect(messages.WAREHOUSE_CONNECTION_FAILED.format(reason=reason))
+            raise WarehouseNotConfigured(reason=self.warehouse.reason) from e
 
-    def dung_kho(self, so) -> None:
-        """Dựng đủ bảng của mọi bộ bảng trên kho, rồi chép khai báo sang.
-
-        Chạy mỗi lần nối được kho: kho mới trỏ tới, hay vừa xoá dựng lại, là có
-        ngay các bảng của bộ bảng khai trong mã — người dùng chọn nhóm thông tin là nạp
-        được, không phải qua bước khởi tạo nào. Bước đã chạy thì bỏ qua.
-        """
-        with self.kho.giao_dich() as conn:
-            ledger.ap_dung(conn, self.settings.migrations_dir, nguoi_chay="portal")
-            sync.chieu_lai(so, conn)
+    def build_warehouse(self, catalog_conn) -> None:
+        with self.warehouse.transaction() as conn:
+            ledger.apply(conn, self.settings.warehouse_migrations_dir, applied_by='portal')
+            sync.chieu_lai(catalog_conn, conn)
 
 
-def dung(settings: Settings | None = None, mo_ket_noi: bool = True) -> Container:
-    """Khai báo bảng đọc từ `khai_bao/forms/` — nguồn chuẩn duy nhất.
-
-    Mỗi lần khởi động ghi khai báo đó vào sổ tay, để `form_id`, `table_id` có
-    sẵn cho sổ ghi mỗi lần nạp trỏ vào.
-    """
-    settings = settings or doc_cau_hinh()
+def build_container(settings: Settings | None = None) -> Container:
+    settings = settings or load_settings()
     container = Container(
         settings=settings,
-        so_tay=SoTay(settings.so_tay_path, settings.so_tay_migrations_dir),
-        kho=KhoDuLieu(),
+        catalog=Catalog(settings.catalog_path, settings.catalog_migrations_dir),
+        warehouse=Warehouse(),
         registry=doc_thu_muc(settings.registry_dir),
     )
-    if not mo_ket_noi:
-        return container
-
-    container.so_tay.mo()
-    with container.so_tay.giao_dich() as so:
-        sync.dong_bo(so, None, container.registry)
-        container.noi_lai_kho(so)
+    container.catalog.open()
+    with container.catalog.transaction() as catalog_conn:
+        sync.dong_bo(catalog_conn, None, container.registry)
+        container.reconnect_warehouse(catalog_conn)
     return container

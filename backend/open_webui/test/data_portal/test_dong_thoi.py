@@ -6,6 +6,7 @@ from __future__ import annotations
 import threading
 
 from open_webui.data_portal.pipeline import nap, tep_cho
+
 from .conftest import can_tep_mau, dem, tai_len
 
 
@@ -16,7 +17,7 @@ def test_hai_lan_xac_nhan_cung_luc(admin, sach):
 
     def chay(m: str) -> None:
         tep = tep_cho.doc(sach.settings.upload_dir, m)
-        ket_qua.append(nap.xac_nhan(sach.kho, sach.so_tay, sach.settings, form, tep,
+        ket_qua.append(nap.xac_nhan(sach.warehouse, sach.catalog, sach.settings, form, tep,
                                     domain_code="HQKD", request_id=f"thu-{m[:6]}"))
 
     luong = [threading.Thread(target=chay, args=(m,)) for m in ma]

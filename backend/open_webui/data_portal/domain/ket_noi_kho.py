@@ -6,7 +6,7 @@ PostgreSQL: nó chính là câu trả lời cho "PostgreSQL ở đâu".
 Mật khẩu được cất nguyên văn trong tệp sổ tay. Không mã hoá, và nói thẳng ra
 như vậy thay vì bọc một lớp che mắt: khoá giải mã sẽ phải nằm cạnh tệp thì mới
 tự khởi động được, nên nó chỉ đổi chỗ vấn đề chứ không giải quyết. Lớp bảo vệ
-thật là quyền tệp — `SoTay.mo()` đặt sổ tay ở chế độ 0600.
+thật là quyền tệp — `Catalog.open()` đặt sổ tay ở chế độ 0600.
 """
 
 from __future__ import annotations
@@ -16,8 +16,8 @@ from dataclasses import dataclass
 import psycopg
 from psycopg import conninfo
 
-from ..db import sql_sotay as qs
-from ..errors import DuLieuVaoSai
+from ..db import catalog_sql as qs
+from ..errors import InvalidInput
 
 CAC_SSLMODE = ("disable", "allow", "prefer", "require", "verify-ca", "verify-full")
 
@@ -93,7 +93,7 @@ def kiem_tra_dau_vao(host: str, port: str, database: str, username: str,
                 loi["port"] = "Cổng phải nằm trong khoảng 1–65535."
 
     if loi:
-        raise DuLieuVaoSai("Cấu hình kết nối chưa hợp lệ.", loi)
+        raise InvalidInput("Cấu hình kết nối chưa hợp lệ.", loi)
     return host, so_cong, database, username, sslmode
 
 

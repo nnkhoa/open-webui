@@ -59,8 +59,8 @@ def ghi(ctx: LoadContext, table: FormTable) -> list[tuple[int, int, str, dict]]:
         "loaded_at, row_hash) VALUES ({}, %s, %s, %s, %s, %s, %s, %s) RETURNING row_id"
     ).format(
         sql.Identifier("bronze", table.name),
-        q.danh_sach_cot(cot),
-        q.cho_cho(len(cot)),
+        q.column_list(cot),
+        q.placeholders(len(cot)),
     )
 
     ra: list[tuple[int, int, str, dict]] = []

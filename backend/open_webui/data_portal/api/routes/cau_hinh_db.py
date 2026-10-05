@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from ...domain import ket_noi_kho
-from ...security.audit import ghi as ghi_nhat_ky
+from ...security.audit import record_event
 from .. import json
 from ..deps import NguCanhApi, mo_ngu_canh_admin
 
@@ -47,8 +47,8 @@ def _ket_noi(ngu_canh: NguCanhApi, vao: CauHinhVao) -> ket_noi_kho.KetNoi:
 
 @router.get("/db-config")
 def xem(ngu_canh: NguCanhApi = Depends(mo_ngu_canh_admin)) -> dict:
-    kho = ngu_canh.container.kho
-    kho.con_song()
+    kho = ngu_canh.container.warehouse
+    kho.is_alive()
     luu = ket_noi_kho.doc_day_du(ngu_canh.so())
     cau_hinh = None
     if luu:
@@ -56,7 +56,7 @@ def xem(ngu_canh: NguCanhApi = Depends(mo_ngu_canh_admin)) -> dict:
     mo_ta = f"{luu['username']}@{luu['host']}:{luu['port']}/{luu['database']}" if luu else None
     return json.sach({
         "cau_hinh": cau_hinh,
-        "ket_noi": ({"ok": kho.da_cau_hinh, "mo_ta": mo_ta, "ly_do": kho.ly_do or None}
+        "ket_noi": ({"ok": kho.is_configured, "mo_ta": mo_ta, "ly_do": kho.reason or None}
                     if luu else None),
         "lan_thu": luu["thu_luc"] if luu else None,
         "luu_luc": luu["cap_nhat_luc"] if luu else None,
@@ -80,11 +80,11 @@ def luu(vao: CauHinhVao, ngu_canh: NguCanhApi = Depends(mo_ngu_canh_admin)) -> d
     nguoi = ngu_canh.nguoi
     ket_noi_kho.luu(so, ket_noi, ghi_chu=vao.ghi_chu, dat=True, thong_diep=thong_bao,
                     nguoi=nguoi.user_name)
-    ghi_nhat_ky(so, action="kho.cau_hinh", actor_user_id=None, actor_username=nguoi.user_name,
+    record_event(so, action="kho.cau_hinh", actor_user_id=None, actor_username=nguoi.user_name,
                 object_type="ket_noi_kho", object_id=ket_noi.mo_ta,
                 request_id=ngu_canh.ma_yeu_cau,
                 detail={"nguoi_id": nguoi.user_id, "mo_ta": ket_noi.mo_ta})
-    ngu_canh.container.noi_lai_kho(so)
+    ngu_canh.container.reconnect_warehouse(so)
     return {"ok": True, "thong_bao": f"Đã lưu và nối tới {ket_noi.mo_ta}."}
 
 
@@ -93,8 +93,8 @@ def bo(ngu_canh: NguCanhApi = Depends(mo_ngu_canh_admin)) -> dict:
     so = ngu_canh.so()
     nguoi = ngu_canh.nguoi
     ket_noi_kho.xoa(so)
-    ghi_nhat_ky(so, action="kho.ngat", actor_user_id=None, actor_username=nguoi.user_name,
+    record_event(so, action="kho.ngat", actor_user_id=None, actor_username=nguoi.user_name,
                 object_type="ket_noi_kho", object_id="-", request_id=ngu_canh.ma_yeu_cau,
                 detail={"nguoi_id": nguoi.user_id})
-    ngu_canh.container.kho.ngat("Quản trị đã bỏ cấu hình kết nối.", quen_dia_chi=True)
+    ngu_canh.container.warehouse.disconnect("Quản trị đã bỏ cấu hình kết nối.", forget_target=True)
     return {"thong_bao": DA_BO}

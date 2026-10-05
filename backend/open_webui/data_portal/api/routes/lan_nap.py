@@ -20,9 +20,9 @@ from fastapi import APIRouter, Depends, Response
 from fastapi.responses import FileResponse
 
 from ...domain import lan_nap
-from ...errors import DuLieuVaoSai, KhongTimThay, XungDot
+from ...errors import Conflict, InvalidInput, NotFound
 from ...pipeline import doi_chieu_the, rollback
-from ...security.audit import ghi as ghi_nhat_ky
+from ...security.audit import record_event
 from ...sources import tep_goc
 from .. import json
 from ..deps import NguCanhApi, mo_ngu_canh, mo_ngu_canh_admin
@@ -39,7 +39,7 @@ def trang_moi(trang: int, moi: int | None, mac_dinh: int) -> tuple[int, int]:
     """Phân trang (mục 9.1): `trang` từ 1, `moi` là 25 / 50 / 100."""
     moi = mac_dinh if moi is None else moi
     if trang < 1 or moi not in CAC_MOI:
-        raise DuLieuVaoSai("Tham số phân trang không hợp lệ.")
+        raise InvalidInput("Tham số phân trang không hợp lệ.")
     return trang, moi
 
 
@@ -47,14 +47,14 @@ def _nam(nam: str) -> int | None:
     if not nam:
         return None
     if not nam.isdigit():
-        raise DuLieuVaoSai("Năm dữ liệu không hợp lệ.")
+        raise InvalidInput("Năm dữ liệu không hợp lệ.")
     return int(nam)
 
 
 def _lan_nap(ngu_canh: NguCanhApi, load_id: int) -> dict:
     hang = lan_nap.chi_tiet(ngu_canh.kho(), load_id)
     if hang is None:
-        raise KhongTimThay(KHONG_THAY)
+        raise NotFound(KHONG_THAY)
     return hang
 
 
@@ -73,9 +73,9 @@ def danh_sach(nhom: str = "", nam: str = "", loai: str = "", trang_thai: str = "
     if loai:
         form_id = next((fid for fid, f in ngu_canh.cac_loai_tep(dm) if f.code == loai), None)
         if form_id is None:
-            raise DuLieuVaoSai("Loại tệp không hợp lệ.")
+            raise InvalidInput("Loại tệp không hợp lệ.")
     if trang_thai and trang_thai not in lan_nap.TRANG_THAI:
-        raise DuLieuVaoSai("Trạng thái không hợp lệ.")
+        raise InvalidInput("Trạng thái không hợp lệ.")
     conn = ngu_canh.kho()
     hang, tong = lan_nap.danh_sach(conn, dm.domain_id, nam=_nam(nam), form_id=form_id,
                                    trang_thai=trang_thai, nguoi=nguoi, tim=tim.strip(),
@@ -151,7 +151,7 @@ def doi_chieu(load_id: int, the: str = "", bang: str = "", cot: str = "",
             muc = {**muc, "dong": [], "thong_bao": doi_chieu_the.THONG_BAO_HUY}
         ra.append(muc)
     if the and not ra:
-        raise KhongTimThay("Không có thẻ đối chiếu này.")
+        raise NotFound("Không có thẻ đối chiếu này.")
     return json.sach({"the": ra})
 
 
@@ -178,7 +178,7 @@ def _tep(ngu_canh: NguCanhApi, load_id: int) -> tuple[dict, Path]:
     r = _lan_nap(ngu_canh, load_id)
     duong = Path(r["storage_uri"] or "")
     if not duong.is_file():
-        raise KhongTimThay("Không còn tệp gốc của lần nạp này.")
+        raise NotFound("Không còn tệp gốc của lần nạp này.")
     return r, duong
 
 
@@ -201,7 +201,7 @@ def noi_dung_sheet(load_id: int, so: int, trang: int = 1, moi: int | None = None
     trang, moi = trang_moi(trang, moi, 50)
     ra = tep_goc.noi_dung(duong, so, trang, moi)
     if ra is None:
-        raise KhongTimThay("Không có sheet này trong tệp.")
+        raise NotFound("Không có sheet này trong tệp.")
     return ra
 
 
@@ -216,14 +216,14 @@ def xoa(load_id: int, ngu_canh: NguCanhApi = Depends(mo_ngu_canh_admin)) -> Resp
     chối / lỗi đối chiếu / đã gỡ ⇒ xoá lịch sử (QT-18)."""
     container = ngu_canh.container
     ngu_canh.bat_buoc_kho_san_sang()
-    with container.giao_dich_kho() as conn:
+    with container.warehouse_transaction() as conn:
         r = lan_nap.chi_tiet(conn, load_id)
         if r is None:
-            raise KhongTimThay(KHONG_THAY)
+            raise NotFound(KHONG_THAY)
         if r["status"] == "success":
             duoc, ly_do = rollback.co_go_duoc(conn, load_id)
             if not duoc:
-                raise XungDot(ly_do)
+                raise Conflict(ly_do)
             tep = rollback.go(conn, container.registry, load_id)["tep"]
             hanh_dong = "load.rollback"
         else:
@@ -231,8 +231,8 @@ def xoa(load_id: int, ngu_canh: NguCanhApi = Depends(mo_ngu_canh_admin)) -> Resp
             hanh_dong = "load.delete_history"
     if tep:
         Path(tep).unlink(missing_ok=True)
-    with container.so_tay.giao_dich() as so:
-        ghi_nhat_ky(so, action=hanh_dong, actor_user_id=None,
+    with container.catalog.transaction() as so:
+        record_event(so, action=hanh_dong, actor_user_id=None,
                     actor_username=ngu_canh.nguoi.user_name, domain_id=r["domain_id"],
                     object_type="load", object_id=str(load_id),
                     request_id=ngu_canh.ma_yeu_cau,

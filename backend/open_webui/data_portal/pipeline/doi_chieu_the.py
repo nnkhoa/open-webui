@@ -24,7 +24,7 @@ from decimal import Decimal
 from psycopg import sql
 
 from ..db import sql as q
-from ..format import so_nguyen, so_tien
+from ..formatting import format_amount, format_integer
 from ..registry.schema import FormTable
 from .context import LoadContext
 from .kiem_tra_tep import cot_cong_tong
@@ -69,7 +69,7 @@ def _ep(table: FormTable, ten: str, tho):
 def _dong_goc(ctx: LoadContext, table: FormTable) -> list[dict]:
     """Các dòng lớp gốc của lần nạp, đã ép kiểu."""
     hang = q.query(ctx.conn, sql.SQL("SELECT {} FROM {} WHERE load_id = %s").format(
-        q.danh_sach_cot(table.column_names), sql.Identifier("bronze", table.name)),
+        q.column_list(table.column_names), sql.Identifier("bronze", table.name)),
         (ctx.load_id,))
     return [{c: _ep(table, c, r[c]) for c in table.column_names} for r in hang]
 
@@ -93,7 +93,7 @@ def _dong_db(ctx: LoadContext, table: FormTable, goc: list[dict]) -> list[dict]:
     """Các dòng hiện hành ở lớp phân tích thuộc phạm vi lần nạp."""
     dk, tham = _pham_vi(ctx, table, goc)
     hang = q.query(ctx.conn, sql.SQL("SELECT {} FROM {} t WHERE {}").format(
-        q.danh_sach_cot(table.column_names), sql.Identifier("gold", table.name), dk), tham)
+        q.column_list(table.column_names), sql.Identifier("gold", table.name), dk), tham)
     if table.is_dim and table.business_key:
         khoa = {tuple(d[c] for c in table.business_key) for d in goc}
         hang = [r for r in hang if tuple(r[c] for c in table.business_key) in khoa]
@@ -244,13 +244,13 @@ def _the_so_dong(ctx: LoadContext, sheet_so: dict, sheet_bang: dict) -> dict:
         ky_vong = k.rows_bronze - k.rows_duplicate
         if k.rows_bronze == k.rows_file and chuan_hoa == ky_vong and phan_tich == chuan_hoa:
             ket_luan = "Đủ"
-            phu = (f"Đủ sau khi bỏ {so_nguyen(k.rows_duplicate)} dòng trùng y hệt"
+            phu = (f"Đủ sau khi bỏ {format_integer(k.rows_duplicate)} dòng trùng y hệt"
                    if k.rows_duplicate else None)
         else:
             sai = min((k.rows_bronze - k.rows_file, chuan_hoa - ky_vong,
                        phan_tich - chuan_hoa), key=lambda x: (x == 0, x))
             ket_luan = "Thiếu" if sai < 0 else "Thừa"
-            phu = (f"Gốc → Chuẩn hoá lệch {so_nguyen(abs(chuan_hoa - ky_vong))} dòng"
+            phu = (f"Gốc → Chuẩn hoá lệch {format_integer(abs(chuan_hoa - ky_vong))} dòng"
                    if chuan_hoa != ky_vong else None)
         sheet = sheet_so.get(sheet_bang.get(table.name, ""))
         o = [table.label,
@@ -452,8 +452,8 @@ def _the_ma(ctx: LoadContext, goc: dict, db: dict) -> dict:
         g, d = goc["dim_khach_hang"], db["dim_khach_hang"]
         a, b = khac_nhau(g, "ma_khach"), khac_nhau(d, "ma_khach")
         them("Số mã khách hàng trong Danh mục khách hàng",
-             f"{so_nguyen(len(a))} mã ({so_nguyen(len(g))} dòng)",
-             f"{so_nguyen(len(b))} mã ({so_nguyen(len(d))} dòng)", a == b)
+             f"{format_integer(len(a))} mã ({format_integer(len(g))} dòng)",
+             f"{format_integer(len(b))} mã ({format_integer(len(d))} dòng)", a == b)
     if "dim_khoan_cp" in co:
         g, d = goc["dim_khoan_cp"], db["dim_khoan_cp"]
         a, b = khac_nhau(g, "ma_khoan_cp"), khac_nhau(d, "ma_khoan_cp")
@@ -545,8 +545,8 @@ def _the_truoc_sau(ctx: LoadContext, truoc: dict, goc: dict) -> dict:
                 for t in bang)
             ket_luan = "Giữ nguyên" if giu else "Lệch"
         hang = {"o": [f"Tháng {thang}/{ctx.nam}", "Có" if co else "Không",
-                      " / ".join(so_nguyen(x) for x in so_truoc),
-                      " / ".join(so_nguyen(x) for x in so_sau), cach_ghi],
+                      " / ".join(format_integer(x) for x in so_truoc),
+                      " / ".join(format_integer(x) for x in so_sau), cach_ghi],
                 "ket_luan": ket_luan}
         if any(so_sau):
             hang["mo"] = _mo_bang(ctx, bang[0], "gold", ky=thang)
@@ -565,7 +565,7 @@ def _cau_b4(the: dict, lech: list[str]) -> str:
         return "Có chênh lệch ở: " + "; ".join(
             TIEU_DE[m].format(nam="") if m in TIEU_DE else m for m in lech) + "."
     tong = the.get("tong", {}).get("dong", [])
-    chi_tiet = "; ".join(f"{d['o'][0]} {so_tien(Decimal(str(d['o'][1])))}" for d in tong)
+    chi_tiet = "; ".join(f"{d['o'][0]} {format_amount(Decimal(str(d['o'][1])))}" for d in tong)
     return ("Lệch 0 ở mọi tháng, mọi cột tiền; số tháng, khách hàng, nhóm, khoản mục khớp. "
             f"Tổng cả bảng lệch 0 ở {len(tong)}/{len(tong)} bảng ({chi_tiet}).")
 

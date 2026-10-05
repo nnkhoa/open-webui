@@ -29,7 +29,7 @@ def dung(ctx: LoadContext, table: FormTable) -> int:
             "  FROM {silver} s "
             " WHERE s.batch_id = %s AND s.is_current"
         ).format(
-            gold=gold, silver=silver, sk=sk, cot=q.danh_sach_cot(cot),
+            gold=gold, silver=silver, sk=sk, cot=q.column_list(cot),
             chon=sql.SQL(", ").join(sql.SQL("s.{}").format(sql.Identifier(c)) for c in cot),
         ),
         (ctx.batch_id,),

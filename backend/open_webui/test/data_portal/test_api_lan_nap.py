@@ -192,7 +192,7 @@ def test_go_lan_khong_moi_nhat_409(admin, loader, sach):
     assert dem(sach, "SELECT count(*) FROM gold.fact_ket_qua_kd WHERE is_current") == 348
     assert admin("DELETE", f"/loads/{lan1}").status_code == 204
     assert dem(sach, "SELECT count(*) FROM gold.fact_ket_qua_kd") == 0
-    with sach.so_tay.giao_dich() as so:
+    with sach.catalog.transaction() as so:
         hanh_dong = [r[0] for r in so.execute(
             "SELECT action FROM ctl_audit_event WHERE object_id IN (?, ?) ORDER BY event_id",
             (str(lan1), str(lan2)))]

@@ -91,7 +91,7 @@ def _tao_bang_tam(ctx: LoadContext, table: FormTable, dong: list[DongSach]) -> N
     q.execute_many(
         ctx.conn,
         sql.SQL("INSERT INTO {} ({}, row_hash, bronze_id, source_row) VALUES ({})").format(
-            ten, q.danh_sach_cot(cot), q.cho_cho(len(cot) + 3)
+            ten, q.column_list(cot), q.placeholders(len(cot) + 3)
         ),
         [[d.values.get(c) for c in cot] + [d.row_hash, d.bronze_id, d.source_row]
          for d in dong],
@@ -184,7 +184,7 @@ def _them(ctx: LoadContext, table: FormTable, tam, dich, luc, loc_khong_doi: boo
         "source_sheet, source_row, row_hash, valid_from, is_current) "
         "SELECT {chon}, %s, %s, %s, g.bronze_id, %s, g.source_row, g.row_hash, %s, true "
         "  FROM {tam} g{dieu_kien}"
-    ).format(dich=dich, cot=q.danh_sach_cot(cot), chon=chon, tam=tam, dieu_kien=dieu_kien)
+    ).format(dich=dich, cot=q.column_list(cot), chon=chon, tam=tam, dieu_kien=dieu_kien)
 
     tham_so = [ctx.domain_id, ctx.load_id, ctx.batch_id, table.sheet, luc]
     if loc_khong_doi:

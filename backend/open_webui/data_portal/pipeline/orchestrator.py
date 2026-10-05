@@ -16,9 +16,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from ..db import sql as q
-from ..db.lock import khoa_ghi
-from ..errors import CauTrucError, DoiChieuError
-from ..format import so_nguyen
+from ..db.lock import acquire_write_locks
+from ..errors import ReconcileError, StructureError
+from ..formatting import format_integer
 from ..registry.schema import Form
 from ..sources import bang_theo_tieu_de, bao_cao_kh  # noqa: F401 — đăng ký bộ đọc
 from ..sources import base as nguon
@@ -75,7 +75,7 @@ def chay(conn, form: Form, *, domain_id: int, domain_code: str, form_id: int,
     table_id = _table_id_theo_ten(conn, form_id)
 
     # Khoá đúng phạm vi ghi.
-    khoa_ghi(conn, [(domain_id, form_id)])
+    acquire_write_locks(conn, [(domain_id, form_id)])
 
     ctx.reader = nguon.mo(form.source_kind, upload_path, form.header_row, form)
     try:
@@ -91,7 +91,7 @@ def _chay_trong_khoa(ctx: LoadContext, table_id: dict[str, int], settings,
     # Kiểm tra cấu trúc. Sai ⇒ từ chối cả tệp, không ghi dòng nào.
     loi = kiem_tra_cau_truc(ctx.reader, form)
     if loi:
-        raise CauTrucError(loi)
+        raise StructureError(loi)
     if kt is None:
         kt = kiem_tra_tep.kiem_tra(form, ctx.upload_path, ctx.nam)
 
@@ -123,7 +123,7 @@ def _chay_trong_khoa(ctx: LoadContext, table_id: dict[str, int], settings,
     if lech or the["lech"]:
         lech += [{"step": "B4", "table": None, "label": doi_chieu_the.TIEU_DE.get(m, m),
                   "nhan_buoc": "Đối chiếu tệp gốc ↔ database"} for m in the["lech"]]
-        raise DoiChieuError(lech, cac_buoc=cac_buoc, doi_chieu=the["the"])
+        raise ReconcileError(lech, steps=cac_buoc, reconciliation=the["the"])
 
     # Chốt.
     ms = int((time.monotonic() - bat_dau) * 1000)
@@ -177,12 +177,12 @@ def _cac_buoc(ctx: LoadContext, kt: dict, a4: str | None, the: dict,
     goc = sum(int(r["actual"] or 0) for r in r1)
     hong = [r for r in r1 if not r["passed"]]
     b1_lech = "; ".join(
-        [f"bảng {r['table_label']} khác tệp ở {so_nguyen(_so_cho(r))} chỗ" for r in hong]
+        [f"bảng {r['table_label']} khác tệp ở {format_integer(_so_cho(r))} chỗ" for r in hong]
         + [f"bảng {t} khác tệp" for t in lech_theo_buoc.get("B1", [])
            if t not in {r["table_label"] for r in hong}])
     b1 = ("B1", not hong and "B1" not in lech_theo_buoc,
-          f"Đọc lại tệp độc lập rồi so: {so_nguyen(tep)} dòng trong tệp = "
-          f"{so_nguyen(goc)} dòng đã ghi.",
+          f"Đọc lại tệp độc lập rồi so: {format_integer(tep)} dòng trong tệp = "
+          f"{format_integer(goc)} dòng đã ghi.",
           f"Đọc lại tệp độc lập rồi so: {b1_lech}.")
 
     # B2 — số dòng chuẩn hoá so với số dòng sẽ ghi ở A3.
@@ -191,10 +191,10 @@ def _cac_buoc(ctx: LoadContext, kt: dict, a4: str | None, the: dict,
         k = ctx.bang(t)
         thuc = k.rows_silver + k.rows_unchanged
         if thuc != se_ghi.get(t.name, thuc):
-            lech_b2.append(f"bảng {t.label} lệch {so_nguyen(abs(thuc - se_ghi[t.name]))} dòng")
+            lech_b2.append(f"bảng {t.label} lệch {format_integer(abs(thuc - se_ghi[t.name]))} dòng")
     r2_hong = [r for r in recon.get("R2", []) + recon.get("R4a", []) if not r["passed"]]
     for r in r2_hong:
-        cau = f"bảng {r['table_label']} lệch {so_nguyen(abs(int(r['diff'] or 0)))} dòng"
+        cau = f"bảng {r['table_label']} lệch {format_integer(abs(int(r['diff'] or 0)))} dòng"
         if cau not in lech_b2:
             lech_b2.append(cau)
     for ten in lech_theo_buoc.get("B2", []):
@@ -203,7 +203,7 @@ def _cac_buoc(ctx: LoadContext, kt: dict, a4: str | None, the: dict,
     tong_se_ghi = sum(se_ghi.get(t.name, 0) for t in bang)
     tong_ghi = sum(ctx.bang(t).rows_silver + ctx.bang(t).rows_unchanged for t in bang)
     b2 = ("B2", not lech_b2,
-          f"So với số dòng sẽ ghi ở A3: {so_nguyen(tong_se_ghi)} = {so_nguyen(tong_ghi)} dòng.",
+          f"So với số dòng sẽ ghi ở A3: {format_integer(tong_se_ghi)} = {format_integer(tong_ghi)} dòng.",
           f"So với số dòng sẽ ghi ở A3: {', '.join(lech_b2)}.")
 
     # B3 — chuẩn hoá ↔ phân tích.
@@ -212,11 +212,11 @@ def _cac_buoc(ctx: LoadContext, kt: dict, a4: str | None, the: dict,
     khong_doi = sum(ctx.bang(t).rows_unchanged for t in bang)
     a = sum(int(r["expected"] or 0) for r in r3) + khong_doi
     b = sum(int(r["actual"] or 0) for r in r3) + khong_doi
-    b3_lech = [f"Bảng {r['table_label']}: {so_nguyen(int(r['expected'] or 0))} ≠ "
-               f"{so_nguyen(int(r['actual'] or 0))} dòng" for r in hong3]
+    b3_lech = [f"Bảng {r['table_label']}: {format_integer(int(r['expected'] or 0))} ≠ "
+               f"{format_integer(int(r['actual'] or 0))} dòng" for r in hong3]
     b3_lech += [f"Bảng {t} lệch" for t in lech_theo_buoc.get("B3", [])
                 if t not in {r["table_label"] for r in hong3}]
-    b3 = ("B3", not b3_lech, f"{so_nguyen(a)} = {so_nguyen(b)} dòng.",
+    b3 = ("B3", not b3_lech, f"{format_integer(a)} = {format_integer(b)} dòng.",
           "; ".join(b3_lech) + ".")
 
     # B4 — tổng tiền, tháng, các mã; cộng tổng kiểm soát R4c.
