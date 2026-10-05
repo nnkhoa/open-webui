@@ -1,6 +1,6 @@
 # API JSON của Data Portal
 
-Hợp đồng thực tế của `open_webui/data_portal/api` — đúng với mã nguồn và bộ kiểm thử `open_webui/test/data_portal/`.
+Hợp đồng thực tế của `open_webui/data_portal/api` — đúng với mã nguồn.
 
 ## 1. Quy ước chung
 
@@ -254,4 +254,3 @@ Tệp `{NHÓM}-{bảng}-{lớp}[-{năm}].xlsx` (`Content-Disposition`), header `
 ## 4. Ghi chú cho người tích hợp
 
 - Ô "Năm dữ liệu" lưu ở cột `nam` của mọi bảng số liệu (`fact_*`) và ở `ctl.load.year`.
-- Kiểm thử (trong `backend/`): `python -m pytest open_webui/test/data_portal` — cần PostgreSQL đang chạy; database kiểm thử `DATA_PORTAL_TEST_DATABASE_URL` (mặc định `postgresql:///ai4bi_portal_test`) bị xoá và dựng lại mỗi lần chạy. Kiểm thử dùng tệp mẫu NBC thì cần `DATA_PORTAL_SAMPLE_DIR` trỏ tới thư mục `data_sources`; không có thì bỏ qua.

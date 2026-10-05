@@ -86,8 +86,6 @@ reconcile, roll back, browse data. The spec is
   `src/lib/apis/data-portal/`, `src/lib/stores/dataPortal.ts`; sidebar group in
   `Sidebar.svelte`. Role `data_uploader` ("Data Loader") is accepted wherever
   `user` is.
-- Tests: `python -m pytest open_webui/test/data_portal` from `backend/` (needs a
-  Postgres test database, `DATA_PORTAL_TEST_DATABASE_URL`).
 
 ### Token usage analytics
 
