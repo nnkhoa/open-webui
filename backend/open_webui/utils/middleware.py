@@ -143,6 +143,7 @@ from open_webui.utils.skills import (
     replace_skill_mentions_with_labels,
     strip_skill_mentions,
 )
+from open_webui.utils.tool_loop import responses_replay_items, uses_responses_api
 from open_webui.utils.task import (
     get_task_model_id,
     parse_follow_ups,
@@ -6091,6 +6092,14 @@ async def streaming_chat_response_handler(response, ctx):
                                 output, raw=True, reasoning_format=get_reasoning_format(model)
                             )
                             new_form_data['previous_response_id'] = last_response_id
+                        elif await uses_responses_api(request, model):
+                            # AI4BI: Responses API nhận thẳng item gốc (routers/openai.py:
+                            # convert_to_responses_payload, nhánh 'output') — mô hình giữ được
+                            # mạch suy luận giữa các vòng công cụ.
+                            new_form_data['messages'] = [
+                                *form_data['messages'],
+                                {'role': 'assistant', 'content': '', 'output': responses_replay_items(output)},
+                            ]
                         else:
                             tool_messages = convert_output_to_messages(
                                 output,
