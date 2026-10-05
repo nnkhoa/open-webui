@@ -14,10 +14,11 @@ from ..formatting import format_integer
 from ..registry.schema import Form, FormTable
 from ..sources import customer_report, header_table  # noqa: F401
 from ..sources.base import open_reader
-from . import bronze, doi_chieu_the, gold, reconcile, silver, steps
+from . import bronze, gold, reconcile, reconcile_cards, silver, steps
 from .context import LoadContext
 from .file_check import check_file
 from .reconcile import Mismatch
+from .reconcile_cards import ReconcileCards
 from .steps import StepOutcome
 from .structure import check_structure
 from .validate import validate_rows
@@ -112,20 +113,20 @@ def _run_locked(
         file_check = check_file(ctx.form, ctx.upload_path, ctx.year)
     ctx.sheets_count = _matched_sheet_count(ctx)
 
-    before = doi_chieu_the.chup_truoc(ctx)
+    before = reconcile_cards.snapshot_before(ctx)
     _write_layers(ctx, table_ids)
 
     mismatches = reconcile.run_reconciliation(ctx, table_ids)
-    cards = doi_chieu_the.tinh(ctx, before, file_check)
+    cards = reconcile_cards.build_cards(ctx, before, file_check)
     load_steps = _load_steps(ctx, file_check, a4_result, cards, mismatches)
-    if mismatches or cards['lech']:
+    if mismatches or cards.mismatched:
         mismatches += [
-            Mismatch('B4', None, doi_chieu_the.TIEU_DE.get(key, key), messages.RECONCILE_STEP_CARDS)
-            for key in cards['lech']
+            Mismatch('B4', None, reconcile_cards.mismatch_label(key), messages.RECONCILE_STEP_CARDS)
+            for key in cards.mismatched
         ]
-        raise ReconcileError(mismatches, steps=load_steps, reconciliation=cards['the'])
+        raise ReconcileError(mismatches, steps=load_steps, reconciliation=cards.to_json())
 
-    _commit(ctx, started, file_check, load_steps, cards['the'])
+    _commit(ctx, started, file_check, load_steps, cards.to_json())
     return ctx.load_id
 
 
@@ -160,7 +161,7 @@ def _record_periods(ctx: LoadContext, table: FormTable) -> None:
     ctx.touched_periods[table.name] = periods
 
 
-def _commit(ctx: LoadContext, started: float, file_check: dict, load_steps: list[dict], cards) -> None:
+def _commit(ctx: LoadContext, started: float, file_check: dict, load_steps: list[dict], cards: dict) -> None:
     duration_ms = int((time.monotonic() - started) * 1000)
     warehouse_sql.execute(
         ctx.conn,
@@ -193,7 +194,7 @@ def _commit(ctx: LoadContext, started: float, file_check: dict, load_steps: list
 
 
 def _load_steps(
-    ctx: LoadContext, file_check: dict, a4_result: str | None, cards: dict, mismatches: list[Mismatch]
+    ctx: LoadContext, file_check: dict, a4_result: str | None, cards: ReconcileCards, mismatches: list[Mismatch]
 ) -> list[dict]:
     single_table = len(ctx.form.tables) == 1
     check = steps.check_steps(file_check, user=ctx.actor_username, a4_result=a4_result, single_table=single_table)
@@ -325,13 +326,13 @@ def _b3_outcome(
     )
 
 
-def _b4_outcome(results: list[dict], cards: dict) -> StepOutcome:
+def _b4_outcome(results: list[dict], cards: ReconcileCards) -> StepOutcome:
     failed = [result for result in results if not result['passed']]
-    mismatch_result = cards['b4']
-    if failed and not cards['lech']:
+    mismatch_result = cards.b4_result
+    if failed and not cards.mismatched:
         tables = ', '.join(result['table_label'] for result in failed)
         mismatch_result = messages.STEP_B4_CONTROL_TOTAL_MISMATCH.format(tables=tables)
-    return StepOutcome('B4', not failed and not cards['lech'], cards['b4'], mismatch_result)
+    return StepOutcome('B4', not failed and not cards.mismatched, cards.b4_result, mismatch_result)
 
 
 def _written_rows(ctx: LoadContext, table: FormTable) -> int:
