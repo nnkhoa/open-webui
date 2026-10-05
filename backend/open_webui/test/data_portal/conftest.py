@@ -51,6 +51,11 @@ def _co_database() -> str | None:
 
 @pytest.fixture(scope="session")
 def container(tmp_path_factory):
+    # AI4BI: fixture này DROP SCHEMA ... CASCADE — chỉ chạy trên database dành riêng cho test,
+    # không bao giờ trên kho thật (vd aibi_database của nhabe).
+    dbname = psycopg.conninfo.conninfo_to_dict(DSN).get("dbname") or ""
+    if not dbname.endswith("_test"):
+        pytest.exit(f"DATA_PORTAL_TEST_DATABASE_URL phải trỏ tới database tên *_test (đang là '{dbname}')", 2)
     ly_do = _co_database()
     if ly_do:
         pytest.skip(ly_do)
