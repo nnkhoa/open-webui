@@ -21,7 +21,9 @@ from fastapi.responses import FileResponse
 
 from ...domain import lan_nap
 from ...errors import Conflict, InvalidInput, NotFound
-from ...pipeline import doi_chieu_the, rollback
+from ...pipeline import rollback
+from ...pipeline.card_model import rejected_card
+from ...pipeline.reconcile_cards import CardSelection, render_cards
 from ...security.audit import record_event
 from ...sources import source_file
 from .. import json
@@ -121,9 +123,6 @@ def chi_tiet(load_id: int, ngu_canh: NguCanhApi = Depends(mo_ngu_canh)) -> dict:
 #  Đối chiếu
 # --------------------------------------------------------------------------- #
 
-THU_TU_THE = ("so_dong", "tong", "tien_theo_nhom", "o_trong", "theo_chieu", "ma",
-              "truoc_sau")
-
 
 @router.get("/loads/{load_id}/reconcile")
 def doi_chieu(load_id: int, the: str = "", bang: str = "", cot: str = "",
@@ -132,24 +131,10 @@ def doi_chieu(load_id: int, the: str = "", bang: str = "", cot: str = "",
     r = _lan_nap(ngu_canh, load_id)
     trang, moi = trang_moi(trang, moi, 25)
     if r["status"] == "rejected":
-        return {"the": [{"ma": "tu_choi", "tieu_de": "Đối chiếu tệp gốc ↔ database",
-                         "thong_bao": doi_chieu_the.THONG_BAO_TU_CHOI, "cot": [], "dong": []}]}
-    luu = r["doi_chieu"] or {}
-    ra = []
-    for ma in THU_TU_THE:
-        if ma not in luu or (the and the != ma):
-            continue
-        if ma == "tien_theo_nhom":
-            muc = doi_chieu_the.dung_the_tien(luu[ma], bang=bang or None, cot=cot or None,
-                                              chia_theo=chia_theo or None)
-        elif ma == "theo_chieu":
-            muc = doi_chieu_the.dung_the_chieu(luu[ma], chia_theo=chia_theo or None,
-                                               trang=trang, moi=moi)
-        else:
-            muc = {k: v for k, v in luu[ma].items() if k != "cac_bang"}
-        if ma == "truoc_sau" and r["status"] == "mismatch":
-            muc = {**muc, "dong": [], "thong_bao": doi_chieu_the.THONG_BAO_HUY}
-        ra.append(muc)
+        return {"the": [rejected_card()]}
+    selection = CardSelection(card=the, table=bang or None, column=cot or None,
+                              group_by=chia_theo or None, page=trang, page_size=moi)
+    ra = render_cards(r["doi_chieu"] or {}, selection, cancelled=r["status"] == "mismatch")
     if the and not ra:
         raise NotFound("Không có thẻ đối chiếu này.")
     return json.sach({"the": ra})
