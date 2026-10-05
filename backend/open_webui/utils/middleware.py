@@ -115,6 +115,12 @@ from open_webui.utils.payload import apply_system_prompt_to_body, resolve_system
 from open_webui.utils.plugin import load_function_module_by_id
 from open_webui.utils.response import merge_usage, normalize_usage
 from open_webui.utils.sanitize import sanitize_code
+from open_webui.utils.tool_loop import (
+    responses_replay_items,
+    tool_loop_exception_error,
+    tool_loop_http_error,
+    uses_responses_api,
+)
 from open_webui.utils.task import (
     get_task_model_id,
     rag_template,
@@ -4755,6 +4761,7 @@ async def streaming_chat_response_handler(response, ctx):
                         await response.background()
 
                 tool_call_iterations = 0
+                tool_loop_error = None  # AI4BI: lỗi làm vòng công cụ dừng giữa chừng
                 tool_call_sources = []  # Track citation sources from tool results
                 all_tool_call_sources = []  # Accumulated sources across all iterations
                 user_message = get_last_user_message(form_data['messages'])
@@ -5165,6 +5172,14 @@ async def streaming_chat_response_handler(response, ctx):
                                 output, raw=True, reasoning_format=get_reasoning_format(model)
                             )
                             new_form_data['previous_response_id'] = last_response_id
+                        elif await uses_responses_api(request, model):
+                            # AI4BI: Responses API nhận thẳng item gốc (routers/openai.py:
+                            # convert_to_responses_payload, nhánh 'output') — mô hình giữ được
+                            # mạch suy luận giữa các vòng công cụ.
+                            new_form_data['messages'] = [
+                                *form_data['messages'],
+                                {'role': 'assistant', 'content': '', 'output': responses_replay_items(output)},
+                            ]
                         else:
                             tool_messages = convert_output_to_messages(
                                 output, raw=True, reasoning_format=get_reasoning_format(model)
@@ -5229,14 +5244,40 @@ async def streaming_chat_response_handler(response, ctx):
                                 if not msg_parts or (len(msg_parts) == 1 and not msg_parts[0].get('text', '').strip()):
                                     prior_output.pop()
                             output = []
-                            await stream_body_handler(res, new_form_data)
-                            output[:0] = prior_output
-                            prior_output = []
+                            try:
+                                await stream_body_handler(res, new_form_data)
+                            finally:
+                                # AI4BI: stream lỗi giữa chừng vẫn phải ghép lại các
+                                # vòng trước, không thì tin nhắn chỉ còn phần dở của
+                                # vòng cuối (mất hết kết quả công cụ đã chạy).
+                                output[:0] = prior_output
+                                prior_output = []
                         else:
+                            # AI4BI: upstream trả lỗi ≥ 400 (không stream) — trước đây
+                            # thoát im lặng, người dùng nhận câu trả lời trống.
+                            tool_loop_error = tool_loop_http_error(tool_call_iterations, res)
+                            if tool_loop_error:
+                                log.warning('Tool-call loop stopped: %s', tool_loop_error)
                             break
                     except Exception as e:
-                        log.debug(e)
+                        # AI4BI: trước đây chỉ log.debug rồi thoát im lặng.
+                        log.exception('Tool-call loop aborted at iteration %s', tool_call_iterations)
+                        tool_loop_error = tool_loop_exception_error(tool_call_iterations, e)
                         break
+
+                if tool_loop_error:
+                    if not metadata.get('chat_id', '').startswith('channel:'):
+                        await Chats.upsert_message_to_chat_by_id_and_message_id(
+                            metadata['chat_id'],
+                            metadata['message_id'],
+                            {'error': {'content': tool_loop_error}},
+                        )
+                    await event_emitter(
+                        {
+                            'type': 'chat:message:error',
+                            'data': {'error': {'content': tool_loop_error}},
+                        }
+                    )
 
                 if (
                     CHAT_RESPONSE_MAX_TOOL_CALL_ITERATIONS is not None

@@ -906,6 +906,8 @@ RESPONSES_ALLOWED_FIELDS: dict[str, set[str]] = {
     'message': {'type', 'role', 'content'},
     'function_call': {'type', 'call_id', 'name', 'arguments', 'id'},
     'function_call_output': {'type', 'call_id', 'output'},
+    # AI4BI: gửi lại mạch suy luận ở vòng công cụ sau; bỏ trường riêng của Open WebUI.
+    'reasoning': {'type', 'id', 'summary', 'encrypted_content'},
 }
 
 
