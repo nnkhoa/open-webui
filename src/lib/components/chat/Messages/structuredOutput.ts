@@ -108,7 +108,50 @@ function getMessageText(item: OutputItem): string {
 
 function getReasoningText(item: OutputItem): string {
 	const summary = Array.isArray(item.summary) && item.summary.length ? item.summary : null;
-	return getTextFromParts(summary ?? item.content ?? []);
+	if (!summary) {
+		return getTextFromParts(item.content ?? []);
+	}
+	// AI4BI: mỗi phần tóm tắt mở đầu bằng tiêu đề in đậm; nối liền thì tiêu đề dính vào câu trước.
+	return summary
+		.map((part) => getTextFromParts([part]).trim())
+		.filter(Boolean)
+		.join('\n\n');
+}
+
+function toSeconds(value: OutputItem['duration']): number | undefined {
+	if (value === undefined || value === null || value === '') {
+		return undefined;
+	}
+	const seconds = Number(value);
+	return Number.isFinite(seconds) ? seconds : undefined;
+}
+
+// AI4BI: Responses API trả nhiều reasoning item liền nhau trong một vòng, phần lớn không có tóm tắt.
+// Gộp chúng thành một khối "Thought" (chữ nối bằng dòng trống, thời gian cộng dồn).
+function mergeConsecutiveReasoning(output: OutputItem[]): OutputItem[] {
+	const merged: OutputItem[] = [];
+	for (const item of output) {
+		const previous = merged[merged.length - 1];
+		if (item?.type !== 'reasoning' || previous?.type !== 'reasoning') {
+			merged.push(item);
+			continue;
+		}
+		const text = [getReasoningText(previous), getReasoningText(item)]
+			.filter((part) => part.trim())
+			.join('\n\n');
+		const durations = [toSeconds(previous.duration), toSeconds(item.duration)].filter(
+			(seconds): seconds is number => seconds !== undefined
+		);
+		merged[merged.length - 1] = {
+			...item,
+			summary: text ? [{ type: 'summary_text', text }] : [],
+			content: [],
+			duration: durations.length
+				? durations.reduce((total, seconds) => total + seconds, 0)
+				: undefined
+		};
+	}
+	return merged;
 }
 
 function getToolResultText(item?: OutputItem): string {
@@ -146,7 +189,12 @@ function buildToolCallToken(item: OutputItem, toolOutputByCallId: Record<string,
 function buildReasoningToken(item: OutputItem, isLastItem: boolean) {
 	const duration = item.duration ?? '';
 	const isDone = isDoneStatus(item.status) || item.duration !== undefined || !isLastItem;
-	const text = getReasoningText(item)
+	const reasoningText = getReasoningText(item);
+	// AI4BI: khối đã xong mà không có chữ thì bỏ — trước đây hiện thành hàng loạt "Thought" trống.
+	if (isDone && !reasoningText.trim()) {
+		return null;
+	}
+	const text = reasoningText
 		.split('\n')
 		.map((line) => (line.startsWith('>') ? line : `> ${line}`))
 		.join('\n');
@@ -249,7 +297,8 @@ function buildDetailToken(
 	return null;
 }
 
-export function buildOutputDisplayItems(output: OutputItem[] = []): OutputDisplayItem[] {
+export function buildOutputDisplayItems(rawOutput: OutputItem[] = []): OutputDisplayItem[] {
+	const output = mergeConsecutiveReasoning(rawOutput);
 	const displayItems: OutputDisplayItem[] = [];
 	const currentDetailTokens: OutputDetailToken[] = [];
 	const toolOutputByCallId: Record<string, OutputItem> = {};
