@@ -7,7 +7,15 @@
 	import { getUsage } from '$lib/apis';
 	import { getSessionUser, userSignOut } from '$lib/apis/auths';
 
-	import { mobile, showSidebar, showShortcuts, user, config, settings } from '$lib/stores';
+	import {
+		showSettings,
+		mobile,
+		showSidebar,
+		showShortcuts,
+		user,
+		config,
+		settings
+	} from '$lib/stores';
 
 	import { WEBUI_API_BASE_URL } from '$lib/constants';
 
@@ -18,6 +26,7 @@
 	import Map from '$lib/components/icons/Map.svelte';
 	import Keyboard from '$lib/components/icons/Keyboard.svelte';
 	import ShortcutsModal from '$lib/components/chat/ShortcutsModal.svelte';
+	import Settings from '$lib/components/icons/Settings.svelte';
 	import Code from '$lib/components/icons/Code.svelte';
 	import UserGroup from '$lib/components/icons/UserGroup.svelte';
 	import SignOut from '$lib/components/icons/SignOut.svelte';
@@ -223,6 +232,28 @@
 				{/if}
 
 				<hr class=" border-gray-50/30 dark:border-gray-800/30 my-1.5 p-0" />
+			{/if}
+
+			{#if !minimal}
+				<button
+					class="flex rounded-xl py-1.5 px-3 w-full hover:bg-gray-50 dark:hover:bg-gray-800 transition cursor-pointer select-none"
+					type="button"
+					on:click={async () => {
+						show = false;
+
+						await showSettings.set(true);
+
+						if ($mobile) {
+							await tick();
+							showSidebar.set(false);
+						}
+					}}
+				>
+					<div class=" self-center mr-3">
+						<Settings className="w-5 h-5" strokeWidth="1.5" />
+					</div>
+					<div class=" self-center truncate">{$i18n.t('Settings')}</div>
+				</button>
 			{/if}
 
 			{#if !minimal && role === 'admin'}
