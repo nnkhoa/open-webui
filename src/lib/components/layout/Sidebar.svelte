@@ -85,6 +85,8 @@
 	import HotkeyHint from '../common/HotkeyHint.svelte';
 	import DataPortalSidebarGroup from '../data-portal/SidebarGroup.svelte';
 	import DataPortalIcon from '../data-portal/Icon.svelte';
+	import { projectLogoSrc } from '$lib/branding';
+	import { projectConfig } from '$lib/stores/projectConfig';
 
 	const BREAKPOINT = 768;
 	const DEFAULT_PINNED_ITEMS = ['notes', 'workspace'];
@@ -1073,9 +1075,9 @@
 					on:click={newChatHandler}
 				>
 					<img
-						src="{WEBUI_BASE_URL}/static/nbc-logo.png"
+						src={projectLogoSrc($projectConfig.logo_url, WEBUI_BASE_URL)}
 						class="h-[34px] w-auto"
-						alt="NBC"
+						alt={$projectConfig.org_name || $WEBUI_NAME}
 						draggable="false"
 					/>
 				</a>

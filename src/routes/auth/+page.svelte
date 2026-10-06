@@ -20,6 +20,8 @@
 	import { WEBUI_API_BASE_URL, WEBUI_BASE_URL } from '$lib/constants';
 	import { WEBUI_NAME, config, user, socket } from '$lib/stores';
 	import { projectConfig } from '$lib/stores/projectConfig';
+	import { projectLogoSrc } from '$lib/branding';
+	import OpenWebUIBadge from '$lib/components/brand/OpenWebUIBadge.svelte';
 
 	import { generateInitialsImage, canvasPixelTest, getUserTimezone } from '$lib/utils';
 
@@ -265,9 +267,7 @@
 									<img
 										id="logo"
 										crossorigin="anonymous"
-										src={$projectConfig.logo_url
-											? `${WEBUI_BASE_URL}${$projectConfig.logo_url}`
-											: `${WEBUI_BASE_URL}/static/favicon.png`}
+										src={projectLogoSrc($projectConfig.logo_url, WEBUI_BASE_URL)}
 										class="size-24 rounded-full"
 										alt="{$WEBUI_NAME} logo"
 									/>
@@ -291,9 +291,8 @@
 												WEBUI_NAME: $projectConfig.app_name || $WEBUI_NAME
 											})}
 										{:else if mode === 'signin'}
-											{$i18n.t(`Sign in to {{WEBUI_NAME}}`, {
-												WEBUI_NAME: $projectConfig.app_name || $WEBUI_NAME
-											})}
+											{$projectConfig.app_name ||
+												$i18n.t(`Sign in to {{WEBUI_NAME}}`, { WEBUI_NAME: $WEBUI_NAME })}
 										{:else}
 											{$i18n.t(`Sign up to {{WEBUI_NAME}}`, {
 												WEBUI_NAME: $projectConfig.app_name || $WEBUI_NAME
@@ -621,21 +620,19 @@
 		</div>
 
 		{#if !$config?.metadata?.auth_logo_position}
-			<div class="fixed mt-2 ml-6 z-50">
-				<div class="flex space-x-2">
-					<div class=" self-center">
-						<img
-							id="logo"
-							crossorigin="anonymous"
-							src={$projectConfig.logo_url
-								? `${WEBUI_BASE_URL}${$projectConfig.logo_url}`
-								: `${WEBUI_BASE_URL}/static/favicon.png`}
-							class=" w-14 rounded-full"
-							alt=""
-						/>
-					</div>
-				</div>
+			<!-- Không đặt id="logo": setLogoImage() sẽ thay ảnh này bằng favicon-dark.png ở dark mode -->
+			<div class="fixed top-2 left-4 z-50">
+				<img
+					src={projectLogoSrc($projectConfig.logo_url, WEBUI_BASE_URL)}
+					class="h-[34px] w-auto"
+					alt={$projectConfig.org_name || $WEBUI_NAME}
+					draggable="false"
+				/>
 			</div>
 		{/if}
+
+		<div class="fixed top-3 right-6 z-50">
+			<OpenWebUIBadge />
+		</div>
 	{/if}
 </div>

@@ -59,7 +59,11 @@ names, and the "new chat on model change" switch.
 - Served to the frontend pre-auth in the `aibi` block of `/api/config`
 - `src/lib/stores/projectConfig.ts`, `src/lib/components/admin/ProjectConfig.svelte`,
   `src/routes/(app)/admin/project/+page.svelte`
-- `static/static/nbc-logo.png` — the NBC logo at the top of the sidebar
+- The configured logo sits at the top of the sidebar and the top left of `/auth`
+  (`projectLogoSrc` in `src/lib/branding.ts`, Open WebUI logo when none is set); the App Name is
+  the `/auth` sign-in heading. `static/static/nbc-logo.png` is the NBC logo file to upload there.
+- `src/lib/components/brand/OpenWebUIBadge.svelte` — "Open WebUI" logo and name at the top right of
+  `/auth` and the chat navbar
 
 Env seeds (config wins once set in the admin page): `AIBI_PROJECT_LOGO`,
 `AIBI_BRAND_COLOR`, `AIBI_ORG_NAME`, `AIBI_ORG_SUBTITLE`, `AIBI_APP_NAME`,

@@ -30,6 +30,7 @@
 
 	import EllipsisHorizontal from '../icons/EllipsisHorizontal.svelte';
 	import ChatPlus from '../icons/ChatPlus.svelte';
+	import OpenWebUIBadge from '../brand/OpenWebUIBadge.svelte';
 
 	const i18n = getContext('i18n');
 
@@ -168,6 +169,8 @@
 							</button>
 						</Menu>
 					{/if}
+
+					<OpenWebUIBadge className="ml-1 px-1.5 py-1.5" />
 				</div>
 			</div>
 		</div>
