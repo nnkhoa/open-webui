@@ -1,0 +1,70 @@
+# =============================================================================
+#  Danh mục tên gọi khác của khách hàng
+#
+#  Phiếu khảo sát 20260915_NBC-QTTM_Bieu_mau_du_lieu_va_Khao_sat, sheet "6. Danh muc",
+#  mục 2: mã khách hàng · tên xuất hiện · nguồn dùng tên đó.
+#
+#  Cột khách hàng có `normalize: customer_code` được đổi từ tên sang mã ở lớp Silver:
+#  tên được viết hoa, bỏ dấu câu và gộp khoảng trắng rồi tra trong danh sách dưới.
+#  Tên không có trong danh sách giữ nguyên (khách phát triển, chưa có mã).
+#
+#    name           tên khách hàng như ghi trong tệp
+#    customer_code  mã khách hàng ở sheet "DANH SACH KHACH HANG THEO HDX" của tệp HQKD
+#    source         mã biểu mẫu dùng tên này
+# =============================================================================
+
+customer_aliases:
+  - name: MANGO
+    customer_code: EO-00325
+    source: LICH_MAY_MAU
+  - name: THE HABERDASH GROUP DBA TWILLORY
+    customer_code: EO-00319
+    source: LICH_MAY_MAU
+  - name: WE EUROPE B.V
+    customer_code: EO-00048
+    source: LICH_MAY_MAU
+  - name: HAGGAR
+    customer_code: EO-00040
+    source: LICH_MAY_MAU
+  - name: RIVER ISLAND
+    customer_code: EO-00069
+    source: LICH_MAY_MAU
+  - name: Fabian Couture Group LLC
+    customer_code: EO-00059
+    source: LICH_MAY_MAU
+  - name: ECI
+    customer_code: EO-00238
+    source: LICH_MAY_MAU
+  - name: FABLETICS
+    customer_code: EO-00304
+    source: LICH_MAY_MAU
+  - name: GIII (KL)
+    customer_code: EO-00312
+    source: LICH_MAY_MAU
+  - name: WORTHY (FRA - VINCE CAMUTO)
+    customer_code: EO-00071
+    source: LICH_MAY_MAU
+  - name: WORTHY (FRA - NAUTICA)
+    customer_code: EO-00071
+    source: LICH_MAY_MAU
+  - name: WORTHY (FRA - SUPREME)
+    customer_code: EO-00071
+    source: LICH_MAY_MAU
+  - name: LOZZIDO
+    customer_code: EO-00352
+    source: LICH_MAY_MAU
+  - name: BEG 4 KLOTHING
+    customer_code: EO-00344
+    source: LICH_MAY_MAU
+  - name: MOTIVES INTERNATIONAL (HONGKONG) LIMITED
+    customer_code: EO-00293
+    source: LICH_MAY_MAU
+  - name: FAM
+    customer_code: EO-00075
+    source: DON_GIA_CONG
+  - name: GROSSOMODA
+    customer_code: EO-00062
+    source: DON_GIA_CONG
+  - name: UPGAIN
+    customer_code: EO-00305
+    source: DON_GIA_CONG

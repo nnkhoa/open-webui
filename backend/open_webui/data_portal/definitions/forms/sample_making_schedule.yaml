@@ -1,38 +1,43 @@
 # =============================================================================
-#  Bộ bảng LICH_MAY_MAU — Lịch may mẫu (nhóm HQ-MAU-GC)
+#  Bộ bảng LICH_MAY_MAU — May mẫu (nhóm HQ-MAU-GC)
 #
 #  Tệp NBC: "SAMPLE MAKING SCHEDULE ( 30 Sep ) - OK.xlsx". Bộ đọc
-#  `sources/header_table.py` nhận sheet **theo dòng tiêu đề**, không theo
-#  tên (tên sheet đổi theo ngày): sheet đang hiện có đủ 7 cột cần lấy. Dữ liệu
-#  từ dòng tiêu đề + 3 (dòng tiêu đề tiếng Anh, một dòng trống) tới trước dòng
-#  trống đầu tiên, đọc cả dòng ẩn, bỏ dòng tổng (QT-16).
+#  `sources/header_table.py` nhận sheet đang hiện **theo dòng tiêu đề** (tên sheet đổi
+#  theo ngày): dòng có đủ 6 tên cột dưới đây — dòng 12, dòng tên cột tiếng Anh.
+#  Dữ liệu từ dòng tiêu đề + 2; bỏ dòng ẩn, dừng ở dòng đang hiện trống đầu tiên, bỏ
+#  dòng tổng.
 #
-#  Cột theo phiếu khảo sát 20260915_NBC-QTTM_Bieu_mau_du_lieu_va_Khao_sat sheet
-#  "4. May mau" (Bảng C) và đặc tả mục 10.3. Cột trong phiếu mà tệp không có thì
-#  giữ cột, để trống (`value_from: trong`, QT-21). Cột của tệp không có trong phiếu
-#  không nạp (10.4).
+#  Chỉ lấy các cột chứa thông tin NBC hiện cần: CUSTOMER, MEN / LADY,
+#  SAMPLE DESCRIPTION, SALE GROUP, QTY, PRICE / PC ( USD ). Tên biến theo phiếu khảo
+#  sát 20260915_NBC-QTTM_Bieu_mau_du_lieu_va_Khao_sat sheet "4. May mau"; cột phiếu
+#  chưa có tên thì giữ tên cột gốc (men_lady) hoặc đặt theo yêu cầu (sample, description).
 #
-#  Nạp lại cùng năm: ghi đè toàn bộ (`merge: replace_all`, QT-10) — tệp là bản
-#  theo dõi luỹ kế, mỗi bản liệt kê lại mọi dòng.
+#  Bronze giữ y như tệp. Silver làm sạch chữ và chuẩn hoá theo `normalize`:
+#    clean_text     gộp khoảng trắng, xuống dòng; ô trống → "Không có thông tin"
+#    customer_code  tên khách → mã khách theo definitions/customer_aliases.yaml
+#    sales_group    6 → SALE 6, cùng dạng nhóm kinh doanh của HQKD
+#    split_head     SAMPLE DESCRIPTION: phần trước dấu " - " đầu tiên
+#    split_tail     SAMPLE DESCRIPTION: phần sau dấu " - " đầu tiên
+#
+#  Ô P10 (SUBTOTAL của cột QTY) chỉ cộng dòng đang hiện, phải bằng tổng so_luong.
+#  Nạp lại cùng năm: ghi đè toàn bộ năm đó (`merge: replace_all`).
 # =============================================================================
 
 form:
   code: LICH_MAY_MAU
-  version: 1
-  label: Lịch may mẫu
+  version: 2
+  label: May mẫu
   subtitle: SAMPLE MAKING SCHEDULE
-  description: Lịch may mẫu chào hàng — từng lần may mẫu, số lượng và đơn giá.
+  description: Lịch may mẫu chào hàng — khách hàng, nhóm kinh doanh, sample, số lượng và đơn giá.
   policy:
     unknown_sheet: ignore
     unknown_column: ignore
   source:
     kind: header_table
-    data_row_offset: 3           # dữ liệu bắt đầu ở dòng tiêu đề + 3 (dòng 14 khi tiêu đề ở dòng 11)
-    total_cell: P10              # ô SUBTOTAL — chỉ cộng dòng đang hiện, chỉ ghi nhận (QT-14)
-    total_cell_informational: true
-    report_date_cell: A4         # "DATE : 30 Sep 2026" — ngày của bản theo dõi
-    # Thứ tự cột cần lấy như trong tệp — dùng ở câu báo lỗi (đặc tả 5.1, 15.5).
-    required_headers: [KHÁCH HÀNG, MÃ HÀNG, LOẠI MẪU, SALE, SỐ LƯỢNG, NGÀY GIAO MẪU (QC), GIÁ TIỀN (USD)]
+    data_row_offset: 2
+    total_cell: P10
+    report_date_cell: A4
+    required_headers: [CUSTOMER, MEN / LADY, SAMPLE DESCRIPTION, SALE GROUP, QTY, PRICE / PC ( USD )]
 
 tables:
   - name: fact_may_mau
@@ -40,15 +45,14 @@ tables:
     sheet: LICH_MAY_MAU
     label: May mẫu chào hàng
     card_label: May mẫu chào hàng
-    description: Từng lần may mẫu, số lượng và chi phí.
-    grain: Một dòng cho mỗi lần may mẫu (một dòng dữ liệu của sheet lịch may mẫu).
+    description: Từng lần may mẫu — khách hàng, nhóm kinh doanh, sample, số lượng và đơn giá.
+    grain: Một dòng cho mỗi dòng dữ liệu đang hiện của sheet lịch may mẫu.
     purpose: >
-      Nhóm câu hỏi về hiệu quả may mẫu chào hàng: chi phí may mẫu so với doanh thu và
-      lợi nhuận, khách hàng hoặc mẫu chưa phát sinh đơn hàng, tỷ lệ mẫu chuyển thành
-      đơn hàng.
-    business_key: [nam, ma_mau]
+      Nhóm câu hỏi về hiệu quả may mẫu chào hàng: chi phí may mẫu theo khách hàng và
+      nhóm kinh doanh, so với doanh thu và lợi nhuận của cùng khách hàng ở nhóm HQKD.
+    business_key: [nam, ma_khach, sample]
     merge: replace_all
-    order: [nam, ngay_giao_mau, ma_mau]
+    order: [nam, ma_nhom_kd, ma_khach, sample]
     display_order: 1
     columns:
       - name: nam
@@ -57,71 +61,58 @@ tables:
         label: Không có trong tệp — lấy từ ô Năm dữ liệu chọn lúc nạp
         meaning: Năm của số liệu, chọn ở ô Năm dữ liệu lúc nạp.
         example: "2026"
-      - name: ma_lan_may
-        type: text
-        value_from: trong
-        label: Không có trong tệp — để trống
-        meaning: Mã riêng của một lần may mẫu. Tệp không có cột này (STT và #ID của tệp đều có số lặp) nên để trống.
-      - name: ngay_giao_mau
-        type: date
-        header: NGÀY GIAO MẪU (QC)
-        label: NGÀY GIAO MẪU (QC)
-        meaning: Ngày mẫu được giao, dùng để xác định mẫu thuộc kỳ nào. Ô không đọc được ngày thì để trống.
-        example: "01/06/2026"
       - name: ma_khach
         type: text
-        value_from: trong
-        label: Không có trong tệp — để trống
-        meaning: Mã khách hàng mà mẫu được chào cho. Tệp chỉ có tên khách nên để trống.
-      - name: ten_khach
-        type: text
-        header: KHÁCH HÀNG
-        label: KHÁCH HÀNG
+        required: true
+        header: CUSTOMER
+        label: CUSTOMER
         display_width: 240
-        meaning: Tên khách hàng mà mẫu được chào cho.
-        example: APG
+        normalize: customer_code
+        meaning: >
+          Mã khách hàng mà mẫu được chào cho. Tên trong tệp được đổi sang mã theo danh mục
+          tên gọi khác của khách hàng; tên chưa có mã giữ nguyên (khách phát triển).
+        example: EO-00325
+      - name: men_lady
+        type: text
+        header: MEN / LADY
+        label: MEN / LADY
+        normalize: clean_text
+        meaning: Mẫu dành cho nam hay nữ.
+        example: MEN
+      - name: sample
+        type: text
+        header: SAMPLE DESCRIPTION
+        label: SAMPLE
+        display_width: 160
+        normalize: split_head
+        meaning: Phần trước dấu "-" của SAMPLE DESCRIPTION.
+        example: BLAZER
+      - name: description
+        type: text
+        label: DESCRIPTION
+        display_width: 240
+        normalize:
+          rule: split_tail
+          from: sample
+        meaning: Phần sau dấu "-" của SAMPLE DESCRIPTION; không có thì "Không có thông tin".
+        example: Mockup thread
       - name: ma_nhom_kd
         type: text
-        header: SALE
-        label: SALE
-        meaning: Nhóm kinh doanh phụ trách, giữ nguyên giá trị trong tệp.
-        example: "6"
-      - name: ma_mau
-        type: text
-        required: true
-        header: MÃ HÀNG
-        label: MÃ HÀNG
-        display_width: 240
-        meaning: Mã của mẫu, dùng để trả lời câu hỏi mẫu nào đã phát sinh chi phí nhưng chưa có đơn hàng.
-        example: 120964 IVY LINEN BLAZER
-      - name: ma_giai_doan_mau
-        type: text
-        header: LOẠI MẪU
-        label: LOẠI MẪU
-        meaning: Giai đoạn của mẫu trong quy trình chào hàng.
-        example: DEVELOP
+        header: SALE GROUP
+        label: SALE GROUP
+        normalize: sales_group
+        meaning: Nhóm kinh doanh phụ trách, cùng dạng với HQKD (số 6 thành SALE 6).
+        example: SALE 6
       - name: so_luong
         type: number
         role: measure
-        header: SỐ LƯỢNG
-        label: SỐ LƯỢNG
+        header: QTY
+        label: QTY
         meaning: Số lượng mẫu của lần may này.
-        example: "6"
-      - name: don_gia
+        example: "1"
+      - name: don_gia_usd
         type: number
-        header: GIÁ TIỀN (USD)
-        label: GIÁ TIỀN (USD)
-        meaning: Đơn giá của một mẫu. Ô không đọc được số thì để trống.
+        header: PRICE / PC ( USD )
+        label: PRICE / PC ( USD )
+        meaning: Đơn giá một mẫu, tính bằng USD. Ô không phải số (vd. "X") thì để trống.
         example: "37.5"
-      - name: ma_tien_te
-        type: text
-        value_from: tieu_de
-        header: GIÁ TIỀN (USD)
-        label: Tiêu đề cột GIÁ TIỀN (USD)
-        meaning: Đơn vị tiền của đơn giá, lấy trong tiêu đề cột GIÁ TIỀN (USD) — luôn là USD.
-        example: USD
-      - name: ma_po_phat_sinh
-        type: text
-        value_from: trong
-        label: Không có trong tệp — để trống
-        meaning: Mã đơn hàng phát sinh từ mẫu này. Tệp không có cột này nên để trống.

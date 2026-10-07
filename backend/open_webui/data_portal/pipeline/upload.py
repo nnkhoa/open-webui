@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import shutil
+import tempfile
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
@@ -18,7 +19,7 @@ from ..registry.schema import Form, FormTable
 from ..security.audit import record_event
 from ..sources.header_table import KIND as HEADER_TABLE_KIND
 from . import dedup, orchestrator, pending_uploads, steps
-from .file_check import GROUP_BY_MONTH, check_file
+from .file_check import check_file, check_form_match
 from .orchestrator import LoadRequest
 from .pending_uploads import PendingMetadata, PendingUpload
 from .reconcile import STEP_LABELS, Mismatch
@@ -28,6 +29,10 @@ STATUS_REJECTED = 'rejected'
 STATUS_MISMATCH = 'mismatch'
 STATUS_SUCCESS = 'success'
 MISMATCH_REASON_CODE = 'RECON_MISMATCH'
+CONFIRM_GROUP_LABELS = {
+    'ma_nhom_kd': (messages.UPLOAD_BY_SALES_GROUP, messages.UPLOAD_SALES_GROUP),
+    'ma_don_vi_gc': (messages.UPLOAD_BY_SUBCONTRACTOR, messages.UPLOAD_SUBCONTRACTOR),
+}
 
 
 @dataclass
@@ -76,6 +81,18 @@ def check_upload(container: Container, request: UploadRequest) -> dict:
 
     pending_uploads.write_metadata(pending)
     return {'pending_id': pending.pending_id}
+
+
+def check_form(container: Container, form: Form, source: BinaryIO) -> dict:
+    upload_dir = container.settings.upload_dir
+    with tempfile.NamedTemporaryFile(dir=upload_dir, suffix='.xlsx', delete=False) as temporary:
+        shutil.copyfileobj(source, temporary)
+    path = Path(temporary.name)
+    try:
+        errors = check_form_match(form, path)
+    finally:
+        path.unlink(missing_ok=True)
+    return {'ok': not errors, 'form': form.label, 'errors': errors}
 
 
 def confirm_upload(container: Container, pending: PendingUpload, *, request_id: str) -> dict:
@@ -385,16 +402,12 @@ def _table_check_view(table: dict) -> dict:
 def _header_table_groups(conn, form: Form, domain_id: int, year: int | None, file_check: dict) -> dict:
     table = form.tables[0]
     checked = file_check['tables'][0]
-    grouping = checked.get('by_group') or {'column': None, 'method': '', 'order': [], 'groups': {}}
+    grouping = checked.get('by_group') or {'column': None, 'order': [], 'groups': {}}
     previous = _existing_data(conn, table, domain_id, year)
-    by_month = grouping['method'] == GROUP_BY_MONTH
     existing = _existing_groups(conn, table, domain_id, year, grouping) if grouping['column'] else {}
-    order = sorted(grouping['order'], key=lambda key: (key == '', key)) if by_month else grouping['order']
-    rows = [_group_row(key, grouping, existing.get(key), by_month) for key in order]
-    title, first_column = (
-        (messages.UPLOAD_BY_DELIVERY_MONTH, messages.UPLOAD_DELIVERY_MONTH)
-        if by_month
-        else (messages.UPLOAD_BY_SUBCONTRACTOR, messages.UPLOAD_SUBCONTRACTOR)
+    rows = [_group_row(key, grouping, existing.get(key)) for key in grouping['order']]
+    title, first_column = CONFIRM_GROUP_LABELS.get(
+        grouping['column'], (messages.UPLOAD_BY_SUBCONTRACTOR, messages.UPLOAD_SUBCONTRACTOR)
     )
     total = {
         'row_count': checked['read'],
@@ -409,31 +422,19 @@ def _header_table_groups(conn, form: Form, domain_id: int, year: int | None, fil
     }
 
 
-def _group_row(key: str, grouping: dict, existing: dict | None, by_month: bool) -> dict:
+def _group_row(key: str, grouping: dict, existing: dict | None) -> dict:
     group = grouping['groups'][key]
-    row = {
+    return {
         'group': key or messages.UPLOAD_EMPTY_GROUP,
         'row_count': group['row_count'],
         'quantity': _number(group['quantity']),
         'existing': existing,
         'write_mode': messages.UPLOAD_WRITE_OVERWRITE if existing else messages.UPLOAD_WRITE_APPEND,
     }
-    if by_month and key:
-        year, month = key.split('-')
-        row['group'] = messages.UPLOAD_MONTH_OF_YEAR.format(month=int(month), year=year)
-    elif by_month:
-        row['group'] = messages.CHECK_NO_DELIVERY_DATE
-        row['subtitle'] = messages.UPLOAD_UNDATED_NOTE.format(
-            empty=grouping['empty'], unreadable=grouping['unreadable']
-        )
-    return row
 
 
 def _existing_groups(conn, table: FormTable, domain_id: int, year: int | None, grouping: dict) -> dict[str, dict]:
-    by_month = grouping['method'] == GROUP_BY_MONTH
-    expression = (
-        sql.SQL("coalesce(to_char(s.{}, 'YYYY-MM'), '')") if by_month else sql.SQL("coalesce(s.{}::text, '')")
-    ).format(sql.Identifier(grouping['column']))
+    expression = sql.SQL("coalesce(s.{}::text, '')").format(sql.Identifier(grouping['column']))
     year_condition, year_params = _silver_year_condition(table, year)
     rows = warehouse_sql.query(
         conn,

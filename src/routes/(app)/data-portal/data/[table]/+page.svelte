@@ -165,7 +165,7 @@
 {:else if !table}
 	<p class="desc">{$i18n.t('Loading data…')}</p>
 {:else}
-	<HeaderCard title={table.name} description={table.description} back={() => history.back()}>
+	<HeaderCard title={table.name} back={() => history.back()}>
 		<svelte:fragment slot="actions">
 			<button
 				type="button"

@@ -2775,5 +2775,16 @@
 	"Your usage stats have been successfully synced.": "",
 	"YouTube": "Youtube",
 	"Youtube Language": "Ngôn ngữ Youtube",
-	"Youtube Proxy URL": "URL Proxy Youtube"
+	"Youtube Proxy URL": "URL Proxy Youtube",
+	"Data Portal is unavailable": "Data Portal tạm thời không dùng được",
+	"Data Portal cannot connect to the database": "Data Portal không kết nối được tới cơ sở dữ liệu",
+	"Data Portal has no database configured": "Data Portal chưa được cấu hình cơ sở dữ liệu",
+	"Contact Admin to configure the database before uploading or viewing data.": "Liên hệ Admin cấu hình cơ sở dữ liệu trước khi nạp hoặc xem dữ liệu.",
+	"No database is configured. Data Portal stays locked until a connection is saved here.": "Chưa cấu hình cơ sở dữ liệu. Data Portal bị khoá cho tới khi lưu kết nối tại đây.",
+	"Checking whether the file matches the form…": "Đang kiểm tra tệp có đúng biểu mẫu không…",
+	"The file does not match the form. Choose the correct file.": "Tệp không đúng biểu mẫu. Hãy chọn đúng tệp.",
+	"The file does not match the form {{form}}": "Tệp không đúng biểu mẫu {{form}}",
+	"Selected · matches the form": "Đã chọn · đúng biểu mẫu",
+	"Does not match the form": "Không đúng biểu mẫu",
+	"Checking the form…": "Đang kiểm tra biểu mẫu…"
 }

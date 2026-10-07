@@ -1,7 +1,7 @@
 import { get, writable } from 'svelte/store';
 
-import { getDomains } from '$lib/apis/data-portal';
-import type { Domain } from '$lib/apis/data-portal/types';
+import { getDomains, getPortalStatus } from '$lib/apis/data-portal';
+import type { Domain, PortalStatus } from '$lib/apis/data-portal/types';
 
 export const DATA_YEARS = ['2025', '2026', '2027', '2028', '2029', '2030', '2031'];
 
@@ -9,6 +9,17 @@ export const selectedDomain = writable<string>('HQKD');
 export const selectedYear = writable<string>('');
 
 export const portalDomains = writable<Domain[]>([]);
+
+export const portalStatus = writable<PortalStatus | null>(null);
+
+export const refreshPortalStatus = async () => {
+	const status = await getPortalStatus(localStorage.token);
+	portalStatus.set(status);
+	if (!status.ready) {
+		portalDomains.set([]);
+	}
+	return status;
+};
 
 export type UploadDraft = {
 	domain: string;

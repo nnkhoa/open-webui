@@ -43,16 +43,21 @@ class XlsxXmlReader:
         return [name for name, visible in self._sheet_visibility if visible]
 
     def grid(self, sheet_name: str) -> Grid:
-        path = self._sheet_paths.get(normalize_name(sheet_name))
-        if path is None:
-            raise SourceFileError(messages.SOURCE_REREAD_MISSING_SHEET.format(sheet=sheet_name))
-        root = ElementTree.fromstring(self._zip.read(path))
         grid: Grid = {}
-        for row in root.iter(f'{SPREADSHEET_NAMESPACE}row'):
+        for row in self._sheet_rows(sheet_name):
             values = self._row_values(row)
             if values:
                 grid[int(row.get('r'))] = values
         return grid
+
+    def hidden_rows(self, sheet_name: str) -> set[int]:
+        return {int(row.get('r')) for row in self._sheet_rows(sheet_name) if row.get('hidden') in ('1', 'true')}
+
+    def _sheet_rows(self, sheet_name: str) -> list[ElementTree.Element]:
+        path = self._sheet_paths.get(normalize_name(sheet_name))
+        if path is None:
+            raise SourceFileError(messages.SOURCE_REREAD_MISSING_SHEET.format(sheet=sheet_name))
+        return list(ElementTree.fromstring(self._zip.read(path)).iter(f'{SPREADSHEET_NAMESPACE}row'))
 
     def _read_shared_strings(self) -> list[str]:
         if SHARED_STRINGS_PATH not in self._zip.namelist():

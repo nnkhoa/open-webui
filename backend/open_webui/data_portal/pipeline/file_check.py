@@ -14,17 +14,16 @@ from ..sources.xlsx import sheet_names
 from .bronze import fill_derived_columns
 from .context import BronzeRow, CleanRow
 from .dedup import hash_row
+from .normalize import normalize_rows
 from .structure import check_structure
 from .validate import UnparsedCells, validate_rows
 
 TOTAL_KIND_QUANTITY = 'quantity'
 TOTAL_KIND_AMOUNT = 'amount'
 QUANTITY_COLUMN = 'so_luong'
-GROUP_BY_MONTH = 'month'
-GROUP_BY_VALUE = 'value'
 CONFIRM_GROUPING = {
-    'fact_may_mau': ('ngay_giao_mau', GROUP_BY_MONTH),
-    'fact_gia_cong': ('ma_don_vi_gc', GROUP_BY_VALUE),
+    'fact_may_mau': 'ma_nhom_kd',
+    'fact_gia_cong': 'ma_don_vi_gc',
 }
 
 
@@ -50,10 +49,6 @@ def total_columns(table: FormTable) -> list[str]:
     return []
 
 
-def month_key(value) -> str | None:
-    return None if value is None else f'{value.year:04d}-{value.month:02d}'
-
-
 def check_file(form: Form, path: Path, year: int | None) -> dict:
     sheets = sheet_names(path)
     result: dict = {'sheet_count': len(sheets), 'sheets': sheets, 'errors': [], 'failed_step': None, 'tables': []}
@@ -66,7 +61,7 @@ def check_file(form: Form, path: Path, year: int | None) -> dict:
             return result
         row_errors: list[dict] = []
         for table in form.tables_by_display_order:
-            result['tables'].append(_check_table(reader, table, year, row_errors))
+            result['tables'].append(_check_table(reader, form, table, year, row_errors))
         if row_errors:
             result['errors'], result['failed_step'] = row_errors, 'A3'
         result['data_sheet'] = _data_sheet(reader, form)
@@ -76,6 +71,14 @@ def check_file(form: Form, path: Path, year: int | None) -> dict:
         if len(form.tables) == 1 and form.tables[0].merge == 'replace_all' and year:
             result['commit_result'] = _commit_result(form, year, info)
         return result
+    finally:
+        reader.close()
+
+
+def check_form_match(form: Form, path: Path) -> list[dict]:
+    reader = open_reader(form.source_kind, path, form)
+    try:
+        return check_structure(reader, form)
     finally:
         reader.close()
 
@@ -143,11 +146,12 @@ def _read_rows(reader, table: FormTable, year: int | None) -> list[BronzeRow]:
     return rows
 
 
-def _check_table(reader, table: FormTable, year: int | None, errors: list[dict]) -> dict:
+def _check_table(reader, form: Form, table: FormTable, year: int | None, errors: list[dict]) -> dict:
     rows = _read_rows(reader, table, year)
     unparsed: UnparsedCells = {}
     try:
         kept, duplicates = validate_rows(table, rows, unparsed)
+        kept = normalize_rows(form, table, kept)
         missing_required = 0
     except StructureError as exc:
         errors += exc.errors
@@ -185,32 +189,22 @@ def _check_table(reader, table: FormTable, year: int | None, errors: list[dict])
     if table.partition_by:
         check['by_period'] = _by_period(table, kept, summed_columns)
     if table.name in CONFIRM_GROUPING:
-        check['by_group'] = _by_group(table, rows, kept)
+        check['by_group'] = _by_group(table, kept)
     return check
 
 
-def _by_group(table: FormTable, rows: list[BronzeRow], kept: list[CleanRow]) -> dict:
-    column, grouping = CONFIRM_GROUPING[table.name]
+def _by_group(table: FormTable, kept: list[CleanRow]) -> dict:
+    column = CONFIRM_GROUPING[table.name]
     groups: dict[str, _GroupTotals] = {}
-    empty = unreadable = 0
-    for bronze_row, row in zip(rows, kept, strict=False):
+    for row in kept:
         value = row.values.get(column)
-        if grouping == GROUP_BY_MONTH:
-            key = month_key(value) or ''
-            if value is None:
-                empty += bronze_row.values.get(column) is None
-                unreadable += bronze_row.values.get(column) is not None
-        else:
-            key = '' if value is None else str(value)
+        key = '' if value is None else str(value)
         totals = groups.setdefault(key, _GroupTotals())
         totals.row_count += 1
         if row.values.get(QUANTITY_COLUMN) is not None:
             totals.quantity += Decimal(row.values[QUANTITY_COLUMN])
     return {
         'column': column,
-        'method': grouping,
-        'empty': empty,
-        'unreadable': unreadable,
         'order': list(groups),
         'groups': {
             key: {'row_count': totals.row_count, 'quantity': str(totals.quantity)} for key, totals in groups.items()

@@ -32,6 +32,7 @@ Hợp đồng thực tế của `open_webui/data_portal/api` — đúng với m�
 | Phương thức, đường dẫn | Quyền | Phần |
 |---|---|---|
 | `GET /domains` | A, L | 3.1 |
+| `POST /uploads/form-check` | A, L | 3.2a |
 | `POST /uploads` | A, L | 3.2 |
 | `GET /uploads/{pending_id}` | A, L | 3.3 |
 | `DELETE /uploads/{pending_id}` | A, L | 3.4 |
@@ -48,6 +49,7 @@ Hợp đồng thực tế của `open_webui/data_portal/api` — đúng với m�
 | `GET /tables/{table}` | A, L | 3.13 |
 | `GET /tables/{table}/export.xlsx` | A, L | 3.14 |
 | `GET /db-config` · `POST /db-config/test` · `PUT /db-config` · `DELETE /db-config` | A | 3.15 |
+| `GET /status` | A, L | 3.16 |
 
 ### 3.1 `GET /domains`
 
@@ -57,13 +59,17 @@ Hợp đồng thực tế của `open_webui/data_portal/api` — đúng với m�
    "subtitle": "HQKD · Báo cáo hiệu quả từng khách hàng",
    "file_types": [{"code": "BAO_CAO_HQKH", "name": "Báo cáo hiệu quả từng khách hàng", "subtitle": null}]},
   {"code": "HQ-MAU-GC", "name": "Hiệu quả may mẫu chào hàng, gia công ngoài",
-   "subtitle": "HQ-MAU-GC · Lịch may mẫu, Đơn gia công ngoài",
-   "file_types": [{"code": "LICH_MAY_MAU", "name": "Lịch may mẫu", "subtitle": "SAMPLE MAKING SCHEDULE"},
-                  {"code": "DON_GIA_CONG", "name": "Đơn gia công ngoài", "subtitle": "TOTAL PO SUBCON"}]}
+   "subtitle": "HQ-MAU-GC · May mẫu, Gia công ngoài",
+   "file_types": [{"code": "LICH_MAY_MAU", "name": "May mẫu", "subtitle": "SAMPLE MAKING SCHEDULE"},
+                  {"code": "DON_GIA_CONG", "name": "Gia công ngoài", "subtitle": "TOTAL PO SUBCON"}]}
 ]
 ```
 
 `file_types` rỗng ⇒ nhóm chưa khai loại tệp (màn trống "Chưa có thông tin"). Danh sách năm cố định 2025–2031, giao diện tự có.
+
+### 3.2a `POST /uploads/form-check` — Tệp có đúng biểu mẫu không (chỉ đọc)
+
+Form-data `domain`, `file_type` (bắt buộc khi nhóm có nhiều loại tệp), `file` (.xlsx). Chỉ kiểm tra cấu trúc (sheet, dòng tiêu đề, tên cột cần lấy) theo biểu mẫu của loại tệp; không lưu tệp, không tạo lần nạp. → `{"ok": bool, "form": "<tên loại tệp>", "errors": [{sheet, location, issue, resolution, reason_code}]}`. Màn Nạp gọi ngay khi chọn tệp; `ok=false` thì báo "Không đúng biểu mẫu" và khoá nút Kiểm tra tệp.
 
 ### 3.2 `POST /uploads` — Kiểm tra tệp (chỉ đọc)
 
@@ -103,9 +109,9 @@ Chỉ người đã tải lên mới xem / huỷ / xác nhận được; ngườ
 - `identical`: `{load_id, created_at, user}` — lần nạp đang có hiệu lực cùng nhóm, năm, loại tệp có cùng mã băm tệp.
 - `existing` (mỗi dòng): `null` hoặc `{row_count, load_id, created_at, user}` — dữ liệu đang có của nhóm dòng đó trong năm đã chọn. `write_mode`: "Ghi đè" / "Ghi thêm".
 - **HQKD**: `overwrite` / `new` là số tháng; `previous: null`; `by_group` mỗi tháng 2 dòng (`data` "Kết quả kinh doanh" / "Chi phí"), tên tháng lặp ở cả hai dòng (giao diện tự ẩn ở dòng thứ hai).
-- **HQ-MAU-GC**: `sheet` = sheet lấy dữ liệu ("30 Sep - OK", "Final 09.4"); `previous`: `null` hoặc `{row_count, load_id, created_at, user}` — dữ liệu đang có hiệu lực của cùng loại tệp, năm (sẽ bị ghi đè toàn bộ); `overwrite` / `new` = `["Lịch may mẫu"]` theo đó.
-  - Lịch may mẫu: `by_group.title` "Theo tháng giao mẫu", `first_column` "Tháng giao mẫu"; dòng `{group: "Tháng 6/2026", row_count, quantity, existing, write_mode}`, dòng cuối `{group: "Chưa có ngày giao mẫu", subtitle: "148 ô trống, 24 ô không đọc được ngày", …}`.
-  - Đơn gia công ngoài: "Theo đơn vị gia công" / "Đơn vị gia công", thứ tự như trong tệp.
+- **HQ-MAU-GC**: `sheet` = sheet lấy dữ liệu ("30 Sep - OK", "Final 09.4"); `previous`: `null` hoặc `{row_count, load_id, created_at, user}` — dữ liệu đang có hiệu lực của cùng loại tệp, năm (sẽ bị ghi đè toàn bộ); `overwrite` / `new` = `["May mẫu"]` theo đó.
+  - May mẫu: `by_group.title` "Theo nhóm kinh doanh", `first_column` "Nhóm kinh doanh"; dòng `{group: "SALE 6", row_count, quantity, existing, write_mode}`, giá trị nhóm đã chuẩn hoá như lớp Silver.
+  - Gia công ngoài: "Theo đơn vị gia công" / "Đơn vị gia công", thứ tự như trong tệp.
   - `total`: `{row_count, quantity, existing}` (`existing` = số dòng đang có, hoặc `null`).
 
 ### 3.4 `DELETE /uploads/{pending_id}` — "Huỷ, không nạp"
@@ -178,9 +184,9 @@ Link = {table, layer: "gold"|"silver"|"bronze", year?, period?, query?}  hoặc 
 | | `codes` | Đối chiếu tháng, khách hàng, nhóm, khoản mục |
 | | `before_after` | Các tháng trong năm {năm} trước và sau lần nạp — 12 dòng; ô "Số dòng" dạng chuỗi "50 / 1.000" (Kết quả kinh doanh / Chi phí) |
 | HQ-MAU-GC | `row_count` | như trên, 1 dòng |
-| | `totals` | Đối chiếu tổng: tệp gốc ↔ database — gồm dòng ô tổng P10 ("Ghi nhận") / P1 |
-| | `empty_cells` | Ô không đọc được ngày hoặc số, để trống trong database — `count` = tổng số ô; chỉ có khi có ô như vậy |
-| | `by_dimension` | Đối chiếu số lượng theo {chia theo} — `count` = số nhóm; `options` `group_by`: Lịch may mẫu `ngay_giao_mau` / `ma_nhom_kd` / `ten_khach` / `ma_giai_doan_mau`, Đơn gia công `ma_don_vi_gc` / `khu_vuc` / `ten_khach` / `ma_hang`; phân trang (`page`, mặc định `page_size=25`), `totals` cộng mọi nhóm |
+| | `totals` | Đối chiếu tổng: tệp gốc ↔ database — gồm dòng ô tổng P10 / P1 (phải khớp tổng `so_luong`) |
+| | `empty_cells` | Ô không đọc được số, để trống trong database — `count` = tổng số ô; chỉ có khi có ô như vậy |
+| | `by_dimension` | Đối chiếu số lượng theo {chia theo} — `count` = số nhóm; `options` `group_by`: May mẫu `ma_nhom_kd` / `ma_khach` / `sample` / `men_lady`, Gia công `ma_don_vi_gc` / `location` / `ma_khach`; phân trang (`page`, mặc định `page_size=25`), `totals` cộng mọi nhóm |
 | | `codes` | Đối chiếu các mã: tệp gốc ↔ database |
 | | `before_after` | Nhóm HQ-MAU-GC năm {năm} trước và sau lần nạp |
 
@@ -208,7 +214,7 @@ Link = {table, layer: "gold"|"silver"|"bronze", year?, period?, query?}  hoặc 
 
 ### 3.12 `GET /tables?domain&year`
 
-Thứ tự cố định (HQKD: Kết quả kinh doanh, Chi phí, Danh mục khách hàng, Danh mục chi phí; HQ-MAU-GC: May mẫu chào hàng, Đơn gia công ngoài).
+Thứ tự cố định (HQKD: Kết quả kinh doanh, Chi phí, Danh mục khách hàng, Danh mục chi phí; HQ-MAU-GC: May mẫu chào hàng, Gia công ngoài).
 
 ```json
 [{"table": "fact_ket_qua_kd", "name": "Kết quả kinh doanh", "description": "…", "kind": "fact",
@@ -250,6 +256,10 @@ Tệp `{NHÓM}-{bảng}-{lớp}[-{năm}].xlsx` (`Content-Disposition`), header `
 - `PUT /db-config` (cùng thân) → thử trước; không được → `{"ok": false, "message": "<lỗi>"}`, giữ cấu hình cũ; được → `{"ok": true, "message": "Đã lưu và nối tới {user}@{host}:{port}/{db}."}`.
 - `DELETE /db-config` → `{"message": "Đã bỏ cấu hình. Dữ liệu trong cơ sở dữ liệu đó không bị đụng tới."}`.
 - Ô sai → `422 {"detail": "Cấu hình kết nối chưa hợp lệ.", "field_errors": {"host": "Chưa nhập địa chỉ máy chủ.", "port": "Cổng phải là số."}}`.
+
+### 3.16 `GET /status`
+
+→ `{"configured": bool, "ready": bool, "reason": str | null}`. `configured` = Admin đã lưu cấu hình database; `ready` = đang kết nối được; `reason` = lý do khi `ready=false`. Gọi được cả khi chưa cấu hình. Mọi endpoint khác trừ `/db-config*` trả 503 khi `ready=false`; giao diện dùng endpoint này để khoá Data Portal.
 
 ## 4. Ghi chú cho người tích hợp
 

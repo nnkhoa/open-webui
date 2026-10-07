@@ -1,11 +1,26 @@
 from __future__ import annotations
 
 import json
+from typing import NamedTuple
 
 from ..db import catalog_sql
 from ..db import sql as warehouse_sql
 from .loader import FormRegistry
 from .schema import Form, FormColumn, FormTable
+
+
+class IdSpec(NamedTuple):
+    table: str
+    key: str
+    natural_key: str
+    children: tuple[str, ...]
+
+
+ID_SPECS = (
+    IdSpec('domain', 'domain_id', 'code', ('ctl_domain_form',)),
+    IdSpec('form', 'form_id', 'code', ('ctl_form_table', 'ctl_domain_form')),
+    IdSpec('form_table', 'table_id', 'name', ('ctl_form_column',)),
+)
 
 
 def sync_definitions(catalog_conn, warehouse_conn, registry: FormRegistry) -> None:
@@ -18,12 +33,51 @@ def sync_definitions(catalog_conn, warehouse_conn, registry: FormRegistry) -> No
 def mirror_to_warehouse(catalog_conn, warehouse_conn) -> None:
     if warehouse_conn is None:
         return
+    _adopt_warehouse_ids(catalog_conn, warehouse_conn)
     _mirror_domains(catalog_conn, warehouse_conn)
     _mirror_forms(catalog_conn, warehouse_conn)
     _mirror_tables(catalog_conn, warehouse_conn)
     _mirror_columns(catalog_conn, warehouse_conn)
     _mirror_domain_forms(catalog_conn, warehouse_conn)
     _mirror_datasets(catalog_conn, warehouse_conn)
+
+
+def _adopt_warehouse_ids(catalog_conn, warehouse_conn) -> None:
+    catalog_sql.execute(catalog_conn, 'PRAGMA defer_foreign_keys = ON')
+    for spec in ID_SPECS:
+        warehouse_ids = {
+            row['natural_key']: row['id']
+            for row in warehouse_sql.query(
+                warehouse_conn, f'SELECT {spec.key} AS id, {spec.natural_key} AS natural_key FROM ctl.{spec.table}'
+            )
+        }
+        catalog_ids = {
+            row['natural_key']: row['id']
+            for row in catalog_sql.query(
+                catalog_conn, f'SELECT {spec.key} AS id, {spec.natural_key} AS natural_key FROM ctl_{spec.table}'
+            )
+        }
+        moves = {
+            catalog_ids[name]: warehouse_id
+            for name, warehouse_id in warehouse_ids.items()
+            if name in catalog_ids and catalog_ids[name] != warehouse_id
+        }
+        if moves:
+            _renumber(catalog_conn, spec, moves, max([*warehouse_ids.values(), *catalog_ids.values()]))
+
+
+def _renumber(catalog_conn, spec: IdSpec, moves: dict[int, int], highest_id: int) -> None:
+    occupied = set(moves.values()) - set(moves)
+    parked = {old: -old for old in [*moves, *occupied]}
+    next_free = iter(range(highest_id + 1, highest_id + 1 + len(occupied)))
+    final = {**{-old: new for old, new in moves.items()}, **{-old: next(next_free) for old in occupied}}
+    for step in (parked, final):
+        for old, new in step.items():
+            catalog_sql.execute(
+                catalog_conn, f'UPDATE ctl_{spec.table} SET {spec.key} = ? WHERE {spec.key} = ?', (new, old)
+            )
+            for child in spec.children:
+                catalog_sql.execute(catalog_conn, f'UPDATE {child} SET {spec.key} = ? WHERE {spec.key} = ?', (new, old))
 
 
 def _delete_stale_forms(catalog_conn, kept_form_ids: list[int]) -> None:

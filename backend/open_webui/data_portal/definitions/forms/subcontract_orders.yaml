@@ -1,31 +1,36 @@
 # =============================================================================
-#  Bộ bảng DON_GIA_CONG — Đơn gia công ngoài (nhóm HQ-MAU-GC)
+#  Bộ bảng DON_GIA_CONG — Gia công ngoài (nhóm HQ-MAU-GC)
 #
-#  Tệp NBC: "TOTAL PO SUBCON.xlsx" (9 sheet, 6 sheet ẩn). Bộ đọc
-#  `sources/header_table.py` nhận sheet **theo dòng tiêu đề**: sheet đang
-#  hiện có đủ 7 cột cần lấy (sheet ẩn "Fty update" cũng có đủ cột nhưng không
-#  tính). Dữ liệu từ dòng ngay dưới dòng tiêu đề tới trước dòng trống đầu tiên.
-#  Dòng 1 là các ô tổng (SUBTOTAL), chỉ dùng để đối chiếu (QT-16, 18.2 b).
+#  Tệp NBC: "TOTAL PO SUBCON.xlsx". Bộ đọc `sources/header_table.py` nhận sheet
+#  đang hiện **theo dòng tiêu đề**: dòng có đủ 5 tên cột dưới đây (dòng 2). Sheet ẩn
+#  không tính. Dữ liệu từ dòng ngay dưới dòng tiêu đề; bỏ dòng ẩn, dừng ở dòng đang
+#  hiện trống đầu tiên. Dòng 1 là các ô tổng (SUBTOTAL), chỉ dùng để đối chiếu.
 #
-#  Cột theo phiếu khảo sát sheet "5. Gia cong ngoai" (Bảng D) và đặc tả mục 10.3.
-#  Cột trong phiếu mà tệp không có thì giữ cột, để trống (QT-21).
+#  Chỉ lấy các cột chứa thông tin NBC hiện cần: Subcon, Location, BUYER,
+#  Order qty, Actual cut. Tên biến theo phiếu khảo sát sheet "5. Gia cong ngoai"
+#  và "6. Danh muc"; cột phiếu chưa có tên thì giữ tên cột gốc (location, actual_cut).
 #
-#  Nạp lại cùng năm: ghi đè toàn bộ (`merge: replace_all`, QT-10).
+#  Bronze giữ y như tệp. Silver làm sạch chữ, ô chữ trống → "Không có thông tin",
+#  và đổi tên khách sang mã theo definitions/customer_aliases.yaml.
+#
+#  Ô P1 (SUBTOTAL của cột Order qty) phải bằng tổng so_luong.
+#  Nạp lại cùng năm: ghi đè toàn bộ năm đó (`merge: replace_all`).
 # =============================================================================
 
 form:
   code: DON_GIA_CONG
-  version: 1
-  label: Đơn gia công ngoài
+  version: 2
+  label: Gia công ngoài
   subtitle: TOTAL PO SUBCON
-  description: Đơn giao xưởng gia công ngoài — đơn vị gia công, mã hàng, đơn hàng, màu, sản lượng.
+  description: Đơn giao xưởng gia công ngoài — đơn vị gia công, khu vực, khách hàng, số lượng đặt và đã cắt.
   policy:
     unknown_sheet: ignore
     unknown_column: ignore
   source:
     kind: header_table
     data_row_offset: 1
-    total_cell: P1               # ô SUBTOTAL của cột Order qty — phải bằng tổng so_luong
+    total_cell: P1
+    required_headers: [Subcon, Location, BUYER, Order qty, Actual cut]
 
 tables:
   - name: fact_gia_cong
@@ -33,14 +38,14 @@ tables:
     sheet: DON_GIA_CONG
     label: Đơn gia công ngoài
     card_label: Đơn gia công ngoài
-    description: Từng dòng đơn giao xưởng gia công, sản lượng và hai mức giá.
-    grain: Một dòng cho mỗi đợt giao của một đơn vị gia công cho một mã hàng, một đơn hàng, một màu.
+    description: Từng dòng đơn giao xưởng gia công — số lượng đặt và số lượng đã cắt.
+    grain: Một dòng cho mỗi dòng dữ liệu đang hiện của sheet đơn gia công.
     purpose: >
       Nhóm câu hỏi về hiệu quả gia công ngoài: tổng sản lượng và số đơn vị gia công
-      trong kỳ, và các đơn có giá trị lỗ do giá gia công cao hơn giá chào hàng.
-    business_key: [nam, ma_don_vi_gc, ma_hang]
+      trong kỳ, theo khu vực và theo khách hàng.
+    business_key: [nam, ma_don_vi_gc, ma_khach]
     merge: replace_all
-    order: [nam, ma_don_vi_gc, ma_hang, ma_don_hang]
+    order: [nam, ma_don_vi_gc, ma_khach]
     display_order: 1
     columns:
       - name: nam
@@ -49,88 +54,42 @@ tables:
         label: Không có trong tệp — lấy từ ô Năm dữ liệu chọn lúc nạp
         meaning: Năm của số liệu, chọn ở ô Năm dữ liệu lúc nạp.
         example: "2026"
-      - name: ma_dong
-        type: text
-        value_from: trong
-        label: Không có trong tệp — để trống
-        meaning: Mã riêng của một dòng đơn. Tệp không có cột này nên để trống.
-      - name: ky_thang
-        type: text
-        value_from: trong
-        label: Không có trong tệp — để trống
-        meaning: Kỳ mà dòng đơn thuộc về. Mốc xác định kỳ chưa thống nhất (phiếu khảo sát sheet 7, mục 6) nên để trống.
       - name: ma_don_vi_gc
         type: text
         required: true
         header: Subcon
         label: Subcon
-        meaning: Đơn vị gia công nhận đơn, giữ nguyên tên trong tệp.
-        example: NT
-      - name: khu_vuc
+        display_width: 200
+        normalize: clean_text
+        meaning: Đơn vị gia công nhận đơn.
+        example: TNT
+      - name: location
         type: text
         header: Location
         label: Location
+        normalize: clean_text
         meaning: Khu vực của đơn vị gia công.
-        example: HA NAM
+        example: BINH DUONG
       - name: ma_khach
-        type: text
-        value_from: trong
-        label: Không có trong tệp — để trống
-        meaning: Mã khách hàng của đơn hàng. Tệp chỉ có tên khách nên để trống.
-      - name: ten_khach
         type: text
         header: BUYER
         label: BUYER
-        meaning: Tên khách hàng của đơn hàng.
-        example: FAM
-      - name: ma_nhom_kd
-        type: text
-        value_from: trong
-        label: Không có trong tệp — để trống
-        meaning: Nhóm kinh doanh phụ trách. Cột SALES của tệp ghi tên người nên để trống.
-      - name: ma_hang
-        type: text
-        required: true
-        header: Style
-        label: Style
-        meaning: Mã hàng của đơn.
-        example: OR015554
-      - name: ma_don_hang
-        type: text
-        header: PO No
-        label: PO No
-        meaning: Mã đơn hàng hoặc mã PO.
-        example: Q10950
-      - name: mau
-        type: text
-        header: Color
-        label: Color
-        meaning: Màu của dòng đơn.
-        example: RIO RED LAND PLAID
+        normalize: customer_code
+        meaning: >
+          Mã khách hàng của đơn. Tên trong tệp được đổi sang mã theo danh mục tên gọi khác
+          của khách hàng; tên chưa có mã giữ nguyên.
+        example: EO-00075
       - name: so_luong
         type: number
         role: measure
         header: Order qty
         label: Order qty
-        meaning: Số lượng sản phẩm của dòng đơn.
+        meaning: Số lượng sản phẩm đặt của dòng đơn.
         example: "2802"
-      - name: don_gia_gia_cong
+      - name: actual_cut
         type: number
-        value_from: trong
-        label: Không có trong tệp — để trống
-        meaning: Đơn giá trả cho đơn vị gia công, tính trên một sản phẩm. Tệp không có cột này nên để trống.
-      - name: don_gia_chao_hang
-        type: number
-        value_from: trong
-        label: Không có trong tệp — để trống
-        meaning: Đơn giá chào khách của cùng mã hàng. Tệp không có cột này nên để trống.
-      - name: ma_tien_te
-        type: text
-        value_from: trong
-        label: Không có trong tệp — để trống
-        meaning: Đơn vị tiền của hai đơn giá. Tệp không có nên để trống.
-      - name: loai_ban_ghi
-        type: text
-        value_from: trong
-        label: Không có trong tệp — để trống
-        meaning: Dòng này là số kế hoạch hay số thực hiện. Tệp không có nên để trống.
+        role: measure
+        header: Actual cut
+        label: Actual cut
+        meaning: Số lượng sản phẩm đã cắt của dòng đơn. Ô trống thì để trống.
+        example: "2802"

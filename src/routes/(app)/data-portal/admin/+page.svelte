@@ -16,6 +16,7 @@
 	import Banner from '$lib/components/data-portal/Banner.svelte';
 	import Dialog from '$lib/components/data-portal/Dialog.svelte';
 	import { formatDateTime } from '$lib/components/data-portal/format';
+	import { refreshPortalStatus } from '$lib/stores/dataPortal';
 
 	const i18n: Writable<i18nType> = getContext('i18n');
 
@@ -32,6 +33,7 @@
 
 	const loadConfig = async () => {
 		dbConfig = await getDbConfig(localStorage.token);
+		await refreshPortalStatus();
 		const config = dbConfig?.config;
 		form = {
 			host: config?.host ?? '',
@@ -151,6 +153,15 @@
 </HeaderCard>
 
 {#if successMessage}<Banner tone="ok" icon="check" title={successMessage} />{/if}
+
+{#if dbConfig && !dbConfig.config}
+	<Banner
+		tone="warn"
+		title={$i18n.t(
+			'No database is configured. Data Portal stays locked until a connection is saved here.'
+		)}
+	/>
+{/if}
 
 {#if dbConfig?.connection}
 	<section class="card">

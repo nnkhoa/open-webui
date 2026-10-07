@@ -2786,5 +2786,16 @@
 	"Your usage stats have been successfully synced.": "",
 	"YouTube": "",
 	"Youtube Language": "",
-	"Youtube Proxy URL": ""
+	"Youtube Proxy URL": "",
+	"Data Portal is unavailable": "",
+	"Data Portal cannot connect to the database": "",
+	"Data Portal has no database configured": "",
+	"Contact Admin to configure the database before uploading or viewing data.": "",
+	"No database is configured. Data Portal stays locked until a connection is saved here.": "",
+	"Checking whether the file matches the form…": "",
+	"The file does not match the form. Choose the correct file.": "",
+	"The file does not match the form {{form}}": "",
+	"Selected · matches the form": "",
+	"Does not match the form": "",
+	"Checking the form…": ""
 }

@@ -26,6 +26,18 @@ export type UploadResult = {
 	status?: LoadStatus;
 };
 
+export type FormCheckRequest = {
+	domain: string;
+	fileType?: string;
+	file: File;
+};
+
+export type FormCheckResult = {
+	ok: boolean;
+	form: string;
+	errors: LoadError[];
+};
+
 export type ConfirmedUpload = {
 	load_id: number;
 	status: LoadStatus;
@@ -298,6 +310,12 @@ export type DbConfig = {
 	} | null;
 	last_tested_at: string | null;
 	saved_at: string | null;
+};
+
+export type PortalStatus = {
+	configured: boolean;
+	ready: boolean;
+	reason: string | null;
 };
 
 export type DbConfigForm = {

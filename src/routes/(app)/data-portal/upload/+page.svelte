@@ -15,7 +15,8 @@
 		uploadDraft,
 		type UploadDraft
 	} from '$lib/stores/dataPortal';
-	import { createUpload } from '$lib/apis/data-portal';
+	import { checkUploadForm, createUpload } from '$lib/apis/data-portal';
+	import type { LoadError } from '$lib/apis/data-portal/types';
 
 	import HeaderCard from '$lib/components/data-portal/HeaderCard.svelte';
 	import StepBar from '$lib/components/data-portal/StepBar.svelte';
@@ -37,6 +38,9 @@
 	let invalidFile = false;
 	let errorMessage = '';
 	let dragging = false;
+	let formCheck: 'idle' | 'checking' | 'ok' | 'mismatch' = 'idle';
+	let formErrors: LoadError[] = [];
+	let checkedKey: unknown[] = [];
 
 	onMount(async () => {
 		try {
@@ -69,6 +73,36 @@
 			? (fileType?.name ?? '')
 			: ''
 		: (fileType?.name ?? $portalDomains[0]?.file_types[0]?.name ?? '');
+
+	$: runFormCheck(draft.file, draft.domain, fileType?.code);
+
+	const runFormCheck = async (file: File | null, domainCode: string, fileTypeCode?: string) => {
+		const key = [file, domainCode, fileTypeCode];
+		if (key.every((value, index) => value === checkedKey[index])) return;
+		checkedKey = key;
+		formErrors = [];
+		if (!file || !domainCode || !file.name.toLowerCase().endsWith(XLSX_EXTENSION)) {
+			formCheck = 'idle';
+			return;
+		}
+		formCheck = 'checking';
+		try {
+			const result = await checkUploadForm(localStorage.token, {
+				domain: domainCode,
+				fileType: fileTypeCode,
+				file
+			});
+			if (checkedKey !== key) return;
+			formCheck = result.ok ? 'ok' : 'mismatch';
+			formErrors = result.errors;
+		} catch (error) {
+			if (checkedKey !== key) return;
+			formCheck = 'mismatch';
+			formErrors = [
+				{ sheet: null, location: null, issue: (error as Error).message, resolution: null }
+			];
+		}
+	};
 
 	const updateDraft = (changes: Partial<UploadDraft>) =>
 		uploadDraft.update((current) => ({ ...current, ...changes }));
@@ -125,12 +159,16 @@
 		<button
 			type="button"
 			class="btn primary"
-			disabled={!!missingInput || checking}
+			disabled={!!missingInput || checking || formCheck !== 'ok'}
 			title={missingInput
 				? $i18n.t('{{reason}} to continue', { reason: missingInput })
-				: $i18n.t(
-						'Read the file and compare it with the existing data. Nothing is written to the database yet.'
-					)}
+				: formCheck === 'checking'
+					? $i18n.t('Checking whether the file matches the form…')
+					: formCheck === 'mismatch'
+						? $i18n.t('The file does not match the form. Choose the correct file.')
+						: $i18n.t(
+								'Read the file and compare it with the existing data. Nothing is written to the database yet.'
+							)}
 			on:click={checkFile}
 		>
 			{#if checking}<span class="spin" aria-hidden="true"></span>{$i18n.t('Checking…')}{:else}<Icon
@@ -151,6 +189,16 @@
 		description={$i18n.t(
 			'The portal only accepts .xlsx files. Open the file in Excel and save it in the correct format.'
 		)}
+	/>
+{/if}
+{#if formCheck === 'mismatch'}
+	<Banner
+		tone="err"
+		icon="x"
+		title={$i18n.t('The file does not match the form {{form}}', { form: fileTypeName })}
+		description={formErrors
+			.map((error) => [error.issue, error.resolution].filter(Boolean).join(' — '))
+			.join('; ')}
 	/>
 {/if}
 {#if errorMessage}
@@ -288,8 +336,16 @@
 						<td>{draft.file ? draft.selectedAt : '-'}</td>
 						<td>
 							{#if !draft.file}<Badge label={$i18n.t('Not uploaded yet')} tone="muted" />
-							{:else if validFile}<Badge label={$i18n.t('Selected · valid')} tone="ok" />
-							{:else}<Badge label={$i18n.t('Not an .xlsx file')} tone="err" />{/if}
+							{:else if !validFile}<Badge label={$i18n.t('Not an .xlsx file')} tone="err" />
+							{:else if formCheck === 'ok'}<Badge
+									label={$i18n.t('Selected · matches the form')}
+									tone="ok"
+								/>
+							{:else if formCheck === 'mismatch'}<Badge
+									label={$i18n.t('Does not match the form')}
+									tone="err"
+								/>
+							{:else}<Badge label={$i18n.t('Checking the form…')} tone="muted" />{/if}
 						</td>
 						<td>
 							<div class="row" style="gap:6px;flex-wrap:nowrap;justify-content:flex-end">

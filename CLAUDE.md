@@ -82,7 +82,9 @@ reconcile, roll back, browse data. The spec is
 - Started in `lifespan` on a worker thread (opens the SQLite notebook, syncs
   the form registry, connects to the warehouse, applies migrations).
 - Storage: `{DATA_DIR}/data_portal/catalog.db` and `uploads/`; the warehouse
-  address lives in the notebook, seeded once from `DATA_PORTAL_DATABASE_URL`.
+  address lives in the notebook and is set only by Admin in Data Portal ▸ Database
+  configuration. Until then every portal API except `/status` and `/db-config*`
+  returns 503 and the UI stays locked.
 - Forms and groups: `data_portal/definitions/`; migrations:
   `data_portal/migrations/`. After editing a form run
   `python -m open_webui.data_portal.manage makemigration` from `backend/`.

@@ -17,6 +17,7 @@ from ..sources.base import open_reader
 from . import bronze, gold, reconcile, reconcile_cards, silver, steps
 from .context import LoadContext
 from .file_check import check_file
+from .normalize import normalize_rows
 from .reconcile import Mismatch
 from .reconcile_cards import ReconcileCards
 from .steps import StepOutcome
@@ -138,7 +139,8 @@ def _matched_sheet_count(ctx: LoadContext) -> int:
 def _write_layers(ctx: LoadContext, table_ids: dict[str, int]) -> None:
     for table in ctx.form.tables_by_dependency:
         bronze_rows = bronze.write(ctx, table)
-        ctx.clean_rows[table.name], duplicates = validate_rows(table, bronze_rows)
+        clean_rows, duplicates = validate_rows(table, bronze_rows)
+        ctx.clean_rows[table.name] = normalize_rows(ctx.form, table, clean_rows)
         ctx.table_result(table).rows_duplicate = len(duplicates)
         _record_periods(ctx, table)
 

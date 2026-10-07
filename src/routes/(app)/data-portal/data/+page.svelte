@@ -69,7 +69,7 @@
 	const tableCells = (table: TableSummary, multiple: boolean) =>
 		multiple
 			? [
-					{ value: table.name, bold: true, subtitle: table.description, className: 's' },
+					{ value: table.name, bold: true, className: 's' },
 					table.year ?? '—',
 					{
 						value: table.file_type.name,
@@ -81,7 +81,7 @@
 					updatedCell(table)
 				]
 			: [
-					{ value: table.name, bold: true, subtitle: table.description, className: 's' },
+					{ value: table.name, bold: true, className: 's' },
 					table.kind === 'dim' ? $i18n.t('Shared across all years') : (table.year ?? '—'),
 					table.kind === 'dim' ? '—' : (table.months ?? '—'),
 					{ value: formatNumber(table.row_count), className: 's' },

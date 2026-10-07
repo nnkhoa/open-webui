@@ -1,7 +1,7 @@
 import { get } from 'svelte/store';
 
 import { WEBUI_API_BASE_URL } from '$lib/constants';
-import i18n from '$lib/i18n';
+import portalI18n from '$lib/components/data-portal/i18n';
 
 import type {
 	ConfirmedUpload,
@@ -10,10 +10,13 @@ import type {
 	DbConfigResult,
 	Domain,
 	DownloadedFile,
+	FormCheckRequest,
+	FormCheckResult,
 	Load,
 	LoadFilter,
 	LoadList,
 	PendingUpload,
+	PortalStatus,
 	ReconcileCard,
 	ReconcileQuery,
 	SourceSheet,
@@ -71,6 +74,38 @@ export const createUpload = async (token: string, upload: UploadForm): Promise<U
 	body.set('file', upload.file);
 
 	const res = await fetch(`${DATA_PORTAL_API_BASE_URL}/uploads`, {
+		method: 'POST',
+		headers: { Accept: 'application/json', authorization: `Bearer ${token}` },
+		body
+	})
+		.then(readJson)
+		.catch((err) => {
+			error = toApiError(err);
+			console.error(err);
+			return null;
+		});
+
+	if (error) {
+		throw error;
+	}
+
+	return res;
+};
+
+export const checkUploadForm = async (
+	token: string,
+	request: FormCheckRequest
+): Promise<FormCheckResult> => {
+	let error = null;
+
+	const body = new FormData();
+	body.set('domain', request.domain);
+	if (request.fileType) {
+		body.set('file_type', request.fileType);
+	}
+	body.set('file', request.file);
+
+	const res = await fetch(`${DATA_PORTAL_API_BASE_URL}/uploads/form-check`, {
 		method: 'POST',
 		headers: { Accept: 'application/json', authorization: `Bearer ${token}` },
 		body
@@ -373,6 +408,27 @@ export const exportTable = async (
 		`${table}.xlsx`
 	);
 
+export const getPortalStatus = async (token: string): Promise<PortalStatus> => {
+	let error = null;
+
+	const res = await fetch(`${DATA_PORTAL_API_BASE_URL}/status`, {
+		method: 'GET',
+		headers: jsonHeaders(token)
+	})
+		.then(readJson)
+		.catch((err) => {
+			error = toApiError(err);
+			console.error(err);
+			return null;
+		});
+
+	if (error) {
+		throw error;
+	}
+
+	return res;
+};
+
 export const getDbConfig = async (token: string): Promise<DbConfig> => {
 	let error = null;
 
@@ -540,7 +596,7 @@ const toApiError = (err: unknown) =>
 	err instanceof DataPortalApiError ? err : new DataPortalApiError(0, connectionLostMessage());
 
 const connectionLostMessage = () =>
-	get(i18n).t('Connection lost; the processing result could not be determined.');
+	get(portalI18n).t('Connection lost; the processing result could not be determined.');
 
 const fileNameFromHeader = (header: string | null) => {
 	const match = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(header ?? '');

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 import re
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 KIND = 'header_table'
 HEADER_SEARCH_ROWS = 30
 TOTAL_ROW_PREFIXES = ('total', 'tổng cộng')
+TOTAL_LABEL_PATTERN = re.compile(r'^(total|tổng cộng)\s*:?$')
 CELL_REFERENCE_PATTERN = re.compile(r'^([A-Z]+)(\d+)$')
 MONTH_NUMBERS = {
     name: number
@@ -183,10 +184,10 @@ class HeaderTableReader:
             sheet=candidate.worksheet.title,
             header_row=candidate.header_row,
             required_column_count=len(self._required_headers),
-            first_row=first_row,
+            first_row=self._rows[0].number if self._rows else first_row,
             last_row=last_row,
             hidden_row_count=hidden_row_count,
-            visible_row_count=len(self._rows) - hidden_row_count,
+            visible_row_count=len(self._rows),
             total_cell=self._read_total_cell(candidate),
             report_date=self._read_report_date(candidate.grid),
         )
@@ -199,14 +200,16 @@ class HeaderTableReader:
         }
         last_row = first_row - 1
         hidden_row_count = 0
-        row_number = first_row
-        while row_number in grid:
+        for row_number in range(first_row, max(grid, default=0) + 1):
+            if row_number in hidden_rows:
+                hidden_row_count += row_number in grid
+                continue
+            if row_number not in grid:
+                break
             values = [cell_text(grid[row_number].get(column)) for column in column_numbers]
-            if not _is_total_row(values) and any(value is not None for value in values):
+            if not _is_total_row(values, grid[row_number].values()) and any(value is not None for value in values):
                 self._rows.append(SourceRow(row_number, dict(zip(self._required_headers, values, strict=True))))
-                hidden_row_count += row_number in hidden_rows
             last_row = row_number
-            row_number += 1
         return last_row, hidden_row_count
 
     def _read_total_cell(self, candidate: _HeaderCandidate) -> TotalCell | None:
@@ -264,8 +267,10 @@ def _parse_cell_reference(reference: str) -> tuple[int, int]:
     return column_index(match.group(1)), int(match.group(2))
 
 
-def _is_total_row(values: list[str | None]) -> bool:
-    return any(value is not None and normalize_name(value).startswith(TOTAL_ROW_PREFIXES) for value in values)
+def _is_total_row(values: list[str | None], row_cells: Iterable[Any]) -> bool:
+    if any(value is not None and normalize_name(value).startswith(TOTAL_ROW_PREFIXES) for value in values):
+        return True
+    return any(isinstance(cell, str) and TOTAL_LABEL_PATTERN.match(normalize_name(cell)) for cell in row_cells)
 
 
 def _parse_report_date(value: Any) -> str | None:
