@@ -23,5 +23,5 @@ domains:
     forms: BAO_CAO_HQKH
 
   - code: HQ-MAU-GC
-    name: May mẫu và Gia công ngoài
+    name: Hiệu quả may mẫu chào hàng, gia công ngoài
     forms: [LICH_MAY_MAU, DON_GIA_CONG]
