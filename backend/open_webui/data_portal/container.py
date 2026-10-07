@@ -29,13 +29,12 @@ class Container:
 
     def reconnect_warehouse(self, catalog_conn, timeout: float = INTERACTIVE_CONNECT_TIMEOUT) -> None:
         saved = warehouse_config.get_connection(catalog_conn)
-        dsn = saved.dsn if saved else self.settings.default_database_url
-        target = saved.description if saved else dsn
-        if not dsn:
+        if saved is None:
             self.warehouse.disconnect(messages.WAREHOUSE_NOT_SET, forget_target=True)
             return
+        target = saved.description
         try:
-            self.warehouse.connect(dsn, timeout=timeout)
+            self.warehouse.connect(saved.dsn, timeout=timeout)
         except psycopg.Error as e:
             reason = warehouse_config.describe_error(e)
             self.warehouse.disconnect(messages.WAREHOUSE_CONNECT_FAILED.format(target=target, reason=reason).strip())

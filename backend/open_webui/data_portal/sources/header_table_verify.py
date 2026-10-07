@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+from collections.abc import Iterable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -11,6 +13,7 @@ if TYPE_CHECKING:
 
 HEADER_SEARCH_ROWS = 30
 TOTAL_ROW_PREFIXES = ('total', 'tổng cộng')
+TOTAL_LABEL_PATTERN = re.compile(r'^(total|tổng cộng)\s*:?$')
 
 
 class HeaderTableVerifyReader:
@@ -40,18 +43,25 @@ class HeaderTableVerifyReader:
             if found is not None:
                 header_row, columns_by_name = found
                 headers = {columns_by_name[normalize_name(header)]: header for header in required_headers}
-                self._collect_rows(grid, header_row, headers)
+                self._collect_rows(grid, reader.hidden_rows(sheet_name), header_row, headers)
                 return
 
-    def _collect_rows(self, grid: Grid, header_row: int, headers: dict[int, str]) -> None:
+    def _collect_rows(self, grid: Grid, hidden_rows: set[int], header_row: int, headers: dict[int, str]) -> None:
         self._headers = headers
-        row_number = header_row + self._data_row_offset
-        while row_number in grid:
+        for row_number in range(header_row + self._data_row_offset, max(grid, default=0) + 1):
+            if row_number in hidden_rows:
+                continue
+            if row_number not in grid:
+                break
             cells = {column: grid[row_number][column] for column in headers if column in grid[row_number]}
-            is_total = any(normalize_name(value).startswith(TOTAL_ROW_PREFIXES) for value in cells.values())
-            if cells and not is_total:
+            if cells and not _is_total_row(cells.values(), grid[row_number].values()):
                 self._rows[row_number] = cells
-            row_number += 1
+
+
+def _is_total_row(values: Iterable[str], row_cells: Iterable[str]) -> bool:
+    if any(normalize_name(value).startswith(TOTAL_ROW_PREFIXES) for value in values):
+        return True
+    return any(TOTAL_LABEL_PATTERN.match(normalize_name(cell)) for cell in row_cells)
 
 
 def _find_header_row(grid: Grid, required: set[str]) -> tuple[int, dict[str, int]] | None:

@@ -114,6 +114,12 @@ def get_admin_user(user: PortalUser = Depends(get_portal_user)) -> PortalUser:
 
 
 def get_context(request: Request, user: PortalUser = Depends(get_portal_user)) -> Iterator[RequestContext]:
+    for ctx in _open_context(request, user):
+        ctx.require_warehouse()
+        yield ctx
+
+
+def get_status_context(request: Request, user: PortalUser = Depends(get_portal_user)) -> Iterator[RequestContext]:
     yield from _open_context(request, user)
 
 

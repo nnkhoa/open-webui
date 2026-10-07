@@ -22,7 +22,25 @@ VALUE_FROM_YEAR = 'nam_du_lieu'
 VALUE_FROM_EMPTY = 'trong'
 VALUE_FROM_HEADER = 'tieu_de'
 VALUE_SOURCES = {VALUE_FROM_YEAR, VALUE_FROM_EMPTY, VALUE_FROM_HEADER}
+NORMALIZE_CLEAN_TEXT = 'clean_text'
+NORMALIZE_SPLIT_HEAD = 'split_head'
+NORMALIZE_SPLIT_TAIL = 'split_tail'
+NORMALIZE_SALES_GROUP = 'sales_group'
+NORMALIZE_CUSTOMER_CODE = 'customer_code'
+NORMALIZE_RULES = {
+    NORMALIZE_CLEAN_TEXT,
+    NORMALIZE_SPLIT_HEAD,
+    NORMALIZE_SPLIT_TAIL,
+    NORMALIZE_SALES_GROUP,
+    NORMALIZE_CUSTOMER_CODE,
+}
 SOURCE_RESERVED_KEYS = ('kind', 'header_row')
+
+
+@dataclass(frozen=True)
+class ColumnNormalize:
+    rule: str
+    source: str | None = None
 
 
 @dataclass
@@ -42,6 +60,7 @@ class FormColumn:
     display_width: int | None = None
     show_in_table: bool = True
     value_from: str | None = None
+    normalize: ColumnNormalize | None = None
 
     def __post_init__(self) -> None:
         self._type = column_types.build(self.type, self)
@@ -52,7 +71,11 @@ class FormColumn:
 
     @property
     def from_file(self) -> bool:
-        return self.value_from is None
+        return self.value_from is None and not self.is_derived
+
+    @property
+    def is_derived(self) -> bool:
+        return self.normalize is not None and self.normalize.source is not None
 
     @property
     def from_header(self) -> bool:
@@ -171,6 +194,7 @@ class Form:
     yaml_sha256: str = ''
     source_options: dict = field(default_factory=dict)
     subtitle: str | None = None
+    customer_aliases: dict[str, str] = field(default_factory=dict)
 
     def table(self, name: str) -> FormTable:
         for table in self.tables:
@@ -219,6 +243,7 @@ def parse_column(raw: dict, ordinal: int, business_key: list[str], table_name: s
         display_width=raw.get('display_width'),
         show_in_table=bool(raw.get('show_in_table', True)),
         value_from=raw.get('value_from'),
+        normalize=_parse_normalize(raw.get('normalize'), table_name, name),
     )
 
 
@@ -346,6 +371,17 @@ def _check_column_settings(raw: dict, table_name: str, name: str, type_name: str
         )
 
 
+def _parse_normalize(raw: Any, table_name: str, name: str) -> ColumnNormalize | None:
+    if raw is None:
+        return None
+    rule, source = (raw, None) if isinstance(raw, str) else (raw.get('rule'), raw.get('from'))
+    if rule not in NORMALIZE_RULES:
+        raise RegistryError(
+            messages.REGISTRY_INVALID_NORMALIZE.format(table=table_name, column=name, allowed=sorted(NORMALIZE_RULES))
+        )
+    return ColumnNormalize(rule, None if source is None else str(source))
+
+
 def _check_table_settings(name: str, kind: str, merge: str, business_key: list[str], partition_by: list[str]) -> None:
     if kind not in TABLE_KINDS:
         raise RegistryError(messages.REGISTRY_INVALID_KIND.format(table=name))
@@ -370,6 +406,14 @@ def _check_table_columns(
     for column in partition_by:
         if column not in column_names:
             raise RegistryError(messages.REGISTRY_UNKNOWN_PARTITION_COLUMN.format(table=name, column=column))
+    file_column_names = {column.name for column in columns if column.from_file}
+    for column in columns:
+        if column.is_derived and column.normalize.source not in file_column_names:
+            raise RegistryError(
+                messages.REGISTRY_UNKNOWN_NORMALIZE_SOURCE.format(
+                    table=name, column=column.name, source=column.normalize.source
+                )
+            )
     if sum(1 for column in columns if column.is_year) > 1:
         raise RegistryError(messages.REGISTRY_MULTIPLE_YEAR_COLUMNS.format(table=name, value=VALUE_FROM_YEAR))
 

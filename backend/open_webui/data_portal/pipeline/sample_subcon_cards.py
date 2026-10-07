@@ -36,11 +36,9 @@ from .card_model import (
     verdict,
 )
 from .context import LoadContext
-from .file_check import month_key
 
-DELIVERY_DATE_COLUMN = 'ngay_giao_mau'
 QUANTITY_COLUMN = 'so_luong'
-TOTAL_COLUMNS = (QUANTITY_COLUMN, 'don_gia')
+TOTAL_COLUMNS = (QUANTITY_COLUMN, 'actual_cut', 'don_gia_usd')
 
 
 class Dimension(NamedTuple):
@@ -61,34 +59,30 @@ class DomainTable(NamedTuple):
 
 DIMENSIONS = {
     'fact_may_mau': [
-        Dimension(DELIVERY_DATE_COLUMN, messages.CARD_DIMENSION_DELIVERY_MONTH),
         Dimension('ma_nhom_kd', messages.CARD_DIMENSION_SALES_GROUP),
-        Dimension('ten_khach', messages.CARD_DIMENSION_CUSTOMER),
-        Dimension('ma_giai_doan_mau', messages.CARD_DIMENSION_SAMPLE_STAGE),
+        Dimension('ma_khach', messages.CARD_DIMENSION_CUSTOMER),
+        Dimension('sample', messages.CARD_DIMENSION_SAMPLE),
+        Dimension('men_lady', messages.CARD_DIMENSION_MEN_LADY),
     ],
     'fact_gia_cong': [
         Dimension('ma_don_vi_gc', messages.CARD_DIMENSION_SUBCONTRACTOR),
-        Dimension('khu_vuc', messages.CARD_DIMENSION_REGION),
-        Dimension('ten_khach', messages.CARD_DIMENSION_CUSTOMER),
-        Dimension('ma_hang', messages.CARD_DIMENSION_PRODUCT_CODE),
+        Dimension('location', messages.CARD_DIMENSION_REGION),
+        Dimension('ma_khach', messages.CARD_DIMENSION_CUSTOMER),
     ],
 }
 
 CODE_COUNTS = {
     'fact_may_mau': [
-        CodeCount(messages.CARD_CODES_DELIVERY_MONTHS, DELIVERY_DATE_COLUMN, messages.CARD_CODE_NAME_MONTH),
-        CodeCount(messages.CARD_CODES_CUSTOMERS, 'ten_khach', messages.CARD_CODE_NAME_CUSTOMER),
+        CodeCount(messages.CARD_CODES_CUSTOMERS, 'ma_khach', messages.CARD_CODE_NAME_CUSTOMER),
         CodeCount(messages.CARD_CODES_BUSINESS_GROUPS, 'ma_nhom_kd', messages.CARD_CODE_NAME_GROUP),
-        CodeCount(messages.CARD_CODES_SAMPLE_CODES, 'ma_mau', messages.CARD_CODE_NAME_PRODUCT),
-        CodeCount(messages.CARD_CODES_SAMPLE_STAGES, 'ma_giai_doan_mau', messages.CARD_CODE_NAME_SAMPLE_STAGE),
+        CodeCount(messages.CARD_CODES_SAMPLES, 'sample', messages.CARD_CODE_NAME_SAMPLE),
+        CodeCount(messages.CARD_CODES_DESCRIPTIONS, 'description', None),
+        CodeCount(messages.CARD_CODES_MEN_LADY, 'men_lady', None),
     ],
     'fact_gia_cong': [
         CodeCount(messages.CARD_CODES_SUBCONTRACTORS, 'ma_don_vi_gc', messages.CARD_CODE_NAME_SUBCONTRACTOR),
-        CodeCount(messages.CARD_CODES_REGIONS, 'khu_vuc', None),
-        CodeCount(messages.CARD_CODES_CUSTOMERS, 'ten_khach', messages.CARD_CODE_NAME_CUSTOMER),
-        CodeCount(messages.CARD_CODES_PRODUCT_CODES, 'ma_hang', messages.CARD_CODE_NAME_PRODUCT),
-        CodeCount(messages.CARD_CODES_ORDERS, 'ma_don_hang', messages.CARD_CODE_NAME_ORDER),
-        CodeCount(messages.CARD_CODES_COLORS, 'mau', messages.CARD_CODE_NAME_COLOR),
+        CodeCount(messages.CARD_CODES_REGIONS, 'location', None),
+        CodeCount(messages.CARD_CODES_CUSTOMERS, 'ma_khach', messages.CARD_CODE_NAME_CUSTOMER),
     ],
 }
 
@@ -245,7 +239,7 @@ def dimension_card(stored: dict, *, group_by: str | None, page: int, page_size: 
         return Card(BY_DIMENSION_CARD, '')
     column = group_by if group_by in matrix.dimensions else matrix.order[0]
     dimension = matrix.dimensions[column]
-    groups = _sorted_groups(column, dimension.groups)
+    groups = _sorted_groups(dimension.groups)
     start = (page - 1) * page_size
     label = dimension.label
     choices = [OptionChoice(choice, matrix.dimensions[choice].label) for choice in matrix.order]
@@ -253,7 +247,7 @@ def dimension_card(stored: dict, *, group_by: str | None, page: int, page_size: 
         BY_DIMENSION_CARD,
         _dimension_title(label),
         group_count_columns(label, messages.CARD_COLUMN_FILE_QUANTITY, messages.CARD_COLUMN_DB_QUANTITY),
-        [_dimension_row(matrix, column, group) for group in groups[start : start + page_size]],
+        [_dimension_row(matrix, group) for group in groups[start : start + page_size]],
         count=len(groups),
         options=[CardOption(GROUP_BY_OPTION, messages.CARD_OPTION_GROUP_BY, column, matrix.order[0], choices)],
         totals=_dimension_totals(groups),
@@ -333,14 +327,12 @@ def domain_row_counts(ctx: LoadContext) -> dict[str, int]:
     }
 
 
-def _group_key(column: str, value) -> str:
-    if value is None:
-        return ''
-    return month_key(value) if column == DELIVERY_DATE_COLUMN else str(value)
+def _group_key(value) -> str:
+    return '' if value is None else str(value)
 
 
 def _distinct_keys(rows: list[dict], column: str) -> set[str]:
-    return {_group_key(column, row.get(column)) for row in rows} - {''}
+    return {_group_key(row.get(column)) for row in rows} - {''}
 
 
 def _column_total_row(
@@ -387,12 +379,12 @@ def _total_cell_row(db_rows: list[dict], file_check: dict) -> CardRow | None:
 def _tally_groups(column: str, file_rows: list[dict], db_rows: list[dict]) -> dict[str, _GroupTally]:
     tallies: dict[str, _GroupTally] = {}
     for row in file_rows:
-        tally = tallies.setdefault(_group_key(column, row.get(column)), _GroupTally())
+        tally = tallies.setdefault(_group_key(row.get(column)), _GroupTally())
         tally.file_rows += 1
         if row.get(QUANTITY_COLUMN) is not None:
             tally.file_quantity += Decimal(row[QUANTITY_COLUMN])
     for row in db_rows:
-        tally = tallies.setdefault(_group_key(column, row.get(column)), _GroupTally())
+        tally = tallies.setdefault(_group_key(row.get(column)), _GroupTally())
         tally.db_rows += 1
         if row.get(QUANTITY_COLUMN) is not None:
             tally.db_quantity += Decimal(row[QUANTITY_COLUMN])
@@ -407,17 +399,15 @@ def _has_mismatched_group(dimension: DimensionGroups) -> bool:
     return any(group.has_mismatch for group in dimension.groups)
 
 
-def _sorted_groups(column: str, groups: list[GroupCounts]) -> list[GroupCounts]:
-    if column == DELIVERY_DATE_COLUMN:
-        return sorted(groups, key=lambda group: (group.key == '', group.key))
+def _sorted_groups(groups: list[GroupCounts]) -> list[GroupCounts]:
     return sorted(groups, key=lambda group: (-group.file_quantity, group.key == '', group.key))
 
 
-def _dimension_row(matrix: DimensionMatrix, column: str, group: GroupCounts) -> CardRow:
+def _dimension_row(matrix: DimensionMatrix, group: GroupCounts) -> CardRow:
     difference = Decimal(str(group.db_quantity)) - Decimal(str(group.file_quantity))
     row = CardRow(
         [
-            _group_label(column, group.key),
+            group.key or messages.CARD_EMPTY_VALUE,
             group.file_rows,
             group.db_rows,
             group.file_quantity,
@@ -427,7 +417,7 @@ def _dimension_row(matrix: DimensionMatrix, column: str, group: GroupCounts) -> 
         verdict(not group.has_mismatch),
     )
     if group.key:
-        row.link = gold_link(matrix.table, matrix.year, query=_search_text(column, group.key))
+        row.link = gold_link(matrix.table, matrix.year, query=group.key)
     return row
 
 
@@ -438,22 +428,6 @@ def _dimension_totals(groups: list[GroupCounts]) -> list:
         sum(Decimal(str(group.file_quantity)) for group in groups),
         sum(Decimal(str(group.db_quantity)) for group in groups),
     )
-
-
-def _group_label(column: str, key: str) -> str:
-    if column != DELIVERY_DATE_COLUMN:
-        return key or messages.CARD_EMPTY_VALUE
-    if not key:
-        return messages.CHECK_NO_DELIVERY_DATE
-    year, month = key.split('-')
-    return messages.CARD_MONTH_OF_YEAR.format(month=int(month), year=year)
-
-
-def _search_text(column: str, key: str) -> str:
-    if column != DELIVERY_DATE_COLUMN:
-        return key
-    year, month = key.split('-')
-    return f'{month}/{year}'
 
 
 def _before_after_row(

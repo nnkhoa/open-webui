@@ -47,6 +47,7 @@ from .card_model import (
     verdict,
 )
 from .context import LoadContext
+from .normalize import normalize_values
 from .sample_subcon_cards import DimensionMatrix
 
 RESULTS_TABLE = 'fact_ket_qua_kd'
@@ -323,7 +324,8 @@ def _file_rows(ctx: LoadContext, table: FormTable) -> list[dict]:
         warehouse_sql.column_list(table.column_names), sql.Identifier('bronze', table.name)
     )
     rows = warehouse_sql.query(ctx.conn, statement, (ctx.load_id,))
-    return [{column: _typed_value(table, column, row[column]) for column in table.column_names} for row in rows]
+    typed_rows = [{column: _typed_value(table, column, row[column]) for column in table.column_names} for row in rows]
+    return [normalize_values(ctx.form, table, row) for row in typed_rows]
 
 
 def _load_scope(ctx: LoadContext, table: FormTable, file_rows: list[dict]) -> tuple[sql.Composed, list]:

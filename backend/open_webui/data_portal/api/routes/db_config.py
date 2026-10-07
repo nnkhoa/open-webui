@@ -7,7 +7,7 @@ from ... import messages
 from ...domain import warehouse_config
 from ...domain.warehouse_config import DEFAULT_SSL_MODE, WarehouseConnection
 from ...security.audit import record_event
-from ..deps import RequestContext, get_admin_context
+from ..deps import RequestContext, get_admin_context, get_status_context
 from ..serialization import serialize
 
 router = APIRouter()
@@ -25,6 +25,23 @@ class DbConfigForm(BaseModel):
     username: str = ''
     password: str = ''
     note: str = ''
+
+
+############################
+# GetStatus
+############################
+
+
+@router.get('/status')
+def get_status(ctx: RequestContext = Depends(get_status_context)) -> dict:
+    ctx.reconnect_if_needed()
+    warehouse = ctx.container.warehouse
+    ready = warehouse.is_alive()
+    return {
+        'configured': warehouse_config.get_config(ctx.catalog()) is not None,
+        'ready': ready,
+        'reason': None if ready else warehouse.reason or messages.API_WAREHOUSE_NOT_CONFIGURED,
+    }
 
 
 ############################

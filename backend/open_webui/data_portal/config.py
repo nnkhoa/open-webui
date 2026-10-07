@@ -12,7 +12,6 @@ DATA_DIR = Path(os.getenv('DATA_DIR', PACKAGE_DIR.parents[1] / 'data'))
 
 @dataclass(frozen=True)
 class Settings:
-    default_database_url: str | None
     catalog_path: Path
     catalog_migrations_dir: Path
     registry_dir: Path
@@ -20,8 +19,6 @@ class Settings:
     upload_dir: Path
 
     def validate(self) -> None:
-        if self.default_database_url and not self.default_database_url.startswith('postgres'):
-            raise ValueError(messages.CONFIG_INVALID_DATABASE_URL.format(value=self.default_database_url))
         required_dirs = (
             (messages.CONFIG_DIR_CATALOG_MIGRATIONS, self.catalog_migrations_dir),
             (messages.CONFIG_DIR_DEFINITIONS, self.registry_dir),
@@ -37,7 +34,6 @@ class Settings:
 def load_settings() -> Settings:
     data_dir = Path(os.getenv('DATA_PORTAL_DIR', DATA_DIR / 'data_portal'))
     settings = Settings(
-        default_database_url=os.getenv('DATA_PORTAL_DATABASE_URL') or None,
         catalog_path=data_dir / 'catalog.db',
         catalog_migrations_dir=PACKAGE_DIR / 'migrations' / 'catalog',
         registry_dir=PACKAGE_DIR / 'definitions',

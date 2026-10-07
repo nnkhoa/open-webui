@@ -8,6 +8,7 @@ import yaml
 
 from .. import messages
 from ..errors import RegistryError
+from .customer_aliases import load_customer_aliases
 from .schema import DomainDefinition, Form, FormTable, parse_domains, parse_form
 
 
@@ -58,6 +59,9 @@ def load_definitions(definitions_dir: Path) -> FormRegistry:
     if not domains_file.is_file():
         raise RegistryError(messages.REGISTRY_MISSING_DOMAINS_FILE.format(path=domains_file))
     domains = parse_domains(_read_yaml(domains_file), {form.code for form in forms})
+    customer_aliases = load_customer_aliases(definitions_dir / 'customer_aliases.yaml')
+    for form in forms:
+        form.customer_aliases = customer_aliases
     return FormRegistry(forms, domains)
 
 
