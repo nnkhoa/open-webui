@@ -2,6 +2,7 @@ export type FileType = {
 	code: string;
 	name: string;
 	subtitle?: string | null;
+	month_required?: boolean;
 };
 
 export type Domain = {
@@ -16,6 +17,7 @@ export type LoadStatus = 'success' | 'rejected' | 'mismatch' | 'rolled_back';
 export type UploadForm = {
 	domain: string;
 	year: string;
+	month?: string;
 	fileType?: string;
 	file: File;
 };
@@ -94,6 +96,7 @@ export type PendingUpload = {
 	pending_id: string;
 	domain: string;
 	year: number;
+	month: number | null;
 	file_type: FileType;
 	file_name: string;
 	size_bytes: number;
@@ -121,6 +124,7 @@ export type LoadListItem = {
 	id: number;
 	file_name: string;
 	year: number | null;
+	month: number | null;
 	file_type: { code: string; name: string };
 	user: string;
 	created_at: string;
@@ -156,6 +160,7 @@ export type Load = {
 	status: LoadStatus;
 	domain: string;
 	year: number | null;
+	month: number | null;
 	file_type: FileType;
 	file_name: string;
 	size_bytes: number;

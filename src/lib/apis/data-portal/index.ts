@@ -68,6 +68,9 @@ export const createUpload = async (token: string, upload: UploadForm): Promise<U
 	const body = new FormData();
 	body.set('domain', upload.domain);
 	body.set('year', upload.year);
+	if (upload.month) {
+		body.set('month', upload.month);
+	}
 	if (upload.fileType) {
 		body.set('file_type', upload.fileType);
 	}

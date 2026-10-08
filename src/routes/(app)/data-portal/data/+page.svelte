@@ -82,8 +82,8 @@
 				]
 			: [
 					{ value: table.name, bold: true, className: 's' },
-					table.kind === 'dim' ? $i18n.t('Shared across all years') : (table.year ?? '—'),
 					table.kind === 'dim' ? '—' : (table.months ?? '—'),
+					table.kind === 'dim' ? $i18n.t('Shared across all years') : (table.year ?? '—'),
 					{ value: formatNumber(table.row_count), className: 's' },
 					updatedCell(table)
 				];
@@ -107,8 +107,8 @@
 			]
 		: [
 				{ label: $i18n.t('Table name') },
-				{ label: $i18n.t('Year') },
 				{ label: $i18n.t('Data month') },
+				{ label: $i18n.t('Year') },
 				{ label: $i18n.t('Row count'), alignRight: true },
 				{ label: $i18n.t('Updated at') }
 			];

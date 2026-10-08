@@ -2797,5 +2797,8 @@
 	"The file does not match the form {{form}}": "",
 	"Selected · matches the form": "",
 	"Does not match the form": "",
-	"Checking the form…": ""
+	"Checking the form…": "",
+	"Select month": "",
+	"Month of the figures in the file": "",
+	"Select group, month, year, file type and file": ""
 }

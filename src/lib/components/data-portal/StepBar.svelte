@@ -12,7 +12,7 @@
 
 	$: labels = [
 		withFileType
-			? $i18n.t('Select group, year, file type and file')
+			? $i18n.t('Select group, month, year, file type and file')
 			: $i18n.t('Select group, year and file'),
 		$i18n.t('Check file'),
 		$i18n.t('Confirm adding new data'),

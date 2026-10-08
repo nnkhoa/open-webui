@@ -260,6 +260,8 @@ UPLOAD_MONTH_COLUMN = 'Tháng'
 UPLOAD_DOMAIN_REQUIRED = 'Chưa chọn Nhóm thông tin.'
 UPLOAD_YEAR_REQUIRED = 'Chưa chọn Năm dữ liệu.'
 UPLOAD_YEAR_OUT_OF_RANGE = 'Năm dữ liệu phải từ {first} đến {last}.'
+UPLOAD_MONTH_REQUIRED = 'Chưa chọn Tháng dữ liệu.'
+UPLOAD_MONTH_OUT_OF_RANGE = 'Tháng dữ liệu phải từ 1 đến 12.'
 UPLOAD_FILE_TYPE_REQUIRED = 'Chưa chọn Loại tệp.'
 UPLOAD_DOMAIN_WITHOUT_FORMS = (
     'Nhóm {domain} chưa có thông tin: chưa khai báo loại tệp nên chưa nạp, chưa có lịch sử và chưa có dữ liệu.'

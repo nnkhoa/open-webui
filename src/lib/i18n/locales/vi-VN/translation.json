@@ -2786,5 +2786,8 @@
 	"The file does not match the form {{form}}": "Tệp không đúng biểu mẫu {{form}}",
 	"Selected · matches the form": "Đã chọn · đúng biểu mẫu",
 	"Does not match the form": "Không đúng biểu mẫu",
-	"Checking the form…": "Đang kiểm tra biểu mẫu…"
+	"Checking the form…": "Đang kiểm tra biểu mẫu…",
+	"Select month": "Chọn tháng",
+	"Month of the figures in the file": "Tháng của số liệu trong tệp",
+	"Select group, month, year, file type and file": "Chọn nhóm, tháng, năm, loại tệp và tệp"
 }

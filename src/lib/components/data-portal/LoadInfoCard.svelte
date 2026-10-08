@@ -18,6 +18,7 @@
 	$: multipleFileTypes = hasMultipleFileTypes(domain);
 	$: fields = [
 		{ label: $i18n.t('Information group'), value: `${load.domain} · ${domain?.name ?? ''}` },
+		...monthFields(),
 		{ label: $i18n.t('Data year'), value: load.year },
 		...(multipleFileTypes
 			? [{ label: $i18n.t('File type'), value: load.file_type.name ?? '' }]
@@ -27,16 +28,26 @@
 		...(detailed ? detailFields() : [])
 	] as ReadonlyField[];
 
+	const monthFields = (): ReadonlyField[] => {
+		if (load.month) return [{ label: $i18n.t('Data month'), value: load.month }];
+		if (!detailed || multipleFileTypes) return [];
+		return [
+			{
+				label: $i18n.t('Data month'),
+				value: load.status === 'success' ? (load.months ?? '—') : '—'
+			}
+		];
+	};
+
 	const detailFields = (): ReadonlyField[] => [
-		multipleFileTypes
-			? {
-					label: $i18n.t('Taken from sheet'),
-					value: load.status === 'rejected' ? '—' : (load.sheet ?? '—')
-				}
-			: {
-					label: $i18n.t('Data month'),
-					value: load.status === 'success' ? (load.months ?? '—') : '—'
-				},
+		...(multipleFileTypes
+			? [
+					{
+						label: $i18n.t('Taken from sheet'),
+						value: load.status === 'rejected' ? '—' : (load.sheet ?? '—')
+					}
+				]
+			: []),
 		{ label: $i18n.t('Total rows'), value: formatNumber(load.total_rows) }
 	];
 </script>

@@ -86,14 +86,14 @@
 	const tableSubtitle = (data: TableData, year: string, currentLayer: string) =>
 		[
 			data.file_type ? `${data.file_type.name} · ${data.file_type.subtitle ?? ''}` : '',
+			data.has_period && data.latest_month
+				? $i18n.t('Latest month {{month}}', { month: data.latest_month })
+				: '',
 			data.kind === 'dim'
 				? $i18n.t('Shared across all years')
 				: year
 					? $i18n.t('Year {{year}}', { year })
 					: $i18n.t('All years'),
-			data.has_period && data.latest_month
-				? $i18n.t('Latest month {{month}}', { month: data.latest_month })
-				: '',
 			data.updated_at ? $i18n.t('Updated {{time}}', { time: formatDateTime(data.updated_at) }) : '',
 			layerLabels[currentLayer]
 		]
@@ -188,7 +188,28 @@
 			yearLocked={table.kind === 'dim'}
 			on:domain={() => goto('/data-portal/data')}
 			on:year={() => (currentPage = 1)}
-		/>
+		>
+			<svelte:fragment slot="month">
+				{#if table.has_period}
+					<Dropdown
+						chipLabel={$i18n.t('Data month')}
+						value={period}
+						defaultValue=""
+						options={[
+							{ value: '', label: $i18n.t('All') },
+							...table.periods.map((month) => ({
+								value: month,
+								label: $i18n.t('Month {{month}}', { month })
+							}))
+						]}
+						on:change={(event) => {
+							period = event.detail;
+							currentPage = 1;
+						}}
+					/>
+				{/if}
+			</svelte:fragment>
+		</DomainYearChips>
 		<Dropdown
 			chipLabel={$i18n.t('Data layer')}
 			title={$i18n.t('View the table at layer')}
@@ -203,24 +224,6 @@
 				currentPage = 1;
 			}}
 		/>
-		{#if table.has_period}
-			<Dropdown
-				chipLabel={$i18n.t('Data month')}
-				value={period}
-				defaultValue=""
-				options={[
-					{ value: '', label: $i18n.t('All') },
-					...table.periods.map((month) => ({
-						value: month,
-						label: $i18n.t('Month {{month}}', { month })
-					}))
-				]}
-				on:change={(event) => {
-					period = event.detail;
-					currentPage = 1;
-				}}
-			/>
-		{/if}
 		<SearchBox
 			value={query}
 			placeholder={$i18n.t('Search by code or name, press Enter to search')}

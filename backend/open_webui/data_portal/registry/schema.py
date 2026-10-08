@@ -19,9 +19,10 @@ POLICY_KEYS = ('unknown_sheet', 'unknown_column', 'missing_column')
 COLUMN_ROLES = {'partition', 'measure', 'attribute', 'degenerate'}
 TABLE_KINDS = {'dim', 'fact'}
 VALUE_FROM_YEAR = 'nam_du_lieu'
+VALUE_FROM_MONTH = 'thang_du_lieu'
 VALUE_FROM_EMPTY = 'trong'
 VALUE_FROM_HEADER = 'tieu_de'
-VALUE_SOURCES = {VALUE_FROM_YEAR, VALUE_FROM_EMPTY, VALUE_FROM_HEADER}
+VALUE_SOURCES = {VALUE_FROM_YEAR, VALUE_FROM_MONTH, VALUE_FROM_EMPTY, VALUE_FROM_HEADER}
 NORMALIZE_CLEAN_TEXT = 'clean_text'
 NORMALIZE_SPLIT_HEAD = 'split_head'
 NORMALIZE_SPLIT_TAIL = 'split_tail'
@@ -84,6 +85,10 @@ class FormColumn:
     @property
     def is_year(self) -> bool:
         return self.value_from == VALUE_FROM_YEAR
+
+    @property
+    def is_month(self) -> bool:
+        return self.value_from == VALUE_FROM_MONTH
 
     @property
     def handler(self) -> column_types.ColumnType:
@@ -162,6 +167,10 @@ class FormTable:
         return next((column for column in self.columns if column.is_year), None)
 
     @property
+    def month_column(self) -> FormColumn | None:
+        return next((column for column in self.columns if column.is_month), None)
+
+    @property
     def amount_columns(self) -> list[FormColumn]:
         return [column for column in self.columns if column.type in ('money', 'currency')]
 
@@ -205,6 +214,10 @@ class Form:
     @property
     def tables_by_dependency(self) -> list[FormTable]:
         return sorted(self.tables, key=lambda table: (table.kind != 'dim', table.display_order, table.name))
+
+    @property
+    def needs_month(self) -> bool:
+        return any(table.month_column is not None for table in self.tables)
 
     @property
     def tables_by_display_order(self) -> list[FormTable]:
@@ -416,6 +429,8 @@ def _check_table_columns(
             )
     if sum(1 for column in columns if column.is_year) > 1:
         raise RegistryError(messages.REGISTRY_MULTIPLE_YEAR_COLUMNS.format(table=name, value=VALUE_FROM_YEAR))
+    if sum(1 for column in columns if column.is_month) > 1:
+        raise RegistryError(messages.REGISTRY_MULTIPLE_YEAR_COLUMNS.format(table=name, value=VALUE_FROM_MONTH))
 
 
 def _parse_policy(code: str, raw: dict) -> FormPolicy:

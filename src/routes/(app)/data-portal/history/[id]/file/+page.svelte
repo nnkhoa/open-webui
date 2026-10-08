@@ -37,6 +37,7 @@
 	$: requestedSheet = Number($page.url.searchParams.get('sheet') ?? '-1');
 	$: domain = $portalDomains.find((item) => item.code === load?.domain);
 	$: multipleFileTypes = hasMultipleFileTypes(domain);
+	$: monthRequired = domain?.file_types.some((item) => item.month_required) ?? false;
 	$: currentSheet =
 		sheets.find((sheet) => sheet.index === requestedSheet) ??
 		sheets.find((sheet) => sheet.name === load?.sheet) ??
@@ -114,6 +115,7 @@
 		title={$i18n.t('File information')}
 		fields={[
 			{ label: $i18n.t('Information group'), value: `${load.domain} · ${domain?.name ?? ''}` },
+			...(monthRequired ? [{ label: $i18n.t('Data month'), value: load.month ?? '—' }] : []),
 			{ label: $i18n.t('Data year'), value: load.year },
 			...(multipleFileTypes ? [{ label: $i18n.t('File type'), value: load.file_type.name }] : []),
 			{ label: $i18n.t('Uploaded by'), value: load.user },

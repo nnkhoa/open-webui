@@ -49,6 +49,7 @@
 
 	$: domain = $portalDomains.find((item) => item.code === $selectedDomain);
 	$: multipleFileTypes = hasMultipleFileTypes(domain);
+	$: monthRequired = domain?.file_types.some((item) => item.month_required) ?? false;
 	$: filtered = !!(query || status || uploader || (multipleFileTypes && fileType));
 
 	const loadHistory = async (filter: LoadFilter) => {
@@ -87,7 +88,7 @@
 		goto('/data-portal/upload');
 	};
 
-	const loadCells = (load: LoadListItem, multiple: boolean) => {
+	const loadCells = (load: LoadListItem, multiple: boolean, withMonth: boolean) => {
 		const badge = LOAD_STATUS_BADGES[load.status];
 		return [
 			{ value: `#${load.id}`, bold: true, className: 's' },
@@ -97,6 +98,7 @@
 				action: () => goto(`/data-portal/history/${load.id}/file`),
 				actionTitle: $i18n.t('View source file')
 			},
+			...(withMonth ? [{ value: load.month ?? '—', className: 's' }] : []),
 			{ value: load.year, className: 's' },
 			...(multiple ? [{ value: load.file_type.name, className: 's' }] : []),
 			load.user,
@@ -108,7 +110,7 @@
 
 	$: rows = (loads?.items ?? []).map(
 		(load): TableRow => ({
-			cells: loadCells(load, multipleFileTypes),
+			cells: loadCells(load, multipleFileTypes, monthRequired),
 			onClick: () => goto(`/data-portal/history/${load.id}?tab=${DETAIL_TABS[load.status]}`),
 			title: $i18n.t('View details of upload #{{id}}', { id: load.id })
 		})
@@ -117,6 +119,7 @@
 	$: headers = [
 		{ label: $i18n.t('Code') },
 		{ label: $i18n.t('File') },
+		...(monthRequired ? [{ label: $i18n.t('Data month') }] : []),
 		{ label: $i18n.t('Data year') },
 		...(multipleFileTypes ? [{ label: $i18n.t('File type') }] : []),
 		{ label: $i18n.t('Uploaded by') },

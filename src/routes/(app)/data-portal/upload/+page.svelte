@@ -7,6 +7,7 @@
 
 	import { user } from '$lib/stores';
 	import {
+		DATA_MONTHS,
 		DATA_YEARS,
 		hasMultipleFileTypes,
 		loadPortalDomains,
@@ -56,8 +57,10 @@
 	$: fileType =
 		domain?.file_types.find((item) => item.code === draft.fileType) ??
 		(!multipleFileTypes ? domain?.file_types[0] : undefined);
+	$: monthRequired = domain?.file_types.some((item) => item.month_required) ?? false;
 	$: missingFields = [
 		!draft.domain && $i18n.t('Information group'),
+		monthRequired && !draft.month && $i18n.t('Data month'),
 		!draft.year && $i18n.t('Data year'),
 		multipleFileTypes && !draft.fileType && $i18n.t('File type')
 	].filter(Boolean) as string[];
@@ -136,6 +139,7 @@
 			const result = await createUpload(localStorage.token, {
 				domain: draft.domain,
 				year: draft.year,
+				month: monthRequired ? draft.month : undefined,
 				fileType: fileType?.code,
 				file: draft.file
 			});
@@ -260,19 +264,37 @@
 				/>
 			{/if}
 		</div>
-		<div class="field">
-			<span class="lbl">{$i18n.t('Data year')} <span class="req">*</span></span>
-			{#if checking}
-				<div class="ro locked"><Icon name="lock" size={13} />{draft.year}</div>
-			{:else}
-				<Dropdown
-					value={draft.year}
-					placeholder={$i18n.t('Select year')}
-					title={$i18n.t('Year of the figures in the file')}
-					options={DATA_YEARS.map((year) => ({ value: year, label: year }))}
-					on:change={(event) => updateDraft({ year: event.detail })}
-				/>
+		<div class="field-pair" class:pair={monthRequired}>
+			{#if monthRequired}
+				<div class="field">
+					<span class="lbl">{$i18n.t('Data month')} <span class="req">*</span></span>
+					{#if checking}
+						<div class="ro locked"><Icon name="lock" size={13} />{draft.month}</div>
+					{:else}
+						<Dropdown
+							value={draft.month}
+							placeholder={$i18n.t('Select month')}
+							title={$i18n.t('Month of the figures in the file')}
+							options={DATA_MONTHS.map((month) => ({ value: month, label: month }))}
+							on:change={(event) => updateDraft({ month: event.detail })}
+						/>
+					{/if}
+				</div>
 			{/if}
+			<div class="field">
+				<span class="lbl">{$i18n.t('Data year')} <span class="req">*</span></span>
+				{#if checking}
+					<div class="ro locked"><Icon name="lock" size={13} />{draft.year}</div>
+				{:else}
+					<Dropdown
+						value={draft.year}
+						placeholder={$i18n.t('Select year')}
+						title={$i18n.t('Year of the figures in the file')}
+						options={DATA_YEARS.map((year) => ({ value: year, label: year }))}
+						on:change={(event) => updateDraft({ year: event.detail })}
+					/>
+				{/if}
+			</div>
 		</div>
 		{#if multipleFileTypes}
 			<div class="field s3">

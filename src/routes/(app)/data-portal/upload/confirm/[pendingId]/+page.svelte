@@ -90,6 +90,7 @@
 			const result = await createUpload(localStorage.token, {
 				domain: draft.domain,
 				year: draft.year,
+				month: pending?.month ? String(pending.month) : undefined,
 				fileType: pending?.file_type.code,
 				file: draft.file
 			});
@@ -235,6 +236,7 @@
 		? multipleFileTypes
 			? [
 					{ label: $i18n.t('Information group'), value: `${domain?.code} · ${domain?.name}` },
+					...(pending.month ? [{ label: $i18n.t('Data month'), value: pending.month }] : []),
 					{ label: $i18n.t('Data year'), value: pending.year },
 					{ label: $i18n.t('File type'), value: pending.file_type.name },
 					{ label: $i18n.t('Taken from sheet'), value: pending.sheet ?? '—' },

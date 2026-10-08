@@ -39,6 +39,7 @@
 		dispatch('domain', event.detail);
 	}}
 />
+<slot name="month" />
 {#if yearLocked}
 	<LockedChip label={$i18n.t('Data year')} value={$i18n.t('Every year')} />
 {:else}
