@@ -11,7 +11,7 @@ SUBTITLE_SEPARATOR = ' · '
 
 
 def file_type_json(form: Form) -> dict:
-    return {'code': form.code, 'name': form.label, 'subtitle': form.subtitle}
+    return {'code': form.code, 'name': form.label, 'subtitle': form.subtitle, 'month_required': form.needs_month}
 
 
 ############################

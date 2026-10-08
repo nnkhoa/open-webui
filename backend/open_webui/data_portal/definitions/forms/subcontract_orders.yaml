@@ -14,12 +14,13 @@
 #  và đổi tên khách sang mã theo definitions/customer_aliases.yaml.
 #
 #  Ô P1 (SUBTOTAL của cột Order qty) phải bằng tổng so_luong.
+#  ky_thang lấy từ ô Tháng dữ liệu chọn lúc nạp (bắt buộc), chỉ ghi nhận tháng.
 #  Nạp lại cùng năm: ghi đè toàn bộ năm đó (`merge: replace_all`).
 # =============================================================================
 
 form:
   code: DON_GIA_CONG
-  version: 2
+  version: 3
   label: Gia công ngoài
   subtitle: TOTAL PO SUBCON
   description: Đơn giao xưởng gia công ngoài — đơn vị gia công, khu vực, khách hàng, số lượng đặt và đã cắt.
@@ -54,6 +55,12 @@ tables:
         label: Không có trong tệp — lấy từ ô Năm dữ liệu chọn lúc nạp
         meaning: Năm của số liệu, chọn ở ô Năm dữ liệu lúc nạp.
         example: "2026"
+      - name: ky_thang
+        type: int
+        value_from: thang_du_lieu
+        label: Không có trong tệp — lấy từ ô Tháng dữ liệu chọn lúc nạp
+        meaning: Tháng của số liệu, chọn ở ô Tháng dữ liệu lúc nạp.
+        example: "9"
       - name: ma_don_vi_gc
         type: text
         required: true

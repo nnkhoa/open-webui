@@ -39,6 +39,7 @@ class LoadRequest:
     actor_username: str
     request_id: str
     year: int | None = None
+    month: int | None = None
     file_check: dict | None = None
     a4_result: str | None = None
     actor_user_id: int | None = None
@@ -62,8 +63,8 @@ def _open_load(conn, form: Form, request: LoadRequest) -> LoadContext:
         conn,
         """
         INSERT INTO ctl.load (upload_id, domain_id, form_id, form_version, status,
-                              actor_user_id, actor_username, request_id, year)
-             VALUES (%s, %s, %s, %s, 'running', %s, %s, %s, %s)
+                              actor_user_id, actor_username, request_id, year, month)
+             VALUES (%s, %s, %s, %s, 'running', %s, %s, %s, %s, %s)
           RETURNING load_id
         """,
         (
@@ -75,6 +76,7 @@ def _open_load(conn, form: Form, request: LoadRequest) -> LoadContext:
             request.actor_username,
             request.request_id,
             request.year,
+            request.month,
         ),
     )
     batch_id = warehouse_sql.scalar(
@@ -97,6 +99,7 @@ def _open_load(conn, form: Form, request: LoadRequest) -> LoadContext:
         actor_username=request.actor_username,
         request_id=request.request_id,
         year=request.year,
+        month=request.month,
         year_columns=request.year_columns,
     )
 
@@ -113,7 +116,7 @@ def _run_locked(
     if errors:
         raise StructureError(errors)
     if file_check is None:
-        file_check = check_file(ctx.form, ctx.upload_path, ctx.year)
+        file_check = check_file(ctx.form, ctx.upload_path, ctx.year, ctx.month)
     ctx.sheets_count = _matched_sheet_count(ctx)
 
     before = reconcile_cards.snapshot_before(ctx)

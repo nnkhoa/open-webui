@@ -11,11 +11,15 @@ from .context import BronzeRow, LoadContext
 from .dedup import hash_row
 
 
-def fill_derived_columns(table: FormTable, row: SourceRow, year: int | None, reader=None) -> SourceRow:
+def fill_derived_columns(
+    table: FormTable, row: SourceRow, year: int | None, month: int | None, reader=None
+) -> SourceRow:
     derived: dict[str, str | None] = {}
     for column in table.columns:
         if column.is_year:
             derived[column.name] = None if year is None else str(year)
+        elif column.is_month:
+            derived[column.name] = None if month is None else str(month)
         elif column.from_header and reader is not None and hasattr(reader, 'header_value'):
             derived[column.name] = reader.header_value(column.file_header)
     return SourceRow(row.number, {**row.values, **derived}) if derived else row
@@ -24,7 +28,8 @@ def fill_derived_columns(table: FormTable, row: SourceRow, year: int | None, rea
 def write(ctx: LoadContext, table: FormTable) -> list[BronzeRow]:
     columns = table.column_names
     rows = [
-        fill_derived_columns(table, row, ctx.year, ctx.reader) for row in ctx.reader.rows(table.sheet, table.header_map)
+        fill_derived_columns(table, row, ctx.year, ctx.month, ctx.reader)
+        for row in ctx.reader.rows(table.sheet, table.header_map)
     ]
     result = ctx.table_result(table)
     result.rows_file = len(rows)

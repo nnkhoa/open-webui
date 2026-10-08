@@ -30,6 +30,7 @@ class PendingMetadata:
     user_id: str
     user: str
     created_at: str
+    month: int | None = None
     sha256: str | None = None
     size_bytes: int | None = None
     file_check: dict | None = None

@@ -28,6 +28,7 @@ XLSX_SUFFIX = '.xlsx'
 def create_upload(
     domain: str = Form(''),
     year: str = Form(''),
+    month: str = Form(''),
     file_type: str = Form(''),
     file: UploadFile | None = File(None),
     ctx: RequestContext = Depends(get_context),
@@ -37,6 +38,7 @@ def create_upload(
     selected_domain = ctx.domain(domain)
     selected_year = _parse_upload_year(year)
     form_id, form = _select_form(ctx, selected_domain, file_type)
+    selected_month = _parse_upload_month(month) if form.needs_month else None
     file_name = _xlsx_file_name(file)
     ctx.require_warehouse()
     request = UploadRequest(
@@ -45,6 +47,7 @@ def create_upload(
         form_id=form_id,
         form=form,
         year=selected_year,
+        month=selected_month,
         file_name=file_name,
         source=file.file,
         user_id=ctx.user.user_id,
@@ -130,6 +133,15 @@ def _xlsx_file_name(file: UploadFile | None) -> str:
     if not file_name.lower().endswith(XLSX_SUFFIX):
         raise InvalidInput(messages.UPLOAD_XLSX_ONLY)
     return file_name
+
+
+def _parse_upload_month(month: str) -> int:
+    month = (month or '').strip()
+    if not month:
+        raise InvalidInput(messages.UPLOAD_MONTH_REQUIRED)
+    if not month.isdigit() or int(month) not in upload.MONTHS:
+        raise InvalidInput(messages.UPLOAD_MONTH_OUT_OF_RANGE)
+    return int(month)
 
 
 def _select_form(ctx: RequestContext, domain: Domain, file_type: str) -> tuple[int, PortalForm]:

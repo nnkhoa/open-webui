@@ -24,7 +24,8 @@ from .orchestrator import LoadRequest
 from .pending_uploads import PendingMetadata, PendingUpload
 from .reconcile import STEP_LABELS, Mismatch
 
-YEARS = tuple(range(2025, 2032))
+YEARS = tuple(range(2026, 2032))
+MONTHS = tuple(range(1, 13))
 STATUS_REJECTED = 'rejected'
 STATUS_MISMATCH = 'mismatch'
 STATUS_SUCCESS = 'success'
@@ -42,6 +43,7 @@ class UploadRequest:
     form_id: int
     form: Form
     year: int
+    month: int | None
     file_name: str
     source: BinaryIO
     user_id: str
@@ -67,7 +69,7 @@ def check_upload(container: Container, request: UploadRequest) -> dict:
     pending = pending_uploads.save(upload_dir, request.source, _new_metadata(request))
     sha256, size_bytes = dedup.hash_file(pending.file_path)
     try:
-        file_check = check_file(request.form, pending.file_path, request.year)
+        file_check = check_file(request.form, pending.file_path, request.year, request.month)
     except SourceFileError:
         pending_uploads.delete(pending)
         raise
@@ -124,12 +126,15 @@ def pending_upload_view(conn, form: Form, pending: PendingUpload) -> dict:
         'pending_id': pending.pending_id,
         'domain': metadata.domain,
         'year': metadata.year,
+        'month': metadata.month,
         'file_type': {'code': form.code, 'name': form.label, 'subtitle': form.subtitle},
         'file_name': metadata.file_name,
         'size_bytes': metadata.size_bytes,
         'sheet': file_check.get('data_sheet'),
         'checks': [_table_check_view(table) for table in file_check['tables']],
-        'identical': _identical_load(conn, metadata.domain_id, metadata.form_id, metadata.year, metadata.sha256),
+        'identical': _identical_load(
+            conn, metadata.domain_id, metadata.form_id, metadata.year, metadata.month, metadata.sha256
+        ),
         'overwrite': [],
         'new': [],
         'previous': None,
@@ -166,15 +171,17 @@ def _mismatch_errors(mismatches: list[Mismatch]) -> list[dict]:
     ]
 
 
-def _identical_load(conn, domain_id: int, form_id: int, year: int | None, file_sha256: str) -> dict | None:
+def _identical_load(
+    conn, domain_id: int, form_id: int, year: int | None, month: int | None, file_sha256: str
+) -> dict | None:
     row = warehouse_sql.query_one(
         conn,
         'SELECT l.load_id, l.started_at, l.actor_username FROM ctl.load l '
         '  JOIN ctl.upload u USING (upload_id) '
         ' WHERE l.domain_id = %s AND l.form_id = %s AND u.file_sha256 = %s '
-        "   AND l.year IS NOT DISTINCT FROM %s AND l.status = 'success' "
+        "   AND l.year IS NOT DISTINCT FROM %s AND l.month IS NOT DISTINCT FROM %s AND l.status = 'success' "
         ' ORDER BY l.load_id DESC LIMIT 1',
-        (domain_id, form_id, file_sha256, year),
+        (domain_id, form_id, file_sha256, year, month),
     )
     return _load_summary(row) if row else None
 
@@ -228,6 +235,7 @@ def _new_metadata(request: UploadRequest) -> PendingMetadata:
         form_id=request.form_id,
         file_type=request.form.code,
         year=request.year,
+        month=request.month,
         file_name=request.file_name,
         user_id=request.user_id,
         user=request.user_name,
@@ -295,8 +303,8 @@ def _insert_failed_load(conn, upload_id: int, failed: FailedLoad) -> int:
         conn,
         'INSERT INTO ctl.load (upload_id, domain_id, form_id, form_version, status, '
         'actor_user_id, actor_username, request_id, errors, finished_at, message, '
-        'year, file_check, steps, reconciliation, sheets_count) '
-        'VALUES (%s, %s, %s, %s, %s, NULL, %s, %s, %s, now(), %s, %s, %s, %s, %s, %s) '
+        'year, month, file_check, steps, reconciliation, sheets_count) '
+        'VALUES (%s, %s, %s, %s, %s, NULL, %s, %s, %s, now(), %s, %s, %s, %s, %s, %s, %s) '
         'RETURNING load_id',
         (
             upload_id,
@@ -309,6 +317,7 @@ def _insert_failed_load(conn, upload_id: int, failed: FailedLoad) -> int:
             _json(failed.errors),
             message,
             metadata.year,
+            metadata.month,
             _json(failed.file_check),
             _json(failed.steps),
             _json(failed.reconciliation),
@@ -327,7 +336,7 @@ def _record_load_event(catalog_conn, status: str, load_id: int, metadata: Pendin
         object_type='load',
         object_id=str(load_id),
         request_id=request_id,
-        detail={'user_id': metadata.user_id, 'year': metadata.year},
+        detail={'user_id': metadata.user_id, 'year': metadata.year, 'month': metadata.month},
     )
 
 
@@ -348,6 +357,7 @@ def _write_claimed(
                 actor_username=metadata.user,
                 request_id=request_id,
                 year=metadata.year,
+                month=metadata.month,
                 file_check=metadata.file_check,
                 a4_result=_a4_result(conn, form, metadata.domain_id, metadata.year),
                 year_columns=_year_columns(container),

@@ -20,12 +20,13 @@
 #    split_tail     SAMPLE DESCRIPTION: phần sau dấu " - " đầu tiên
 #
 #  Ô P10 (SUBTOTAL của cột QTY) chỉ cộng dòng đang hiện, phải bằng tổng so_luong.
+#  ky_thang lấy từ ô Tháng dữ liệu chọn lúc nạp (bắt buộc), chỉ ghi nhận tháng.
 #  Nạp lại cùng năm: ghi đè toàn bộ năm đó (`merge: replace_all`).
 # =============================================================================
 
 form:
   code: LICH_MAY_MAU
-  version: 2
+  version: 3
   label: May mẫu
   subtitle: SAMPLE MAKING SCHEDULE
   description: Lịch may mẫu chào hàng — khách hàng, nhóm kinh doanh, sample, số lượng và đơn giá.
@@ -61,6 +62,12 @@ tables:
         label: Không có trong tệp — lấy từ ô Năm dữ liệu chọn lúc nạp
         meaning: Năm của số liệu, chọn ở ô Năm dữ liệu lúc nạp.
         example: "2026"
+      - name: ky_thang
+        type: int
+        value_from: thang_du_lieu
+        label: Không có trong tệp — lấy từ ô Tháng dữ liệu chọn lúc nạp
+        meaning: Tháng của số liệu, chọn ở ô Tháng dữ liệu lúc nạp.
+        example: "9"
       - name: ma_khach
         type: text
         required: true

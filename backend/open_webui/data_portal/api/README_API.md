@@ -65,7 +65,7 @@ Hợp đồng thực tế của `open_webui/data_portal/api` — đúng với m�
 ]
 ```
 
-`file_types` rỗng ⇒ nhóm chưa khai loại tệp (màn trống "Chưa có thông tin"). Danh sách năm cố định 2025–2031, giao diện tự có.
+Mỗi loại tệp có `month_required` (true với hai loại tệp HQ-MAU-GC: màn Nạp hiện thêm ô Tháng). `file_types` rỗng ⇒ nhóm chưa khai loại tệp (màn trống "Chưa có thông tin"). Danh sách năm cố định 2026–2031, giao diện tự có.
 
 ### 3.2a `POST /uploads/form-check` — Tệp có đúng biểu mẫu không (chỉ đọc)
 
@@ -73,11 +73,11 @@ Form-data `domain`, `file_type` (bắt buộc khi nhóm có nhiều loại tệp
 
 ### 3.2 `POST /uploads` — Kiểm tra tệp (chỉ đọc)
 
-`multipart/form-data`: `domain` (mã nhóm), `year` (2025–2031), `file_type` (mã loại tệp — bắt buộc khi nhóm có nhiều loại tệp, bỏ trống được khi nhóm chỉ có một), `file`.
+`multipart/form-data`: `domain` (mã nhóm), `year` (2026–2031), `month` (1–12, bắt buộc khi loại tệp có `month_required: true` — nhóm HQ-MAU-GC; loại tệp khác bỏ qua), `file_type` (mã loại tệp — bắt buộc khi nhóm có nhiều loại tệp, bỏ trống được khi nhóm chỉ có một), `file`.
 
 - Hợp lệ → `200 {"pending_id": "<32 ký tự hex>"}`. Database không đổi.
 - Có lỗi cấu trúc / dữ liệu → `200 {"load_id": 12, "status": "rejected"}`. Đã tạo lần nạp "Bị từ chối", lưu tệp và danh sách lỗi.
-- 422 với `detail`: "Chưa chọn Nhóm thông tin." · "Nhóm thông tin không hợp lệ." · "Chưa chọn Năm dữ liệu." · "Năm dữ liệu phải từ 2025 đến 2031." · "Chưa chọn Loại tệp." · "Loại tệp không hợp lệ." · "Chưa chọn tệp." · "Portal chỉ nhận tệp .xlsx. Hãy mở tệp trong Excel và lưu lại đúng định dạng." (đuôi khác `.xlsx`, hoặc tệp hỏng) · "Nhóm {tên} chưa có thông tin: chưa khai báo loại tệp nên chưa nạp, chưa có lịch sử và chưa có dữ liệu."
+- 422 với `detail`: "Chưa chọn Nhóm thông tin." · "Nhóm thông tin không hợp lệ." · "Chưa chọn Năm dữ liệu." · "Năm dữ liệu phải từ 2026 đến 2031." · "Chưa chọn Tháng dữ liệu." · "Tháng dữ liệu phải từ 1 đến 12." · "Chưa chọn Loại tệp." · "Loại tệp không hợp lệ." · "Chưa chọn tệp." · "Portal chỉ nhận tệp .xlsx. Hãy mở tệp trong Excel và lưu lại đúng định dạng." (đuôi khác `.xlsx`, hoặc tệp hỏng) · "Nhóm {tên} chưa có thông tin: chưa khai báo loại tệp nên chưa nạp, chưa có lịch sử và chưa có dữ liệu."
 
 ### 3.3 `GET /uploads/{pending_id}` — màn Xác nhận
 

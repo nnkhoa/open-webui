@@ -49,7 +49,7 @@ def total_columns(table: FormTable) -> list[str]:
     return []
 
 
-def check_file(form: Form, path: Path, year: int | None) -> dict:
+def check_file(form: Form, path: Path, year: int | None, month: int | None = None) -> dict:
     sheets = sheet_names(path)
     result: dict = {'sheet_count': len(sheets), 'sheets': sheets, 'errors': [], 'failed_step': None, 'tables': []}
 
@@ -61,7 +61,7 @@ def check_file(form: Form, path: Path, year: int | None) -> dict:
             return result
         row_errors: list[dict] = []
         for table in form.tables_by_display_order:
-            result['tables'].append(_check_table(reader, form, table, year, row_errors))
+            result['tables'].append(_check_table(reader, form, table, year, month, row_errors))
         if row_errors:
             result['errors'], result['failed_step'] = row_errors, 'A3'
         result['data_sheet'] = _data_sheet(reader, form)
@@ -138,16 +138,16 @@ def _data_sheet(reader, form: Form) -> str | None:
     return sheets.pop().strip() if len(sheets) == 1 and len(form.tables) == 1 else None
 
 
-def _read_rows(reader, table: FormTable, year: int | None) -> list[BronzeRow]:
+def _read_rows(reader, table: FormTable, year: int | None, month: int | None) -> list[BronzeRow]:
     rows = []
     for row in reader.rows(table.sheet, table.header_map):
-        row = fill_derived_columns(table, row, year, reader)
+        row = fill_derived_columns(table, row, year, month, reader)
         rows.append(BronzeRow(0, row.number, hash_row(table.sheet, row.values, table.column_names), row.values))
     return rows
 
 
-def _check_table(reader, form: Form, table: FormTable, year: int | None, errors: list[dict]) -> dict:
-    rows = _read_rows(reader, table, year)
+def _check_table(reader, form: Form, table: FormTable, year: int | None, month: int | None, errors: list[dict]) -> dict:
+    rows = _read_rows(reader, table, year, month)
     unparsed: UnparsedCells = {}
     try:
         kept, duplicates = validate_rows(table, rows, unparsed)

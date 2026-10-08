@@ -30,7 +30,7 @@ def list_loads(conn, domain_id: int, load_filter: LoadFilter) -> tuple[list[dict
     rows = warehouse_sql.query(
         conn,
         f"""
-        SELECT l.load_id, l.status, l.rows_read, l.started_at, l.year, l.form_id,
+        SELECT l.load_id, l.status, l.rows_read, l.started_at, l.year, l.month, l.form_id,
                u.file_name, f.code AS form_code, f.label AS form_label,
                coalesce(l.actor_username, '—') AS user_name
           FROM ctl.load l
@@ -61,7 +61,7 @@ def get_load(conn, load_id: int) -> dict | None:
         """
         SELECT l.load_id, l.status, l.rows_read, l.rows_written, l.sheets_count,
                l.started_at, l.finished_at, l.errors, l.report, l.batch_id,
-               l.domain_id, l.form_id, l.year, l.file_check, l.steps, l.reconciliation,
+               l.domain_id, l.form_id, l.year, l.month, l.file_check, l.steps, l.reconciliation,
                u.file_name, u.size_bytes, u.storage_uri,
                f.code AS form_code, d.code AS domain_code,
                coalesce(l.actor_username, '—') AS user_name
@@ -78,6 +78,8 @@ def get_load(conn, load_id: int) -> dict | None:
 def month_range(load: dict) -> str | None:
     if load['status'] != STATUS_SUCCESS:
         return None
+    if load.get('month') is not None:
+        return str(load['month'])
     tables = (load.get('file_check') or {}).get('tables', [])
     months = sorted(
         {int(period) for table in tables for period in (table.get('by_period') or {}) if str(period).isdigit()}
