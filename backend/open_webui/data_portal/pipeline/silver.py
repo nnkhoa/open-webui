@@ -113,6 +113,12 @@ def _business_key_match(table: FormTable, left: str, right: str) -> sql.Composed
     )
 
 
+def _business_key_columns(table: FormTable, alias: str) -> sql.Composed:
+    return sql.SQL(', ').join(
+        sql.SQL('{}.{}').format(sql.Identifier(alias), sql.Identifier(c)) for c in table.business_key
+    )
+
+
 def _create_staging_table(ctx: LoadContext, table: FormTable, rows: list[CleanRow]) -> None:
     columns = table.column_names
     definition = sql.SQL(', ').join(
@@ -147,15 +153,26 @@ def _supersede_all(ctx: LoadContext, table: FormTable, now: dt.datetime) -> int:
 
 
 def _supersede_changed(ctx: LoadContext, table: FormTable, now: dt.datetime) -> int:
+    surrogate_key = sql.Identifier(table.sk_column)
     return warehouse_sql.execute(
         ctx.conn,
         sql.SQL(
             'UPDATE {target} s SET is_current = false, valid_to = %s, '
             'superseded_by_batch_id = %s '
-            ' WHERE s.domain_id = %s AND s.is_current '
-            '   AND EXISTS (SELECT 1 FROM {staging} g '
-            '                WHERE {match} AND g.row_hash <> s.row_hash)'
-        ).format(target=_target(table), staging=_staging(table), match=_business_key_match(table, 'g', 's')),
+            ' WHERE s.{sk} IN ('
+            '   SELECT c.{sk} FROM ('
+            '     SELECT t.*, row_number() OVER (PARTITION BY {key}, t.row_hash ORDER BY t.{sk}) AS occurrence '
+            '       FROM {target} t WHERE t.domain_id = %s AND t.is_current) c '
+            '    WHERE EXISTS (SELECT 1 FROM {staging} g WHERE {match}) '
+            '      AND c.occurrence > (SELECT count(*) FROM {staging} g '
+            '                           WHERE {match} AND g.row_hash = c.row_hash))'
+        ).format(
+            target=_target(table),
+            staging=_staging(table),
+            sk=surrogate_key,
+            key=_business_key_columns(table, 't'),
+            match=_business_key_match(table, 'g', 'c'),
+        ),
         (now, ctx.batch_id, ctx.domain_id),
     )
 
@@ -184,24 +201,29 @@ def _supersede_missing(ctx: LoadContext, table: FormTable, now: dt.datetime, per
 def _insert_rows(ctx: LoadContext, table: FormTable, now: dt.datetime, skip_unchanged: bool) -> int:
     columns = table.column_names
     selected = sql.SQL(', ').join(sql.SQL('g.{}').format(sql.Identifier(c)) for c in columns)
+    source = _staging(table)
     condition = sql.SQL('')
     if skip_unchanged:
+        source = sql.SQL(
+            '(SELECT s.*, row_number() OVER (PARTITION BY {key}, s.row_hash ORDER BY s.source_row) AS occurrence '
+            '   FROM {staging} s)'
+        ).format(key=_business_key_columns(table, 's'), staging=_staging(table))
         condition = sql.SQL(
-            ' WHERE NOT EXISTS (SELECT 1 FROM {target} c '
-            '                    WHERE c.domain_id = %s AND c.is_current '
-            '                      AND {match} AND c.row_hash = g.row_hash)'
+            ' WHERE g.occurrence > (SELECT count(*) FROM {target} c '
+            '                        WHERE c.domain_id = %s AND c.is_current '
+            '                          AND {match} AND c.row_hash = g.row_hash)'
         ).format(target=_target(table), match=_business_key_match(table, 'g', 'c'))
 
     statement = sql.SQL(
         'INSERT INTO {target} ({columns}, domain_id, load_id, batch_id, bronze_id, '
         'source_sheet, source_row, row_hash, valid_from, is_current) '
         'SELECT {selected}, %s, %s, %s, g.bronze_id, %s, g.source_row, g.row_hash, %s, true '
-        '  FROM {staging} g{condition}'
+        '  FROM {source} g{condition}'
     ).format(
         target=_target(table),
         columns=warehouse_sql.column_list(columns),
         selected=selected,
-        staging=_staging(table),
+        source=source,
         condition=condition,
     )
 

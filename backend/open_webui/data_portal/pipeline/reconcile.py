@@ -337,17 +337,21 @@ def _unchanged_rows_total(ctx: LoadContext, table: FormTable, money_columns: lis
     match = sql.SQL(' AND ').join(
         sql.SQL('c.{c} IS NOT DISTINCT FROM g.{c}').format(c=sql.Identifier(c)) for c in table.business_key
     )
+    key = sql.SQL(', ').join(sql.SQL('s.{}').format(sql.Identifier(c)) for c in table.business_key)
     total = warehouse_sql.scalar(
         ctx.conn,
         sql.SQL(
-            'SELECT {expression} FROM {staging} g '
-            ' WHERE EXISTS (SELECT 1 FROM {silver} c '
-            '                WHERE c.domain_id = %s AND c.is_current AND {match} '
-            '                  AND c.row_hash = g.row_hash AND c.batch_id <> %s)'
+            'SELECT {expression} FROM ('
+            '  SELECT s.*, row_number() OVER (PARTITION BY {key}, s.row_hash ORDER BY s.source_row) AS occurrence '
+            '    FROM {staging} s) g '
+            ' WHERE g.occurrence <= (SELECT count(*) FROM {silver} c '
+            '                         WHERE c.domain_id = %s AND c.is_current AND {match} '
+            '                           AND c.row_hash = g.row_hash AND c.batch_id <> %s)'
         ).format(
             expression=_sum_expression(money_columns, 'g'),
             staging=sql.Identifier(staging_name),
             silver=sql.Identifier('silver', table.name),
+            key=key,
             match=match,
         ),
         (ctx.domain_id, ctx.batch_id),
