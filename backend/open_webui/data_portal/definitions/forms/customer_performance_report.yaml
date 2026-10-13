@@ -18,11 +18,16 @@
 #  v4: bảng số liệu có thêm cột `nam` (lấy từ ô Năm dữ liệu chọn lúc nạp, không
 #  có trong tệp — `value_from: nam_du_lieu`), là cột đầu của khoá nghiệp vụ. Nạp lại
 #  ghi đè theo tháng **trong năm đã chọn** (QT-02, QT-09).
+#
+#  v5: thêm các cột tệp có nhưng phiếu khảo sát không có, tên biến theo tên cột
+#  gốc. Kết quả kinh doanh thêm ba khoản tạo nên giá vốn (CA04, CA01, CF01; giá
+#  vốn = tổng ba khoản). Danh mục khách hàng thêm hợp đồng xuất, mỗi dòng một cặp
+#  mã khách – hợp đồng.
 # =============================================================================
 
 form:
   code: BAO_CAO_HQKH
-  version: 4
+  version: 5
   label: Báo cáo hiệu quả từng khách hàng
   description: >
     Doanh thu, giá vốn, lợi nhuận và chi phí theo khách hàng, nhóm kinh doanh
@@ -37,12 +42,14 @@ tables:
     sheet: DM_KHACH_HANG
     label: Danh mục khách hàng
     card_label: Khách hàng
-    description: Mã và tên khách hàng, lấy từ sheet DANH SACH KHACH HANG THEO HDX.
-    grain: Một dòng cho mỗi cặp mã – tên khác nhau của sheet.
+    description: >
+      Mã, tên khách hàng và hợp đồng xuất, lấy từ sheet DANH SACH KHACH HANG THEO HDX,
+      cộng các cặp mã khách – hợp đồng xuất chỉ có ở cột Hợp đồng xuất của sheet TỔNG HỢP.
+    grain: Một dòng cho mỗi cặp mã khách – hợp đồng xuất khác nhau của hai sheet.
     purpose: Xếp hạng và phân tích theo khách hàng.
-    business_key: [ma_khach]
+    business_key: [ma_khach, hop_dong_xuat]
     merge: upsert
-    order: [ma_khach]
+    order: [ma_khach, hop_dong_xuat]
     display_order: 3
     columns:
       - name: ma_khach
@@ -56,6 +63,12 @@ tables:
         display_width: 320
         meaning: Tên đầy đủ của khách hàng.
         example: APG & CO., PTY LTD.
+      - name: hop_dong_xuat
+        type: text
+        label: HỢP ĐỒNG XUẤT
+        display_width: 220
+        meaning: Số hợp đồng xuất của khách hàng, lấy ở cột HỢP ĐỒNG XUẤT nằm sau cột Trung Tâm Phí, và ở cột Hợp đồng xuất của sheet TỔNG HỢP với hợp đồng sheet khách hàng chưa có. Trống khi tệp chưa ghi hợp đồng.
+        example: 25/166/NB/APG/KD
 
   - name: dim_khoan_cp
     kind: dim
@@ -143,8 +156,26 @@ tables:
         type: money
         role: measure
         label: Giá vốn hàng bán
-        meaning: Giá vốn hàng bán tương ứng với phần doanh thu trên.
+        meaning: Giá vốn hàng bán tương ứng với phần doanh thu trên, bằng tổng CM gia công, nguyên phụ liệu và thêu + in + wash.
         example: "717740937"
+      - name: cm_gia_cong
+        type: money
+        role: measure
+        label: CM Gia Công
+        meaning: Phần giá vốn là CM gia công (mã CA04).
+        example: "172976310"
+      - name: nguyen_phu_lieu
+        type: money
+        role: measure
+        label: Nguyên phụ liệu
+        meaning: Phần giá vốn là nguyên phụ liệu (mã CA01).
+        example: "544764627"
+      - name: theu_in_wash
+        type: money
+        role: measure
+        label: Thêu + In + Wash
+        meaning: Phần giá vốn là thêu, in và wash (mã CF01).
+        example: "0"
       - name: thu_nhap_khac
         type: money
         role: measure

@@ -205,7 +205,7 @@ def column_purpose(table: FormTable, column: FormColumn, tables: list[FormTable]
     if column.name in table.partition_by:
         parts.append(messages.TABLE_PURPOSE_PERIOD)
     if table.kind == 'fact':
-        dimensions = [other for other in tables if other.is_dim and other.business_key == [column.name]]
+        dimensions = [other for other in tables if other.is_dim and other.business_key[:1] == [column.name]]
         if dimensions:
             parts.append(messages.TABLE_PURPOSE_JOIN.format(table=dimensions[0].name, label=dimensions[0].label))
     if column.type == 'ratio':

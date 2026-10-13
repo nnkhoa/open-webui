@@ -14,11 +14,19 @@ MONTH_HEADER = 'THÁNG'
 BUSINESS_GROUP_HEADER = 'NHÓM KINH DOANH'
 CUSTOMER_CODE_HEADER = 'MÃ KHÁCH HÀNG'
 CUSTOMER_NAME_HEADER = 'Khách hàng'
+CONTRACT_HEADER = 'Hợp đồng xuất'
 CUMULATIVE_MARKER = 'LK'
 TOTAL_ROW_PREFIX = 'TỔNG CỘNG'
 MARKER_CELL = 'x'
 
-RESULT_COLUMNS_BY_CODE = {'doanh_thu': 'DA01', 'gia_von': 'CA00', 'thu_nhap_khac': 'DA02'}
+RESULT_COLUMNS_BY_CODE = {
+    'doanh_thu': 'DA01',
+    'gia_von': 'CA00',
+    'cm_gia_cong': 'CA04',
+    'nguyen_phu_lieu': 'CA01',
+    'theu_in_wash': 'CF01',
+    'thu_nhap_khac': 'DA02',
+}
 RESULT_COLUMNS_BY_HEADER: dict[str, tuple[str, str | None]] = {
     'lai_rong': ('LỢI NHUẬN NET', None),
     'lai_gop': ('Lợi Nhuận Gộp (doanh thu-giá vốn)', None),
@@ -55,6 +63,9 @@ FLAT_TABLES: dict[str, tuple[str, ...]] = {
         'ma_nhom_kd',
         'doanh_thu',
         'gia_von',
+        'cm_gia_cong',
+        'nguyen_phu_lieu',
+        'theu_in_wash',
         'thu_nhap_khac',
         'lai_rong',
         'lai_gop',
@@ -66,7 +77,7 @@ FLAT_TABLES: dict[str, tuple[str, ...]] = {
         'chenh_gop_rong',
     ),
     COSTS_TABLE: ('ky_thang', 'ma_khoan_cp', 'cap_phan_bo', 'ma_khach', 'ma_nhom_kd', 'so_tien'),
-    CUSTOMERS_TABLE: ('ma_khach', 'ten_khach'),
+    CUSTOMERS_TABLE: ('ma_khach', 'ten_khach', 'hop_dong_xuat'),
     COST_ITEMS_TABLE: ('ma_khoan_cp', 'ten_khoan', 'nhom_chi_phi'),
 }
 
@@ -79,19 +90,38 @@ SOURCE_SHEET_BY_TABLE: dict[str, str] = {
 
 
 @dataclass(frozen=True)
+class CatalogColumn:
+    name: str
+    header: str
+    anchor: str | None = None
+
+
+@dataclass(frozen=True)
 class CatalogSheet:
     sheet: str
     table: str
-    code_header: str
-    name_header: str
-    columns: tuple[str, str]
+    columns: tuple[CatalogColumn, ...]
+
+    @property
+    def headers(self) -> tuple[str, ...]:
+        return tuple(column.header for column in self.columns)
 
 
+# Sheet khách hàng có hai cột cùng tên HỢP ĐỒNG XUẤT (cột A và cột H); lấy cột H nằm
+# sau cột Trung Tâm Phí, cùng dòng với mã khách hàng.
 CUSTOMER_CATALOG = CatalogSheet(
-    CUSTOMER_LIST_SHEET, CUSTOMERS_TABLE, 'Mã Trung Tâm Phí', 'Trung Tâm Phí', ('ma_khach', 'ten_khach')
+    CUSTOMER_LIST_SHEET,
+    CUSTOMERS_TABLE,
+    (
+        CatalogColumn('ma_khach', 'Mã Trung Tâm Phí'),
+        CatalogColumn('ten_khach', 'Trung Tâm Phí'),
+        CatalogColumn('hop_dong_xuat', 'HỢP ĐỒNG XUẤT', 'Trung Tâm Phí'),
+    ),
 )
 COST_ITEM_CATALOG = CatalogSheet(
-    COST_ITEM_SHEET, COST_ITEMS_TABLE, 'MÃ KHOẢN MỤC', 'KHOẢN MỤC', ('ma_khoan_cp', 'ten_khoan')
+    COST_ITEM_SHEET,
+    COST_ITEMS_TABLE,
+    (CatalogColumn('ma_khoan_cp', 'MÃ KHOẢN MỤC'), CatalogColumn('ten_khoan', 'KHOẢN MỤC')),
 )
 
 
@@ -106,6 +136,33 @@ def is_total_row(customer_code: str | None, customer_name: str | None) -> bool:
 def is_marker_row(cells: list[Any]) -> bool:
     filled = [value for value in cells if value is not None and str(value).strip()]
     return bool(filled) and all(str(value).strip().lower() == MARKER_CELL for value in filled)
+
+
+def add_summary_contracts(customers: list[dict[str, Any]], summary_rows: list[dict[str, Any]]) -> None:
+    """Thêm vào danh mục khách hàng các cặp mã khách – hợp đồng xuất chỉ có ở sheet TỔNG HỢP.
+
+    Tên khách lấy theo danh mục nếu mã đã có, không thì lấy tên ghi ở dòng TỔNG HỢP.
+    """
+    names: dict[str, Any] = {}
+    for row in customers:
+        names.setdefault(row['ma_khach'], row['ten_khach'])
+    known = {(row['ma_khach'], _stripped(row['hop_dong_xuat'])) for row in customers}
+    for row in summary_rows:
+        key = (row['ma_khach'], _stripped(row['hop_dong_xuat']))
+        if key[1] is None or key in known:
+            continue
+        known.add(key)
+        customers.append(
+            {
+                'ma_khach': row['ma_khach'],
+                'ten_khach': names.get(row['ma_khach'], row['ten_khach']),
+                'hop_dong_xuat': row['hop_dong_xuat'],
+            }
+        )
+
+
+def _stripped(value: Any) -> str | None:
+    return None if value is None else str(value).strip() or None
 
 
 def cost_group(cost_item_code: str | None) -> str | None:
