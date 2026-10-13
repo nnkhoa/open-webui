@@ -16,6 +16,7 @@ class _SummaryColumns:
     business_group: int | None
     customer_code: int | None
     customer_name: int | None
+    contract: int | None
     results: dict[str, int | None]
     costs: list[int | None]
     cost_codes: dict[int, str]
@@ -25,8 +26,9 @@ class CustomerReportVerifyReader:
     def __init__(self, path: Path) -> None:
         reader = XlsxXmlReader(path)
         try:
-            results, costs = _read_summary(reader.grid(layout.SUMMARY_SHEET))
+            results, costs, contracts = _read_summary(reader.grid(layout.SUMMARY_SHEET))
             customers = _read_catalog(reader.grid(layout.CUSTOMER_LIST_SHEET), layout.CUSTOMER_CATALOG)
+            layout.add_summary_contracts(customers, contracts)
             cost_items = _read_catalog(reader.grid(layout.COST_ITEM_SHEET), layout.COST_ITEM_CATALOG)
         finally:
             reader.close()
@@ -85,20 +87,22 @@ def _summary_columns(grid: Grid, header_row: int) -> _SummaryColumns:
         business_group=_column(headers, layout.BUSINESS_GROUP_HEADER),
         customer_code=_column(headers, layout.CUSTOMER_CODE_HEADER),
         customer_name=_column(headers, layout.CUSTOMER_NAME_HEADER),
+        contract=_column(headers, layout.CONTRACT_HEADER),
         results=results,
         costs=sorted(cost_groups) + [_column(headers, header) for header in layout.UNGROUPED_COST_HEADERS],
         cost_codes=cost_codes,
     )
 
 
-def _read_summary(grid: Grid) -> tuple[list[FlatRow], list[FlatRow]]:
+def _read_summary(grid: Grid) -> tuple[list[FlatRow], list[FlatRow], list[FlatRow]]:
     header_row = _find_header_row(grid, layout.MONTH_HEADER, layout.CUSTOMER_CODE_HEADER)
     if header_row is None:
-        return [], []
+        return [], [], []
     columns = _summary_columns(grid, header_row)
     cumulative_marker = normalize_name(layout.CUMULATIVE_MARKER)
     results: list[FlatRow] = []
     costs: list[FlatRow] = []
+    contracts: list[FlatRow] = []
     for row_number in sorted(row for row in grid if row > header_row):
         cells = grid[row_number]
         if layout.is_marker_row(list(cells.values())):
@@ -117,6 +121,9 @@ def _read_summary(grid: Grid) -> tuple[list[FlatRow], list[FlatRow]]:
             | {'ten_khach': customer_name}
             | {name: cells.get(column) for name, column in columns.results.items()}
         )
+        contracts.append(
+            {'ma_khach': customer_code, 'ten_khach': customer_name, 'hop_dong_xuat': cells.get(columns.contract)}
+        )
         costs.extend(
             common
             | {
@@ -126,20 +133,23 @@ def _read_summary(grid: Grid) -> tuple[list[FlatRow], list[FlatRow]]:
             }
             for column in columns.costs
         )
-    return results, costs
+    return results, costs, contracts
 
 
 def _read_catalog(grid: Grid, catalog: layout.CatalogSheet) -> list[FlatRow]:
-    header_row = _find_header_row(grid, catalog.code_header, catalog.name_header)
+    header_row = _find_header_row(grid, *catalog.headers)
     if header_row is None:
         return []
-    code_column = _column(grid[header_row], catalog.code_header)
-    name_column = _column(grid[header_row], catalog.name_header)
+    headers = grid[header_row]
+    columns = []
+    for column in catalog.columns:
+        anchor_column = _column(headers, column.anchor) if column.anchor else None
+        columns.append(_column(headers, column.header, anchor_column + 1 if anchor_column else 0))
     rows: list[FlatRow] = []
     for row_number in sorted(row for row in grid if row > header_row):
         if layout.is_marker_row(list(grid[row_number].values())):
             continue
-        values = (grid[row_number].get(code_column), grid[row_number].get(name_column))
+        values = tuple(grid[row_number].get(index) for index in columns)
         if any(value is not None for value in values):
-            rows.append(dict(zip(catalog.columns, values, strict=True)))
+            rows.append(dict(zip((column.name for column in catalog.columns), values, strict=True)))
     return rows

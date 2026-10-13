@@ -25,6 +25,7 @@ class _SummaryColumns:
     business_group: int
     customer_code: int
     customer_name: int
+    contract: int
     results: dict[str, int]
     costs: list[int]
     cost_codes: list[str | None]
@@ -101,6 +102,7 @@ class CustomerReportReader:
         self.path = path
         self._issues: list[SourceIssue] = []
         self._tables = _empty_tables()
+        self._summary_contracts: list[FlatRow] = []
         workbook = open_workbook(path)
         try:
             self._read(workbook)
@@ -156,6 +158,7 @@ class CustomerReportReader:
         self._read_summary(sheets[layout.SUMMARY_SHEET])
         for catalog in (layout.CUSTOMER_CATALOG, layout.COST_ITEM_CATALOG):
             self._read_catalog(sheets[catalog.sheet], catalog)
+        layout.add_summary_contracts(self._tables[layout.CUSTOMERS_TABLE], self._summary_contracts)
         for row in self._tables[layout.COST_ITEMS_TABLE]:
             row['nhom_chi_phi'] = layout.cost_group(row['ma_khoan_cp'])
 
@@ -188,6 +191,13 @@ class CustomerReportReader:
             }
             results = {name: _cell_at(cells, index) for name, index in columns.results.items()}
             self._tables[layout.RESULTS_TABLE].append(common | {'ten_khach': customer_name} | results)
+            self._summary_contracts.append(
+                {
+                    'ma_khach': customer_code,
+                    'ten_khach': customer_name,
+                    'hop_dong_xuat': _cell_at(cells, columns.contract),
+                }
+            )
             for index in columns.costs:
                 cost_code = columns.cost_codes[index] if index < len(columns.cost_codes) else None
                 self._tables[layout.COSTS_TABLE].append(
@@ -208,6 +218,7 @@ class CustomerReportReader:
         business_group = resolver.by_header(layout.BUSINESS_GROUP_HEADER)
         customer_code = resolver.by_header(layout.CUSTOMER_CODE_HEADER)
         customer_name = resolver.by_header(layout.CUSTOMER_NAME_HEADER)
+        contract = resolver.by_header(layout.CONTRACT_HEADER)
         results = {name: resolver.by_code(code) for name, code in layout.RESULT_COLUMNS_BY_CODE.items()}
         results |= {
             name: resolver.by_header(header, anchor)
@@ -217,23 +228,41 @@ class CustomerReportReader:
         costs += [i for i in (resolver.by_header(header) for header in layout.UNGROUPED_COST_HEADERS) if i is not None]
         if len(self._issues) > issue_count:
             return None
-        return _SummaryColumns(month, business_group, customer_code, customer_name, results, costs, cost_codes)
+        return _SummaryColumns(
+            month, business_group, customer_code, customer_name, contract, results, costs, cost_codes
+        )
 
     def _read_catalog(self, sheet: _Sheet, catalog: layout.CatalogSheet) -> None:
-        header_row = sheet.find_header_row(catalog.code_header, catalog.name_header)
+        header_row = sheet.find_header_row(*catalog.headers)
         if header_row is None:
-            self._issues.append(_column_issue(sheet.title, 1, catalog.code_header, 'MISSING_COLUMN'))
+            self._issues.append(_column_issue(sheet.title, 1, catalog.headers[0], 'MISSING_COLUMN'))
             return
         headers = sheet.normalized_cells(header_row)
-        code_column = headers.index(normalize_name(catalog.code_header))
-        name_column = headers.index(normalize_name(catalog.name_header))
+        columns = [_catalog_column(headers, column) for column in catalog.columns]
+        missing = [column.header for column, index in zip(catalog.columns, columns) if index is None]
+        if missing:
+            self._issues.extend(_column_issue(sheet.title, header_row, header, 'MISSING_COLUMN') for header in missing)
+            return
         for row_number in range(header_row + 1, sheet.last_row + 1):
             cells = sheet.cells(row_number)
             if layout.is_marker_row(cells):
                 continue
-            values = [_cell_at(cells, code_column), _cell_at(cells, name_column)]
+            values = [_cell_at(cells, index) for index in columns]
             if any(value is not None for value in values):
-                self._tables[catalog.table].append(dict(zip(catalog.columns, values, strict=True)))
+                self._tables[catalog.table].append(
+                    dict(zip((column.name for column in catalog.columns), values, strict=True))
+                )
+
+
+def _catalog_column(headers: list[str | None], column: layout.CatalogColumn) -> int | None:
+    start = 0
+    if column.anchor is not None:
+        anchor = normalize_name(column.anchor)
+        if anchor not in headers:
+            return None
+        start = headers.index(anchor) + 1
+    target = normalize_name(column.header)
+    return next((i for i in range(start, len(headers)) if headers[i] == target), None)
 
 
 def _empty_tables() -> dict[str, list[FlatRow]]:
