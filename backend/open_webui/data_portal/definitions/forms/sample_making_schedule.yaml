@@ -1,44 +1,35 @@
 # =============================================================================
 #  Bộ bảng LICH_MAY_MAU — May mẫu (nhóm HQ-MAU-GC)
 #
-#  Tệp NBC: "SAMPLE MAKING SCHEDULE ( 30 Sep ) - OK.xlsx". Bộ đọc
-#  `sources/header_table.py` nhận sheet đang hiện **theo dòng tiêu đề** (tên sheet đổi
-#  theo ngày): dòng có đủ 6 tên cột dưới đây — dòng 12, dòng tên cột tiếng Anh.
-#  Dữ liệu từ dòng tiêu đề + 2; bỏ dòng ẩn, dừng ở dòng đang hiện trống đầu tiên, bỏ
-#  dòng tổng.
+#  Tệp NBC: "THONG KE MAY MAU 2026 - FPT.xlsx" — một sheet, bảng phẳng. Bộ đọc
+#  `sources/header_table.py` nhận sheet đang hiện **theo dòng tiêu đề**: dòng có đủ
+#  9 tên cột dưới đây (dòng 2). Dữ liệu từ dòng tiêu đề + 1; bỏ dòng ẩn, dừng ở dòng
+#  đang hiện trống đầu tiên, bỏ dòng tổng.
 #
-#  Chỉ lấy các cột chứa thông tin NBC hiện cần: CUSTOMER, MEN / LADY,
-#  SAMPLE DESCRIPTION, SALE GROUP, QTY, PRICE / PC ( USD ). Tên biến theo phiếu khảo
-#  sát 20260915_NBC-QTTM_Bieu_mau_du_lieu_va_Khao_sat sheet "4. May mau"; cột phiếu
-#  chưa có tên thì giữ tên cột gốc (men_lady) hoặc đặt theo yêu cầu (sample, description).
+#  Lấy đủ 9 cột của tệp, giá trị y như tệp. Tên cột là tên tiêu đề của tệp viết
+#  dạng snake_case không dấu.
 #
-#  Bronze giữ y như tệp. Silver làm sạch chữ và chuẩn hoá theo `normalize`:
-#    clean_text     gộp khoảng trắng, xuống dòng; ô trống → "Không có thông tin"
-#    customer_code  tên khách → mã khách theo definitions/customer_aliases.yaml
-#    sales_group    6 → SALE 6, cùng dạng nhóm kinh doanh của HQKD
-#    split_head     SAMPLE DESCRIPTION: phần trước dấu " - " đầu tiên
-#    split_tail     SAMPLE DESCRIPTION: phần sau dấu " - " đầu tiên
+#  Bronze giữ y như tệp. Silver chỉ gộp khoảng trắng, xuống dòng của ô chữ
+#  (`clean_text`; ô chữ trống → "Không có thông tin") và đổi kiểu số.
 #
-#  Ô P10 (SUBTOTAL của cột QTY) chỉ cộng dòng đang hiện, phải bằng tổng so_luong.
-#  ky_thang lấy từ ô Tháng dữ liệu chọn lúc nạp (bắt buộc), chỉ ghi nhận tháng.
-#  Nạp lại cùng năm: ghi đè toàn bộ năm đó (`merge: replace_all`).
+#  nam lấy từ ô Năm dữ liệu chọn lúc nạp. Nạp lại cùng năm: ghi đè toàn bộ năm đó
+#  (`merge: replace_all`).
 # =============================================================================
 
 form:
   code: LICH_MAY_MAU
-  version: 3
+  version: 8
   label: May mẫu
-  subtitle: SAMPLE MAKING SCHEDULE
-  description: Lịch may mẫu chào hàng — khách hàng, nhóm kinh doanh, sample, số lượng và đơn giá.
+  subtitle: THONG KE MAY MAU
+  description: Thống kê may mẫu chào hàng — tháng, nhóm, khách hàng, mẫu, đơn giá, số lượng và thành tiền.
   policy:
     unknown_sheet: ignore
     unknown_column: ignore
   source:
     kind: header_table
-    data_row_offset: 2
-    total_cell: P10
-    report_date_cell: A4
-    required_headers: [CUSTOMER, MEN / LADY, SAMPLE DESCRIPTION, SALE GROUP, QTY, PRICE / PC ( USD )]
+    data_row_offset: 1
+    required_headers: [THÁNG, NHÓM, KHÁCH HÀNG, MEN / LADY / OTHERS, SAMPLE DESCRIPTION, ĐƠN GIÁ, SỐ LƯỢNG,
+                       THÀNH TIỀN USD, THÀNH TIỀN VNĐ]
 
 tables:
   - name: fact_may_mau
@@ -46,14 +37,14 @@ tables:
     sheet: LICH_MAY_MAU
     label: May mẫu chào hàng
     card_label: May mẫu chào hàng
-    description: Từng lần may mẫu — khách hàng, nhóm kinh doanh, sample, số lượng và đơn giá.
-    grain: Một dòng cho mỗi dòng dữ liệu đang hiện của sheet lịch may mẫu.
+    description: Từng lần may mẫu — tháng, nhóm, khách hàng, mẫu, đơn giá, số lượng và thành tiền.
+    grain: Một dòng cho mỗi dòng dữ liệu đang hiện của sheet thống kê may mẫu.
     purpose: >
       Nhóm câu hỏi về hiệu quả may mẫu chào hàng: chi phí may mẫu theo khách hàng và
       nhóm kinh doanh, so với doanh thu và lợi nhuận của cùng khách hàng ở nhóm HQKD.
-    business_key: [nam, ma_khach, sample]
+    business_key: [nam, khach_hang, sample_description]
     merge: replace_all
-    order: [nam, ma_nhom_kd, ma_khach, sample]
+    order: [nam, thang, nhom, khach_hang, sample_description]
     display_order: 1
     columns:
       - name: nam
@@ -62,64 +53,65 @@ tables:
         label: Không có trong tệp — lấy từ ô Năm dữ liệu chọn lúc nạp
         meaning: Năm của số liệu, chọn ở ô Năm dữ liệu lúc nạp.
         example: "2026"
-      - name: ky_thang
+      - name: thang
         type: int
-        value_from: thang_du_lieu
-        label: Không có trong tệp — lấy từ ô Tháng dữ liệu chọn lúc nạp
-        meaning: Tháng của số liệu, chọn ở ô Tháng dữ liệu lúc nạp.
+        header: THÁNG
+        label: THÁNG
+        meaning: Tháng may mẫu.
         example: "9"
-      - name: ma_khach
+      - name: nhom
+        type: text
+        header: NHÓM
+        label: NHÓM
+        normalize: clean_text
+        meaning: Nhóm kinh doanh phụ trách, ghi như trong tệp.
+        example: SALE 6
+      - name: khach_hang
         type: text
         required: true
-        header: CUSTOMER
-        label: CUSTOMER
-        display_width: 240
-        normalize: customer_code
-        meaning: >
-          Mã khách hàng mà mẫu được chào cho. Tên trong tệp được đổi sang mã theo danh mục
-          tên gọi khác của khách hàng; tên chưa có mã giữ nguyên (khách phát triển).
-        example: EO-00325
-      - name: men_lady
-        type: text
-        header: MEN / LADY
-        label: MEN / LADY
+        header: KHÁCH HÀNG
+        label: KHÁCH HÀNG
+        display_width: 280
         normalize: clean_text
-        meaning: Mẫu dành cho nam hay nữ.
+        meaning: Tên khách hàng mà mẫu được chào cho, ghi như trong tệp.
+        example: MANGO MNG, S.A.
+      - name: men_lady_others
+        type: text
+        header: MEN / LADY / OTHERS
+        label: MEN / LADY / OTHERS
+        normalize: clean_text
+        meaning: Mẫu dành cho nam, nữ hay đối tượng khác.
         example: MEN
-      - name: sample
+      - name: sample_description
         type: text
         header: SAMPLE DESCRIPTION
-        label: SAMPLE
-        display_width: 160
-        normalize: split_head
-        meaning: Phần trước dấu "-" của SAMPLE DESCRIPTION.
-        example: BLAZER
-      - name: description
-        type: text
-        label: DESCRIPTION
+        label: SAMPLE DESCRIPTION
         display_width: 240
-        normalize:
-          rule: split_tail
-          from: sample
-        meaning: Phần sau dấu "-" của SAMPLE DESCRIPTION; không có thì "Không có thông tin".
-        example: Mockup thread
-      - name: ma_nhom_kd
-        type: text
-        header: SALE GROUP
-        label: SALE GROUP
-        normalize: sales_group
-        meaning: Nhóm kinh doanh phụ trách, cùng dạng với HQKD (số 6 thành SALE 6).
-        example: SALE 6
+        normalize: clean_text
+        meaning: Mô tả mẫu, ghi như trong tệp.
+        example: BLAZER - Mockup interlining
+      - name: don_gia
+        type: number
+        header: ĐƠN GIÁ
+        label: ĐƠN GIÁ
+        meaning: Đơn giá một mẫu, tính bằng USD. Ô không phải số thì để trống.
+        example: "37.5"
       - name: so_luong
         type: number
         role: measure
-        header: QTY
-        label: QTY
+        header: SỐ LƯỢNG
+        label: SỐ LƯỢNG
         meaning: Số lượng mẫu của lần may này.
         example: "1"
-      - name: don_gia_usd
+      - name: thanh_tien_usd
         type: number
-        header: PRICE / PC ( USD )
-        label: PRICE / PC ( USD )
-        meaning: Đơn giá một mẫu, tính bằng USD. Ô không phải số (vd. "X") thì để trống.
-        example: "37.5"
+        header: THÀNH TIỀN USD
+        label: THÀNH TIỀN USD
+        meaning: Thành tiền của dòng, tính bằng USD, như trong tệp.
+        example: "75"
+      - name: thanh_tien_vnd
+        type: number
+        header: THÀNH TIỀN VNĐ
+        label: THÀNH TIỀN VNĐ
+        meaning: Thành tiền của dòng, tính bằng đồng Việt Nam, như trong tệp.
+        example: "1800000"

@@ -60,12 +60,12 @@ Hợp đồng thực tế của `open_webui/data_portal/api` — đúng với m�
    "file_types": [{"code": "BAO_CAO_HQKH", "name": "Báo cáo hiệu quả từng khách hàng", "subtitle": null}]},
   {"code": "HQ-MAU-GC", "name": "Hiệu quả may mẫu chào hàng, gia công ngoài",
    "subtitle": "HQ-MAU-GC · May mẫu, Gia công ngoài",
-   "file_types": [{"code": "LICH_MAY_MAU", "name": "May mẫu", "subtitle": "SAMPLE MAKING SCHEDULE"},
+   "file_types": [{"code": "LICH_MAY_MAU", "name": "May mẫu", "subtitle": "THONG KE MAY MAU"},
                   {"code": "DON_GIA_CONG", "name": "Gia công ngoài", "subtitle": "TOTAL PO SUBCON"}]}
 ]
 ```
 
-Mỗi loại tệp có `month_required` (true với hai loại tệp HQ-MAU-GC: màn Nạp hiện thêm ô Tháng). `file_types` rỗng ⇒ nhóm chưa khai loại tệp (màn trống "Chưa có thông tin"). Danh sách năm cố định 2026–2031, giao diện tự có.
+Mỗi loại tệp có `month_required` (true với Gia công ngoài: màn Nạp hiện thêm ô Tháng; May mẫu lấy tháng từ cột THÁNG của tệp). `file_types` rỗng ⇒ nhóm chưa khai loại tệp (màn trống "Chưa có thông tin"). Danh sách năm cố định 2026–2031, giao diện tự có.
 
 ### 3.2a `POST /uploads/form-check` — Tệp có đúng biểu mẫu không (chỉ đọc)
 
@@ -73,7 +73,7 @@ Form-data `domain`, `file_type` (bắt buộc khi nhóm có nhiều loại tệp
 
 ### 3.2 `POST /uploads` — Kiểm tra tệp (chỉ đọc)
 
-`multipart/form-data`: `domain` (mã nhóm), `year` (2026–2031), `month` (1–12, bắt buộc khi loại tệp có `month_required: true` — nhóm HQ-MAU-GC; loại tệp khác bỏ qua), `file_type` (mã loại tệp — bắt buộc khi nhóm có nhiều loại tệp, bỏ trống được khi nhóm chỉ có một), `file`.
+`multipart/form-data`: `domain` (mã nhóm), `year` (2026–2031), `month` (1–12, bắt buộc khi loại tệp có `month_required: true` — Gia công ngoài; loại tệp khác bỏ qua), `file_type` (mã loại tệp — bắt buộc khi nhóm có nhiều loại tệp, bỏ trống được khi nhóm chỉ có một), `file`.
 
 - Hợp lệ → `200 {"pending_id": "<32 ký tự hex>"}`. Database không đổi.
 - Có lỗi cấu trúc / dữ liệu → `200 {"load_id": 12, "status": "rejected"}`. Đã tạo lần nạp "Bị từ chối", lưu tệp và danh sách lỗi.
@@ -109,8 +109,8 @@ Chỉ người đã tải lên mới xem / huỷ / xác nhận được; ngườ
 - `identical`: `{load_id, created_at, user}` — lần nạp đang có hiệu lực cùng nhóm, năm, loại tệp có cùng mã băm tệp.
 - `existing` (mỗi dòng): `null` hoặc `{row_count, load_id, created_at, user}` — dữ liệu đang có của nhóm dòng đó trong năm đã chọn. `write_mode`: "Ghi đè" / "Ghi thêm".
 - **HQKD**: `overwrite` / `new` là số tháng; `previous: null`; `by_group` mỗi tháng 2 dòng (`data` "Kết quả kinh doanh" / "Chi phí"), tên tháng lặp ở cả hai dòng (giao diện tự ẩn ở dòng thứ hai).
-- **HQ-MAU-GC**: `sheet` = sheet lấy dữ liệu ("30 Sep - OK", "Final 09.4"); `previous`: `null` hoặc `{row_count, load_id, created_at, user}` — dữ liệu đang có hiệu lực của cùng loại tệp, năm (sẽ bị ghi đè toàn bộ); `overwrite` / `new` = `["May mẫu"]` theo đó.
-  - May mẫu: `by_group.title` "Theo nhóm kinh doanh", `first_column` "Nhóm kinh doanh"; dòng `{group: "SALE 6", row_count, quantity, existing, write_mode}`, giá trị nhóm đã chuẩn hoá như lớp Silver.
+- **HQ-MAU-GC**: `sheet` = sheet lấy dữ liệu ("Sheet1", "Final 09.4"); `previous`: `null` hoặc `{row_count, load_id, created_at, user}` — dữ liệu đang có hiệu lực của cùng loại tệp, năm (sẽ bị ghi đè toàn bộ); `overwrite` / `new` = `["May mẫu"]` theo đó.
+  - May mẫu: `by_group.title` "Theo nhóm kinh doanh", `first_column` "Nhóm kinh doanh"; dòng `{group: "SALE 6", row_count, quantity, existing, write_mode}`, nhóm lấy từ cột `nhom`, thứ tự như trong tệp.
   - Gia công ngoài: "Theo đơn vị gia công" / "Đơn vị gia công", thứ tự như trong tệp.
   - `total`: `{row_count, quantity, existing}` (`existing` = số dòng đang có, hoặc `null`).
 
@@ -144,7 +144,7 @@ Tệp chờ không còn (đã xác nhận, đã huỷ, quá 24 giờ) → `404 {
   "id": 7, "status": "success", "domain": "HQKD", "year": 2026,
   "file_type": {"code": "BAO_CAO_HQKH", "name": "…", "subtitle": null},
   "file_name": "…xlsx", "size_bytes": 304901, "user": "admin", "created_at": "2026-10-02T…",
-  "months": "1 → 7", "sheet": null, "total_rows": 7561, "rows_written": 7471, "sheet_count": 3,
+  "months": "1 → 7", "sheet": null, "total_rows": 7568, "rows_written": 7566, "sheet_count": 3,
   "steps": [{"code": "A1", "name": "Nhận tệp", "result": "Đúng định dạng .xlsx, đọc được 3 sheet.",
              "verdict": "Đúng", "status": "ok"}],
   "errors": [{"sheet": "…", "location": "…", "issue": "…", "resolution": "…"}],
@@ -173,7 +173,7 @@ Cell = number | string | null | {value, link?}
 Link = {table, layer: "gold"|"silver"|"bronze", year?, period?, query?}  hoặc  {sheet: <số thứ tự sheet, từ 1>}
 ```
 
-- `columns` gồm cả cột "Kết luận" ở cuối; `cells` là các ô **trừ** cột Kết luận; `totals` đủ số cột (ô cuối `null`). `align_right: true` = căn phải. `note` = dòng phụ ở ô đầu (tên bảng kỹ thuật, tên khoản mục, ghi chú ô tổng P10). `verdict_note` = dòng phụ dưới nhãn kết luận.
+- `columns` gồm cả cột "Kết luận" ở cuối; `cells` là các ô **trừ** cột Kết luận; `totals` đủ số cột (ô cuối `null`). `align_right: true` = căn phải. `note` = dòng phụ ở ô đầu (tên bảng kỹ thuật, tên khoản mục). `verdict_note` = dòng phụ dưới nhãn kết luận.
 - Số tiền là số, chưa định dạng. Tên tuỳ chọn (`options[].name`) trùng tên tham số truy vấn: `table`, `column`, `group_by`.
 
 | Nhóm | `key` theo thứ tự | Tiêu đề |
@@ -184,9 +184,9 @@ Link = {table, layer: "gold"|"silver"|"bronze", year?, period?, query?}  hoặc 
 | | `codes` | Đối chiếu tháng, khách hàng, nhóm, khoản mục |
 | | `before_after` | Các tháng trong năm {năm} trước và sau lần nạp — 12 dòng; ô "Số dòng" dạng chuỗi "50 / 1.000" (Kết quả kinh doanh / Chi phí) |
 | HQ-MAU-GC | `row_count` | như trên, 1 dòng |
-| | `totals` | Đối chiếu tổng: tệp gốc ↔ database — gồm dòng ô tổng P10 / P1 (phải khớp tổng `so_luong`) |
+| | `totals` | Đối chiếu tổng: tệp gốc ↔ database — May mẫu: tổng `so_luong`, `don_gia`, `thanh_tien_usd`, `thanh_tien_vnd`; Gia công: tổng `so_luong`, `actual_cut` và dòng ô tổng P1 (phải khớp tổng `so_luong`) |
 | | `empty_cells` | Ô không đọc được số, để trống trong database — `count` = tổng số ô; chỉ có khi có ô như vậy |
-| | `by_dimension` | Đối chiếu số lượng theo {chia theo} — `count` = số nhóm; `options` `group_by`: May mẫu `ma_nhom_kd` / `ma_khach` / `sample` / `men_lady`, Gia công `ma_don_vi_gc` / `location` / `ma_khach`; phân trang (`page`, mặc định `page_size=25`), `totals` cộng mọi nhóm |
+| | `by_dimension` | Đối chiếu số lượng theo {chia theo} — `count` = số nhóm; `options` `group_by`: May mẫu `nhom` / `khach_hang` / `sample_description` / `men_lady_others`, Gia công `ma_don_vi_gc` / `location` / `ma_khach`; phân trang (`page`, mặc định `page_size=25`), `totals` cộng mọi nhóm |
 | | `codes` | Đối chiếu các mã: tệp gốc ↔ database |
 | | `before_after` | Nhóm HQ-MAU-GC năm {năm} trước và sau lần nạp |
 
