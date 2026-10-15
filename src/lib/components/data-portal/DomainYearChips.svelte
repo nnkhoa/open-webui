@@ -31,8 +31,7 @@
 	options={$portalDomains.map((domain) => ({
 		value: domain.code,
 		label: domain.name,
-		code: domain.code,
-		subtitle: domain.subtitle ?? domain.code
+		code: domain.code
 	}))}
 	on:change={(event) => {
 		selectedDomain.set(event.detail);

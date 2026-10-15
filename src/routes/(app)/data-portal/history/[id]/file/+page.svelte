@@ -37,7 +37,8 @@
 	$: requestedSheet = Number($page.url.searchParams.get('sheet') ?? '-1');
 	$: domain = $portalDomains.find((item) => item.code === load?.domain);
 	$: multipleFileTypes = hasMultipleFileTypes(domain);
-	$: monthRequired = domain?.file_types.some((item) => item.month_required) ?? false;
+	$: monthRequired =
+		domain?.file_types.find((item) => item.code === load?.file_type.code)?.month_required ?? false;
 	$: currentSheet =
 		sheets.find((sheet) => sheet.index === requestedSheet) ??
 		sheets.find((sheet) => sheet.name === load?.sheet) ??
@@ -145,10 +146,9 @@
 		</div>
 		{#if currentSheet?.hidden_row_count}
 			<p class="hint" style="padding:10px 24px 0;margin:0">
-				{$i18n.t(
-					'{{rows}} rows are hidden in Excel (faded text). The portal reads hidden rows too.',
-					{ rows: formatNumber(currentSheet.hidden_row_count) }
-				)}
+				{$i18n.t('{{rows}} rows are hidden in Excel (faded text).', {
+					rows: formatNumber(currentSheet.hidden_row_count)
+				})}
 			</p>
 		{/if}
 		{#if opening && !sheetPage}

@@ -71,11 +71,7 @@
 			? [
 					{ value: table.name, bold: true, className: 's' },
 					table.year ?? '—',
-					{
-						value: table.file_type.name,
-						subtitle: table.file_type.subtitle ?? undefined,
-						className: 's'
-					},
+					{ value: table.file_type.name, className: 's' },
 					table.load_id ? `#${table.load_id}` : '—',
 					{ value: formatNumber(table.row_count), className: 's' },
 					updatedCell(table)

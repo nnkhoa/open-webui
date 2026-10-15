@@ -38,7 +38,7 @@ from .card_model import (
 from .context import LoadContext
 
 QUANTITY_COLUMN = 'so_luong'
-TOTAL_COLUMNS = (QUANTITY_COLUMN, 'actual_cut', 'don_gia_usd')
+TOTAL_COLUMNS = (QUANTITY_COLUMN, 'actual_cut', 'don_gia', 'thanh_tien_usd', 'thanh_tien_vnd')
 
 
 class Dimension(NamedTuple):
@@ -59,10 +59,10 @@ class DomainTable(NamedTuple):
 
 DIMENSIONS = {
     'fact_may_mau': [
-        Dimension('ma_nhom_kd', messages.CARD_DIMENSION_SALES_GROUP),
-        Dimension('ma_khach', messages.CARD_DIMENSION_CUSTOMER),
-        Dimension('sample', messages.CARD_DIMENSION_SAMPLE),
-        Dimension('men_lady', messages.CARD_DIMENSION_MEN_LADY),
+        Dimension('nhom', messages.CARD_DIMENSION_SALES_GROUP),
+        Dimension('khach_hang', messages.CARD_DIMENSION_CUSTOMER),
+        Dimension('sample_description', messages.CARD_DIMENSION_SAMPLE),
+        Dimension('men_lady_others', messages.CARD_DIMENSION_MEN_LADY),
     ],
     'fact_gia_cong': [
         Dimension('ma_don_vi_gc', messages.CARD_DIMENSION_SUBCONTRACTOR),
@@ -73,11 +73,10 @@ DIMENSIONS = {
 
 CODE_COUNTS = {
     'fact_may_mau': [
-        CodeCount(messages.CARD_CODES_CUSTOMERS, 'ma_khach', messages.CARD_CODE_NAME_CUSTOMER),
-        CodeCount(messages.CARD_CODES_BUSINESS_GROUPS, 'ma_nhom_kd', messages.CARD_CODE_NAME_GROUP),
-        CodeCount(messages.CARD_CODES_SAMPLES, 'sample', messages.CARD_CODE_NAME_SAMPLE),
-        CodeCount(messages.CARD_CODES_DESCRIPTIONS, 'description', None),
-        CodeCount(messages.CARD_CODES_MEN_LADY, 'men_lady', None),
+        CodeCount(messages.CARD_CODES_SAMPLE_CUSTOMERS, 'khach_hang', messages.CARD_CODE_NAME_CUSTOMER),
+        CodeCount(messages.CARD_CODES_BUSINESS_GROUPS, 'nhom', messages.CARD_CODE_NAME_GROUP),
+        CodeCount(messages.CARD_CODES_SAMPLES, 'sample_description', messages.CARD_CODE_NAME_SAMPLE),
+        CodeCount(messages.CARD_CODES_MEN_LADY, 'men_lady_others', None),
     ],
     'fact_gia_cong': [
         CodeCount(messages.CARD_CODES_SUBCONTRACTORS, 'ma_don_vi_gc', messages.CARD_CODE_NAME_SUBCONTRACTOR),

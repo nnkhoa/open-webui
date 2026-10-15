@@ -84,7 +84,7 @@
 	const display = (value: unknown) =>
 		typeof value === 'number' ? formatAmount(value) : String(value ?? '—');
 
-	const toTableCell = (cell: CardCell, index: number, note?: string): TableCell => {
+	const toTableCell = (cell: CardCell, index: number): TableCell => {
 		if (cell !== null && typeof cell === 'object') {
 			return {
 				value: display(cell.value),
@@ -93,17 +93,13 @@
 				className: 's'
 			};
 		}
-		return index === 0
-			? { value: display(cell), bold: true, subtitle: note, className: 's' }
-			: display(cell);
+		return index === 0 ? { value: display(cell), bold: true, className: 's' } : display(cell);
 	};
 
 	const tableRows = (card: ReconcileCard): TableRow[] =>
 		card.rows.map((row) => ({
 			cells: [
-				...row.cells.map((cell, index) =>
-					toTableCell(cell, index, index === 0 ? row.note : undefined)
-				),
+				...row.cells.map((cell, index) => toTableCell(cell, index)),
 				...(row.verdict !== undefined
 					? [
 							{

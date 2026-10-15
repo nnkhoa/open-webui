@@ -57,7 +57,7 @@
 	$: fileType =
 		domain?.file_types.find((item) => item.code === draft.fileType) ??
 		(!multipleFileTypes ? domain?.file_types[0] : undefined);
-	$: monthRequired = domain?.file_types.some((item) => item.month_required) ?? false;
+	$: monthRequired = fileType?.month_required ?? false;
 	$: missingFields = [
 		!draft.domain && $i18n.t('Information group'),
 		monthRequired && !draft.month && $i18n.t('Data month'),
@@ -256,8 +256,7 @@
 					options={$portalDomains.map((item) => ({
 						value: item.code,
 						label: item.name,
-						code: item.code,
-						subtitle: item.subtitle ?? item.code
+						code: item.code
 					}))}
 					on:change={(event) =>
 						updateDraft({ domain: event.detail, fileType: '', file: null, selectedAt: '' })}
@@ -308,8 +307,7 @@
 						title={$i18n.t('File type')}
 						options={(domain?.file_types ?? []).map((item) => ({
 							value: item.code,
-							label: item.name,
-							subtitle: item.subtitle
+							label: item.name
 						}))}
 						on:change={(event) =>
 							updateDraft({ fileType: event.detail, file: null, selectedAt: '' })}

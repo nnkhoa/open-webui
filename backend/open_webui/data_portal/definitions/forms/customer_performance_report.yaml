@@ -255,7 +255,7 @@ tables:
       - name: ma_khoan_cp
         type: text
         label: MÃ KHOẢN MỤC
-        meaning: Mã khoản mục, ghi ở dòng mã ngay trên tên cột. Trống ở hai cột trích chưa có mã.
+        meaning: Mã khoản mục, ghi ở dòng mã ngay trên tên cột.
         example: CG02
       - name: cap_phan_bo
         type: text

@@ -22,7 +22,7 @@ TOTAL_KIND_QUANTITY = 'quantity'
 TOTAL_KIND_AMOUNT = 'amount'
 QUANTITY_COLUMN = 'so_luong'
 CONFIRM_GROUPING = {
-    'fact_may_mau': 'ma_nhom_kd',
+    'fact_may_mau': 'nhom',
     'fact_gia_cong': 'ma_don_vi_gc',
 }
 

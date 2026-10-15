@@ -85,7 +85,7 @@
 
 	const tableSubtitle = (data: TableData, year: string, currentLayer: string) =>
 		[
-			data.file_type ? `${data.file_type.name} · ${data.file_type.subtitle ?? ''}` : '',
+			data.file_type?.name ?? '',
 			data.has_period && data.latest_month
 				? $i18n.t('Latest month {{month}}', { month: data.latest_month })
 				: '',

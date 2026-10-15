@@ -78,7 +78,7 @@
 			: ''} max-w-full"
 	>
 		<header class="dp-topbar">
-			{#if !$showSidebar || $mobile}
+			{#if $mobile}
 				<Tooltip content={$i18n.t('Open Sidebar')} interactive={true}>
 					<button
 						type="button"

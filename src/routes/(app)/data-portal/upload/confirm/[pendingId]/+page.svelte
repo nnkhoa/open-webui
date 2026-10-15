@@ -181,7 +181,7 @@
 	): TableCell[] => {
 		if (multiple) {
 			return [
-				{ value: row.group, bold: true, subtitle: row.subtitle, className: 's' },
+				{ value: row.group, bold: true, className: 's' },
 				formatNumber(row.row_count),
 				formatNumber(row.quantity),
 				existingCell(row.existing),

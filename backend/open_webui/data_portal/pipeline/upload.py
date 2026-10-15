@@ -31,7 +31,7 @@ STATUS_MISMATCH = 'mismatch'
 STATUS_SUCCESS = 'success'
 MISMATCH_REASON_CODE = 'RECON_MISMATCH'
 CONFIRM_GROUP_LABELS = {
-    'ma_nhom_kd': (messages.UPLOAD_BY_SALES_GROUP, messages.UPLOAD_SALES_GROUP),
+    'nhom': (messages.UPLOAD_BY_SALES_GROUP, messages.UPLOAD_SALES_GROUP),
     'ma_don_vi_gc': (messages.UPLOAD_BY_SUBCONTRACTOR, messages.UPLOAD_SUBCONTRACTOR),
 }
 

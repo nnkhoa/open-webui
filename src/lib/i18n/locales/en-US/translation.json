@@ -52,7 +52,7 @@
 	"{{reason}} in the card above first, then you can choose a file.": "",
 	"{{reason}} to continue": "",
 	"{{rows}} rows": "",
-	"{{rows}} rows are hidden in Excel (faded text). The portal reads hidden rows too.": "",
+	"{{rows}} rows are hidden in Excel (faded text).": "",
 	"{{rows}} rows went into the database. Every reconciliation step matched.": "",
 	"{{user}}'s Chats": "",
 	"{{webUIName}} Backend Required": "",

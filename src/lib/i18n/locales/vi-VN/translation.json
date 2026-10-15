@@ -46,7 +46,7 @@
 	"{{reason}} in the card above first, then you can choose a file.": "{{reason}} ở thẻ phía trên trước, rồi mới chọn được tệp.",
 	"{{reason}} to continue": "{{reason}} để tiếp tục",
 	"{{rows}} rows": "{{rows}} dòng",
-	"{{rows}} rows are hidden in Excel (faded text). The portal reads hidden rows too.": "{{rows}} dòng đang bị ẩn trong Excel (chữ nhạt). Portal đọc cả dòng ẩn.",
+	"{{rows}} rows are hidden in Excel (faded text).": "{{rows}} dòng đang bị ẩn trong Excel (chữ nhạt).",
 	"{{rows}} rows went into the database. Every reconciliation step matched.": "{{rows}} dòng đã vào database. Mọi bước đối chiếu khớp.",
 	"{{user}}'s Chats": "Các cuộc trò chuyện của {{user}}",
 	"{{webUIName}} Backend Required": "{{webUIName}} Yêu cầu Backend",
