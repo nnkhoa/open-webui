@@ -12,13 +12,16 @@
 #  Bronze giữ y như tệp. Silver chỉ gộp khoảng trắng, xuống dòng của ô chữ
 #  (`clean_text`; ô chữ trống → "Không có thông tin") và đổi kiểu số.
 #
+#  id sinh ngẫu nhiên (UUID) cho từng dòng lúc nạp, định danh riêng một dòng. style
+#  chưa có thông tin nên để trống.
+#
 #  nam lấy từ ô Năm dữ liệu chọn lúc nạp. Nạp lại cùng năm: ghi đè toàn bộ năm đó
 #  (`merge: replace_all`).
 # =============================================================================
 
 form:
   code: LICH_MAY_MAU
-  version: 8
+  version: 9
   label: May mẫu
   subtitle: THONG KE MAY MAU
   description: Thống kê may mẫu chào hàng — tháng, nhóm, khách hàng, mẫu, đơn giá, số lượng và thành tiền.
@@ -47,6 +50,12 @@ tables:
     order: [nam, thang, nhom, khach_hang, sample_description]
     display_order: 1
     columns:
+      - name: id
+        type: text
+        value_from: ngau_nhien
+        label: Không có trong tệp — sinh ngẫu nhiên lúc nạp
+        meaning: Mã định danh riêng của từng dòng, sinh ngẫu nhiên (UUID) lúc nạp.
+        example: 3f2b8c1e-9a4d-4e7b-8c2a-1d5e6f7a8b9c
       - name: nam
         type: int
         value_from: nam_du_lieu
@@ -115,3 +124,8 @@ tables:
         label: THÀNH TIỀN VNĐ
         meaning: Thành tiền của dòng, tính bằng đồng Việt Nam, như trong tệp.
         example: "1800000"
+      - name: style
+        type: text
+        value_from: trong
+        label: Không có trong tệp — chưa có thông tin, để trống
+        meaning: Style của mẫu. Chưa có thông tin nên để trống.

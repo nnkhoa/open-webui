@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import uuid
 
 from psycopg import sql
 
@@ -48,15 +49,17 @@ def write(ctx: LoadContext, table: FormTable) -> list[BronzeRow]:
         warehouse_sql.placeholders(len(columns)),
     )
 
+    random_columns = [column.name for column in table.columns if column.is_random]
     written: list[BronzeRow] = []
     with ctx.conn.cursor() as cur:
         for row in rows:
             row_hash = hash_row(table.sheet, row.values, columns)
-            params = [row.values.get(column) for column in columns]
+            values = {**row.values, **{column: str(uuid.uuid4()) for column in random_columns}}
+            params = [values.get(column) for column in columns]
             params += [ctx.domain_id, ctx.load_id, ctx.batch_id, table.sheet, row.number, loaded_at, row_hash]
             cur.execute(statement, params)
             bronze_id = cur.fetchone()[0]
-            written.append(BronzeRow(bronze_id, row.number, row_hash, row.values))
+            written.append(BronzeRow(bronze_id, row.number, row_hash, values))
 
     result.rows_bronze = len(written)
     return written

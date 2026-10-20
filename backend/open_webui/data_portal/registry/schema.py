@@ -22,7 +22,8 @@ VALUE_FROM_YEAR = 'nam_du_lieu'
 VALUE_FROM_MONTH = 'thang_du_lieu'
 VALUE_FROM_EMPTY = 'trong'
 VALUE_FROM_HEADER = 'tieu_de'
-VALUE_SOURCES = {VALUE_FROM_YEAR, VALUE_FROM_MONTH, VALUE_FROM_EMPTY, VALUE_FROM_HEADER}
+VALUE_FROM_RANDOM = 'ngau_nhien'
+VALUE_SOURCES = {VALUE_FROM_YEAR, VALUE_FROM_MONTH, VALUE_FROM_EMPTY, VALUE_FROM_HEADER, VALUE_FROM_RANDOM}
 NORMALIZE_CLEAN_TEXT = 'clean_text'
 NORMALIZE_SPLIT_HEAD = 'split_head'
 NORMALIZE_SPLIT_TAIL = 'split_tail'
@@ -89,6 +90,10 @@ class FormColumn:
     @property
     def is_month(self) -> bool:
         return self.value_from == VALUE_FROM_MONTH
+
+    @property
+    def is_random(self) -> bool:
+        return self.value_from == VALUE_FROM_RANDOM
 
     @property
     def handler(self) -> column_types.ColumnType:
