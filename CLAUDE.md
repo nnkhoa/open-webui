@@ -8,6 +8,7 @@ carrying the AI4BI customizations.
 
 | Branch | Upstream base | What it is |
 |---|---|---|
+| `nbc/v0.12.3` | `v0.12.3` | May Nhà Bè (NBC) on upstream 0.12.3: everything from `nbc/v0.10.2`, re-ported (ledger in `../../docs/forks/open-webui.md`) |
 | `nbc/v0.10.2` | `v0.10.2` | May Nhà Bè (NBC): `merge/v0.10.2` + Data Portal, NBC branding |
 | `merge/v0.10.2` | `v0.10.2` | Upstream v0.10.2 + the AI4BI customizations |
 | `merge/v0.11.4` | `v0.11.4` | Upstream bump only, no customizations yet |
@@ -20,7 +21,7 @@ Remotes: `origin` is the fork, `upstream` is `open-webui/open-webui`.
 This repo lives inside the `ai-for-bi` workspace (`../../`), whose `CLAUDE.md` holds the
 cross-repo rules. In short:
 
-- Fixes for the NBC deployment are committed directly on `nbc/v0.10.2`; other work goes on a
+- Fixes for the NBC deployment are committed directly on the live `nbc/vX.Y.Z` branch (`nbc/v0.12.3` from 2026-10-20); other work goes on a
   `feat/<topic>` branch and is merged into `merge/vX.Y.Z` (workspace ADR 0002).
 - Every customization commit carries an `Fpt-Feature: <id>` trailer, and the feature ledger is
   `../../docs/forks/open-webui.md` (workspace repo) — add or update its row in the same change.

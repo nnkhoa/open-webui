@@ -101,9 +101,7 @@ export const uploadProjectLogo = async (
 	return res;
 };
 
-export const deleteProjectLogo = async (
-	token: string
-): Promise<{ logo_url: null }> => {
+export const deleteProjectLogo = async (token: string): Promise<{ logo_url: null }> => {
 	let error = null;
 
 	const res = await fetch(`${WEBUI_API_BASE_URL}/configs/project/logo`, {

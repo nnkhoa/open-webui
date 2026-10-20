@@ -227,10 +227,7 @@
 
 				<div class="space-y-3">
 					<div>
-						<label
-							for="org-name-input"
-							class="block text-xs text-gray-600 dark:text-gray-400 mb-1"
-						>
+						<label for="org-name-input" class="block text-xs text-gray-600 dark:text-gray-400 mb-1">
 							Organization Name
 						</label>
 						<input
@@ -289,8 +286,8 @@
 							Tạo khung chat mới khi đổi model
 						</div>
 						<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-							Khi bật, đổi model trong một khung chat hiện có sẽ tự mở khung chat mới với
-							model vừa chọn. Khi tắt, người dùng vẫn dùng tiếp khung chat cũ với model mới.
+							Khi bật, đổi model trong một khung chat hiện có sẽ tự mở khung chat mới với model vừa
+							chọn. Khi tắt, người dùng vẫn dùng tiếp khung chat cũ với model mới.
 						</p>
 					</div>
 
