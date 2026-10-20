@@ -148,15 +148,15 @@ class TestResponsesStreamingEvents:
         assert output == [current[0], added]
         assert current == [{'type': 'reasoning', 'id': 'rs_1'}]
 
-    def test_items_are_finalised_by_completed_not_output_item_done(self):
-        # Upstream: nhánh chung '.done' đứng trước 'response.output_item.done' nên item chỉ được
-        # chốt ở response.completed. Test này giữ giả định đó; upstream sửa thì cập nhật lại.
+    def test_output_item_done_finalises_the_item(self):
+        # 0.10.2: nhánh chung '.done' đứng trước 'response.output_item.done' nên item chỉ được
+        # chốt ở response.completed. Upstream 0.12 đã sửa: output_item.done thay item tại chỗ.
         current = [{'type': 'function_call', 'id': 'fc_1'}]
         done_item = {'type': 'function_call', 'id': 'fc_1', 'arguments': '{"sql": "SELECT 1"}'}
         output, _ = handle_responses_streaming_event(
             {'type': 'response.output_item.done', 'output_index': 0, 'item': done_item}, current
         )
-        assert output == current
+        assert output == [done_item]
 
     def test_failed_returns_error(self):
         _, metadata = handle_responses_streaming_event(
