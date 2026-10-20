@@ -5878,7 +5878,11 @@ async def streaming_chat_response_handler(response, ctx):
                         # error field of the result too.
                         if not permission_error and (
                             is_permission_error(extract_tool_error_text(tool_result))
-                            or (isinstance(tool_result, str) and tool_result.startswith('Error') and is_permission_error(tool_result))
+                            or (
+                                isinstance(tool_result, str)
+                                and tool_result.startswith('Error')
+                                and is_permission_error(tool_result)
+                            )
                         ):
                             permission_error = True
                             permission_error_tool = tool_function_name
