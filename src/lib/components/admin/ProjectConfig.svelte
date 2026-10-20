@@ -42,7 +42,7 @@
 			logoUrl = config.logo_url;
 			displayNames = config.model_display_names || {};
 			brandColor = config.brand_color || '';
-			orgName = config.org_name || 'Nova Consumer Group';
+			orgName = config.org_name || '';
 			orgSubtitle = config.org_subtitle || 'Chương trình tư vấn chiến lược AI';
 			appName = config.app_name || '';
 			enableNewChatOnModelChange = config.enable_new_chat_on_model_change ?? true;
@@ -117,7 +117,7 @@
 				logo_url: config.logo_url,
 				model_display_names: config.model_display_names || {},
 				brand_color: config.brand_color || '',
-				org_name: config.org_name || 'Nova Consumer Group',
+				org_name: config.org_name || '',
 				org_subtitle: config.org_subtitle || 'Chương trình tư vấn chiến lược AI',
 				app_name: config.app_name || '',
 				enable_new_chat_on_model_change: config.enable_new_chat_on_model_change ?? true
@@ -237,7 +237,7 @@
 							id="org-name-input"
 							type="text"
 							bind:value={orgName}
-							placeholder="Nova Consumer Group"
+							placeholder="Tổng Công ty May Nhà Bè"
 							class="w-full px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-black dark:focus:ring-white"
 						/>
 					</div>
@@ -306,7 +306,7 @@
 			>
 				<h3 class="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-3">Brand Color</h3>
 				<p class="text-xs text-gray-500 dark:text-gray-400 mb-4">
-					Color of the organization name ("{orgName || 'Nova Consumer Group'}") in the header.
+					Color of the organization name ("{orgName}") in the header.
 				</p>
 
 				<div class="flex items-center gap-3">

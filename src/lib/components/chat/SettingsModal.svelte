@@ -394,8 +394,7 @@
 			if (tab.id === 'tools') {
 				return (
 					$config?.features?.enable_direct_integrations === true &&
-					($user?.role === 'admin' ||
-						($user?.role === 'user' && $user?.permissions?.features?.direct_tool_servers))
+					($user?.role === 'admin' || $user?.permissions?.features?.direct_tool_servers)
 				);
 			}
 
@@ -632,7 +631,7 @@
 							<span>{$i18n.t('settings.personal.shortcuts.title')}</span>
 						</button>
 					{:else if tabId === 'connections'}
-						{#if $user?.role === 'admin' || ($user?.role === 'user' && $config?.features?.enable_direct_connections)}
+						{#if $user?.role === 'admin' || $config?.features?.enable_direct_connections}
 							<button
 								role="tab"
 								aria-controls="tab-connections"
@@ -647,7 +646,7 @@
 							</button>
 						{/if}
 					{:else if tabId === 'tools'}
-						{#if $user?.role === 'admin' || ($user?.role === 'user' && $user?.permissions?.features?.direct_tool_servers)}
+						{#if $user?.role === 'admin' || $user?.permissions?.features?.direct_tool_servers}
 							<button
 								role="tab"
 								aria-controls="tab-tools"

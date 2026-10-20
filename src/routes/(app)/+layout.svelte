@@ -15,7 +15,7 @@
 	import { getUserSettings } from '$lib/apis/users';
 	import { setAppFontFamily, setTextScale } from '$lib/utils/text-scale';
 
-	import { WEBUI_VERSION, WEBUI_API_BASE_URL, WEBUI_BUILD_CHANNEL } from '$lib/constants';
+	import { VERIFIED_ROLES, WEBUI_VERSION, WEBUI_API_BASE_URL, WEBUI_BUILD_CHANNEL } from '$lib/constants';
 	import { compareVersion } from '$lib/utils';
 
 	import {
@@ -256,7 +256,7 @@
 			await gotoAuth();
 			return;
 		}
-		if (!['user', 'admin'].includes($user?.role)) {
+		if (!VERIFIED_ROLES.includes($user?.role)) {
 			return;
 		}
 
@@ -484,7 +484,7 @@
 		<div
 			class=" text-gray-700 dark:text-gray-100 bg-white dark:bg-gray-900 h-screen max-h-[100dvh] overflow-auto flex flex-row justify-end"
 		>
-			{#if !['user', 'admin'].includes($user?.role)}
+			{#if !VERIFIED_ROLES.includes($user?.role)}
 				<AccountPending />
 			{:else}
 				<Sidebar />

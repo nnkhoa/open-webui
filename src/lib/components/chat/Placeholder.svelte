@@ -166,7 +166,7 @@
 									>
 										<img
 											src={`${WEBUI_API_BASE_URL}/models/model/profile/image?id=${model?.id}&lang=${$i18n.language}`}
-											class=" size-9 @sm:size-10 rounded-2xl"
+											class=" h-9 @sm:h-10 w-auto object-contain"
 											aria-hidden="true"
 											draggable="false"
 											on:error={(e) => {

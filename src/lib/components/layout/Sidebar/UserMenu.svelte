@@ -46,6 +46,7 @@
 	export let align = 'end';
 
 	export let showActiveUsers = true;
+	export let minimal = false;
 
 	let showUserStatusModal = false;
 	let shiftKey = false;

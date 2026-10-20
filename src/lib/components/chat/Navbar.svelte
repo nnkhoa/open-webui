@@ -9,7 +9,6 @@
 		config,
 		mobile,
 		settings,
-		showControls,
 		showSidebar,
 		temporaryChatEnabled,
 		user
@@ -28,15 +27,11 @@
 	import Banner from '../common/Banner.svelte';
 	import Sidebar from '../icons/Sidebar.svelte';
 
-	import ChatBubbleDotted from '../icons/ChatBubbleDotted.svelte';
-	import ChatBubbleDottedChecked from '../icons/ChatBubbleDottedChecked.svelte';
-
 	import EllipsisHorizontal from '../icons/EllipsisHorizontal.svelte';
 	import ChatPlus from '../icons/ChatPlus.svelte';
-	import ChatCheck from '../icons/ChatCheck.svelte';
-	import Knobs from '../icons/Knobs.svelte';
 	import { isTemporaryChatId } from '$lib/utils/chatId';
 	import ChatParticipants from '$lib/components/common/ChatParticipants.svelte';
+	import OpenWebUIBadge from '../brand/OpenWebUIBadge.svelte';
 
 	const i18n: any = getContext('i18n');
 
@@ -179,57 +174,7 @@
 				</div>
 
 				<div class="lg:mr-1 flex flex-none items-center gap-3 self-center">
-					<!-- <div class="md:hidden flex self-center w-[0.0625rem] h-5 mx-2 bg-gray-300 dark:bg-stone-700" /> -->
-
-					{#if $user?.role === 'user' ? ($user?.permissions?.chat?.temporary ?? true) && !($user?.permissions?.chat?.temporary_enforced ?? false) : true}
-						{#if !chat?.id}
-							<Tooltip content={$i18n.t(`Temporary Chat`)}>
-								<button
-									class="flex size-6 cursor-pointer items-center justify-center rounded-lg text-gray-500 transition hover:bg-gray-50/40 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800/40 dark:hover:text-gray-200"
-									id="temporary-chat-button"
-									on:click={async () => {
-										if (($settings?.temporaryChatByDefault ?? false) && $temporaryChatEnabled) {
-											// for proper initNewChat handling
-											await temporaryChatEnabled.set(null);
-										} else {
-											await temporaryChatEnabled.set(!$temporaryChatEnabled);
-										}
-
-										if ($page.url.pathname !== '/') {
-											await goto('/');
-										}
-
-										// add 'temporary-chat=true' to the URL
-										if ($temporaryChatEnabled) {
-											window.history.replaceState(window.history.state, '', '?temporary-chat=true');
-										} else {
-											window.history.replaceState(window.history.state, '', location.pathname);
-										}
-									}}
-									aria-label={$i18n.t(`Temporary Chat`)}
-								>
-									{#if $temporaryChatEnabled}
-										<ChatBubbleDottedChecked className="size-4.5" strokeWidth="1.5" />
-									{:else}
-										<ChatBubbleDotted className="size-4.5" strokeWidth="1.5" />
-									{/if}
-								</button>
-							</Tooltip>
-						{:else if $temporaryChatEnabled}
-							<Tooltip content={$i18n.t(`Save Chat`)}>
-								<button
-									class="flex size-6 cursor-pointer items-center justify-center rounded-lg text-gray-500 transition hover:bg-gray-50/40 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800/40 dark:hover:text-gray-200"
-									id="save-temporary-chat-button"
-									on:click={async () => {
-										onSaveTempChat();
-									}}
-									aria-label={$i18n.t(`Save Chat`)}
-								>
-									<ChatCheck className="size-4.5" strokeWidth="1.5" />
-								</button>
-							</Tooltip>
-						{/if}
-					{/if}
+					<!-- AI4BI: bỏ nút Temporary Chat -->
 
 					{#if $mobile && !$temporaryChatEnabled && chat && chat.id}
 						<Tooltip content={$i18n.t('New Chat')}>
@@ -255,19 +200,7 @@
 						/>
 					{/if}
 
-					{#if $user?.role === 'admin' || ($user?.permissions.chat?.controls ?? true)}
-						<Tooltip content={$i18n.t('Controls')}>
-							<button
-								class="flex size-6 cursor-pointer items-center justify-center rounded-lg text-gray-500 transition hover:bg-gray-50/40 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800/40 dark:hover:text-gray-200"
-								on:click={async () => {
-									await showControls.set(!$showControls);
-								}}
-								aria-label={$i18n.t('Controls')}
-							>
-								<Knobs className="size-5" strokeWidth="1" />
-							</button>
-						</Tooltip>
-					{/if}
+					<OpenWebUIBadge className="ml-1 px-1.5 py-1.5" />
 				</div>
 			</div>
 		</div>

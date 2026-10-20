@@ -144,6 +144,10 @@ textarea::-webkit-scrollbar-corner {
 	@apply underline;
 }
 
+.font-primary {
+	font-family: 'Be Vietnam Pro', 'Archivo', 'Vazirmatn', sans-serif;
+}
+
 .drag-region {
 	-webkit-app-region: drag;
 }

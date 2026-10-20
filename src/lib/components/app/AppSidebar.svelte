@@ -3,6 +3,7 @@
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
 	import Plus from '$lib/components/icons/Plus.svelte';
 	import { WEBUI_BASE_URL } from '$lib/constants';
+	import { projectConfig } from '$lib/stores/projectConfig';
 
 	const i18n: any = getContext('i18n');
 
@@ -64,7 +65,9 @@
 			Do not alter, remove, obscure, or replace it except as LICENSE permits:
 			https://docs.openwebui.com/license. -->
 			<img
-				src="{WEBUI_BASE_URL}/static/favicon.png"
+				src={$projectConfig.logo_url
+					? `${WEBUI_BASE_URL}${$projectConfig.logo_url}`
+					: `${WEBUI_BASE_URL}/static/favicon.png`}
 				class="size-10 {selected === '' ? 'rounded-2xl' : 'rounded-full'}"
 				alt="logo"
 				draggable="false"

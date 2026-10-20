@@ -61,7 +61,7 @@
 	import { createNewNote, getPinnedNoteList, toggleNotePinnedStatusById } from '$lib/apis/notes';
 	import { updateUserSettings } from '$lib/apis/users';
 	import { createNoteHandler } from '$lib/components/notes/utils';
-	import { WEBUI_API_BASE_URL, WEBUI_BASE_URL } from '$lib/constants';
+	import { DATA_PORTAL_ROLES, WEBUI_API_BASE_URL, WEBUI_BASE_URL } from '$lib/constants';
 
 	import UserMenu from './Sidebar/UserMenu.svelte';
 	import ChatItem from './Sidebar/ChatItem.svelte';
@@ -93,6 +93,10 @@
 	import CheckIcon from '../icons/Check.svelte';
 	import MoreHorizontalIcon from './Sidebar/icons/MoreHorizontal.svelte';
 	import MobileSwipePanel from '../common/MobileSwipePanel.svelte';
+	import DataPortalSidebarGroup from '../data-portal/SidebarGroup.svelte';
+	import DataPortalIcon from '../data-portal/Icon.svelte';
+	import { projectLogoSrc } from '$lib/branding';
+	import { projectConfig } from '$lib/stores/projectConfig';
 
 	const BREAKPOINT = 768;
 	const DEFAULT_PINNED_ITEMS = ['notes', 'workspace'];
@@ -1076,6 +1080,29 @@
 							</div>
 						{/if}
 					{/each}
+
+					{#if DATA_PORTAL_ROLES.includes($user?.role ?? '')}
+						<div class="">
+							<Tooltip content={$i18n.t('Data Portal')} placement="right">
+								<a
+									class=" cursor-pointer flex rounded-xl hover:bg-gray-100 dark:hover:bg-gray-850 transition group"
+									href="/data-portal"
+									on:click={async (e) => {
+										e.stopImmediatePropagation();
+										e.preventDefault();
+										goto('/data-portal');
+										itemClickHandler();
+									}}
+									draggable="false"
+									aria-label={$i18n.t('Data Portal')}
+								>
+									<div class=" self-center flex items-center justify-center size-9">
+										<DataPortalIcon name="db" size={18} />
+									</div>
+								</a>
+							</Tooltip>
+						</div>
+					{/if}
 				</div>
 			</button>
 
@@ -1152,33 +1179,20 @@
 				<div
 					class="sidebar px-1 pt-1.5 pb-1 flex justify-between space-x-1 text-gray-600 dark:text-gray-400 sticky top-0 z-10 -mb-2"
 				>
+					<!-- AI4BI (nbc-branding): logo khách từ Project Config thay favicon + tên; chưa đặt thì dùng logo Open WebUI.
+					LICENSE upstream cho phép đổi thương hiệu khi dưới 50 người dùng (mục 4.i). -->
 					<a
-						class="flex items-center rounded-xl size-8.5 h-full justify-center hover:bg-gray-100 dark:hover:bg-gray-900 transition no-drag-region"
 						href="/"
+						class="flex flex-1 min-w-0 items-center px-1.5 no-drag-region"
 						draggable="false"
 						on:click={newChatHandler}
 					>
-						<!-- LICENSE covers this Open WebUI sidebar logo.
-					Do not alter, remove, obscure, or replace it except as LICENSE permits:
-					https://docs.openwebui.com/license. -->
 						<img
-							crossorigin="anonymous"
-							src="{WEBUI_BASE_URL}/static/favicon.png"
-							class="sidebar-new-chat-icon size-5 rounded-full"
-							alt=""
+							src={projectLogoSrc($projectConfig.logo_url, WEBUI_BASE_URL)}
+							class="h-[34px] w-auto"
+							alt={$projectConfig.org_name || $WEBUI_NAME}
+							draggable="false"
 						/>
-					</a>
-
-					<a href="/" class="flex flex-1 px-0.5" on:click={newChatHandler}>
-						<!-- LICENSE covers this Open WebUI sidebar name.
-					Do not alter, remove, obscure, or replace it except as LICENSE permits:
-					https://docs.openwebui.com/license. -->
-						<div
-							id="sidebar-webui-name"
-							class=" self-center font-normal text-gray-700 dark:text-gray-200"
-						>
-							{$WEBUI_NAME}
-						</div>
 					</a>
 					<Tooltip
 						content={$showSidebar ? $i18n.t('Close Sidebar') : $i18n.t('Open Sidebar')}
@@ -1304,6 +1318,8 @@
 								{/if}
 							{/each}
 						</div>
+
+						<DataPortalSidebarGroup onNavigate={itemClickHandler} />
 					</div>
 
 					{#if $visiblePinnedModels.length > 0}
