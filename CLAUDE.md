@@ -110,31 +110,33 @@ report tokens at all.
 - A tool reporting a permission error stops the loop with a refusal, rather than
   letting the model retry a denied resource. Only tool *error fields* are
   inspected — see `extract_tool_error_text`.
-- Large tool output raises the delta chunk size; pending deltas flush after 50ms
-  so uneven streams don't arrive in bursts.
+- Streaming is upstream's delta streaming (`response:completion` events, 0.11.1+); the 0.10.2-era
+  50ms flush and large-tool-output chunk bump were dropped on `nbc/v0.12.3`.
 - Responses API connections (`api_type: responses`) get the turn's raw output items back on
   every tool round — reasoning with `encrypted_content`, `function_call` with its `id`, tool
   outputs — so the model keeps its chain of thought (`utils/tool_loop.py`:
   `uses_responses_api`, `responses_replay_items`; `RESPONSES_ALLOWED_FIELDS['reasoning']` in
   `routers/openai.py`). Upstream's `convert_output_to_messages` drops reasoning.
-- A tool round that fails (stream error, upstream HTTP ≥ 400) logs a traceback, keeps the
-  earlier rounds in the saved message and shows the error in chat instead of an empty answer
-  (`tool_loop_http_error`, `tool_loop_exception_error`).
-- Deployments must set `CHAT_STREAM_RESPONSE_CHUNK_MAX_BUFFER_SIZE` (32 MiB): the Responses API
-  `response.completed` line exceeds aiohttp's 128 KB readline limit at high reasoning effort.
+- A tool round that fails is reported by upstream 0.12.3 itself (`emit_message_error`, prior rounds
+  kept via `full_output()`); the fork's `tool_loop_http_error`/`tool_loop_exception_error` helpers
+  are no longer called.
+- `CHAT_STREAM_RESPONSE_CHUNK_MAX_BUFFER_SIZE` is optional since 0.11.x: upstream's
+  `stream_chunks_handler` assembles lines from raw chunks without aiohttp's 128 KB limit; when set,
+  it only caps the line length (longer lines are dropped). 32 MiB stays harmless.
 
 ### Per-group tool filtering
 
 `resolve_function_name_filter_list` in `utils/tools.py` reads
 `function_name_filters_by_group` from a tool server's config and unions the
 entries for the user's groups. Applied both in `get_tools` and on the MCP path
-in `middleware.connect_mcp_server`.
+in `utils/tools.connect_mcp_server` (moved there by upstream 0.12).
 
 ### Other
 
 - Stream keepalive in `utils/session_pool.py` (`STREAM_KEEPALIVE_INTERVAL`,
   default 15s) so proxies don't drop slow responses.
-- `max_http_buffer_size=10MB` on the socket.io server for large tool results.
+- socket.io `max_http_buffer_size` is upstream's `SOCKETIO_MAX_HTTP_BUFFER_SIZE` (16 MB) since 0.12;
+  the fork's 10 MB override was dropped.
 - Navbar has no temporary-chat, Controls or user-avatar buttons; settings are
   reached through the user menu at the bottom of the sidebar.
 - BuildKit cache mounts in the `Dockerfile` for npm, pip and uv.
@@ -144,7 +146,7 @@ in `middleware.connect_mcp_server`.
 - `vite.config.ts` proxies `/api` to `:8080` under `vite dev` only, so relative links such as
   file downloads work on `:5173`.
 
-## Config in v0.10.2 — read this before touching settings
+## Config since v0.10.2 — read this before touching settings
 
 v0.10.2 removed `PersistentConfig` and `app.state.config`. Settings now live in
 the database, one row per key:
