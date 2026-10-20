@@ -26,7 +26,18 @@ LOWER_EMAIL = sa.text('lower(email)')
 def _index_exists() -> bool:
     conn = op.get_bind()
     inspector = sa.inspect(conn)
-    return INDEX_NAME in {index['name'] for index in inspector.get_indexes('user')}
+    if INDEX_NAME in {index['name'] for index in inspector.get_indexes('user')}:
+        return True
+    # AI4BI: SQLite reflection bỏ qua index theo biểu thức (lower(email)), nên một volume từng được
+    # 0.11.4 mở rồi hạ về vẫn còn index này mà kiểm tra trên trả về False → tạo lại và lỗi
+    # "index uq_user_email_lower already exists". Soi thêm sqlite_master theo tên.
+    if conn.dialect.name == 'sqlite':
+        row = conn.execute(
+            sa.text("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = :name"),
+            {'name': INDEX_NAME},
+        ).fetchone()
+        return row is not None
+    return False
 
 
 def _duplicate_emails() -> list:
